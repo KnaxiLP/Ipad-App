@@ -1,11 +1,14 @@
-// Service Worker: cached alle Dateien, damit die App auch offline startet.
-// Nach Änderungen an den Dateien die Versionsnummer erhöhen.
-const CACHE = 'test-app-v1';
+// Service Worker: speichert alle App-Dateien, damit die App auch offline startet.
+// Strategie: sofort aus dem Speicher laden und im Hintergrund aktualisieren.
+// Neue Versionen erscheinen dadurch spätestens beim zweiten Öffnen.
+const CACHE = 'test-app-v2';
 const FILES = [
   './',
   'index.html',
   'style.css',
+  'config.js',
   'app.js',
+  'soundboard.js',
   'manifest.webmanifest',
   'icons/icon-180.png',
   'icons/icon-192.png',
@@ -27,8 +30,24 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
+  const req = event.request;
+  // Nur eigene Dateien cachen – Community-Sounds (Supabase) gehen direkt ins Netz
+  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
+
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    caches.open(CACHE).then(async (cache) => {
+      const cached = await cache.match(req, { ignoreSearch: true });
+      const fresh = fetch(req)
+        .then((res) => {
+          if (res.ok) cache.put(req, res.clone());
+          return res;
+        })
+        .catch(() => cached || Response.error());
+      if (cached) {
+        event.waitUntil(fresh);
+        return cached;
+      }
+      return fresh;
+    })
   );
 });

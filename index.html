@@ -23,6 +23,7 @@
       <h1 class="sidebar-title">Test App</h1>
       <button class="nav-item active" data-view="home"><span class="nav-icon">🏠</span><span>Start</span></button>
       <button class="nav-item" data-view="todos"><span class="nav-icon">✅</span><span>Aufgaben</span></button>
+      <button class="nav-item" data-view="sounds"><span class="nav-icon">🔊</span><span>Sounds</span></button>
       <button class="nav-item" data-view="counter"><span class="nav-icon">🔢</span><span>Zähler</span></button>
       <button class="nav-item" data-view="info"><span class="nav-icon">ℹ️</span><span>Info</span></button>
     </nav>
@@ -50,6 +51,45 @@
         <p class="empty muted" id="todo-empty">Noch keine Aufgaben. Füg oben eine hinzu!</p>
       </section>
 
+      <!-- Soundboard -->
+      <section class="view" id="view-sounds">
+        <header class="view-header header-row">
+          <h2>Soundboard</h2>
+          <button class="btn" id="sound-stop">⏹ Stopp</button>
+        </header>
+
+        <div class="card add-sound">
+          <div>
+            <strong>Eigenen Sound hinzufügen</strong>
+            <div class="muted small-text">Max. 15 Sekunden · max. 1 MB</div>
+          </div>
+          <div class="add-buttons">
+            <button class="btn" id="rec-btn">🎙️ Aufnehmen</button>
+            <label class="btn">📁 Datei<input type="file" id="sound-file" accept="audio/*" hidden></label>
+          </div>
+        </div>
+
+        <div id="community-section" hidden>
+          <div class="section-head">
+            <h3>🌍 Community <span class="muted small-text" id="community-status"></span></h3>
+            <button class="btn link" id="community-refresh">↻ Aktualisieren</button>
+          </div>
+          <div class="sound-grid" id="grid-community"></div>
+          <p class="muted empty" id="community-empty">Noch keine geteilten Sounds. Sei der Erste! 🎤</p>
+        </div>
+
+        <div class="section-head">
+          <h3>⭐ Meine Sounds</h3>
+          <button class="btn link" id="mine-edit" hidden>Bearbeiten</button>
+        </div>
+        <div class="sound-grid" id="grid-mine"></div>
+        <p class="muted empty" id="mine-empty">Nimm was auf oder lade eine Datei hoch!</p>
+
+        <div class="section-head"><h3>🎺 Klassiker</h3></div>
+        <div class="sound-grid" id="grid-builtin"></div>
+        <p class="muted small-text center">Kein Ton? Lautstärke und Stummschalter prüfen 🔇</p>
+      </section>
+
       <!-- Zähler -->
       <section class="view" id="view-counter">
         <header class="view-header"><h2>Zähler</h2></header>
@@ -67,7 +107,7 @@
       <section class="view" id="view-info">
         <header class="view-header"><h2>Info</h2></header>
         <div class="list-group">
-          <div class="row"><span>Version</span><span class="muted">1.0</span></div>
+          <div class="row"><span>Version</span><span class="muted">1.1</span></div>
           <div class="row"><span>Als App gestartet</span><span class="muted" id="info-standalone">–</span></div>
           <div class="row"><span>Offline-Modus</span><span class="muted" id="info-sw">–</span></div>
           <div class="row"><span>Bildschirm</span><span class="muted" id="info-screen">–</span></div>
@@ -90,6 +130,29 @@
     <button class="btn link" id="banner-close" aria-label="Schließen">✕</button>
   </div>
 
+  <!-- Dialog: neuen Sound speichern -->
+  <dialog id="sound-dialog">
+    <form id="sound-form" autocomplete="off">
+      <h3>Sound speichern</h3>
+      <button type="button" class="btn full" id="dlg-preview">▶️ Anhören</button>
+      <div class="dlg-row">
+        <input id="dlg-emoji" class="emoji-input" maxlength="8" aria-label="Emoji">
+        <input id="dlg-name" maxlength="30" placeholder="Name, z. B. Bruh" required enterkeyhint="done">
+      </div>
+      <label class="share-row" id="dlg-share-row"><input type="checkbox" id="dlg-share" checked> Mit allen teilen 🌍</label>
+      <p class="muted small-text" id="dlg-share-hint">Alle App-Nutzer können den Sound hören und er lässt sich nicht selbst löschen. Nichts Gemeines hochladen! 😇</p>
+      <p class="error" id="dlg-error"></p>
+      <div class="dlg-actions">
+        <button type="button" class="btn" id="dlg-cancel">Abbrechen</button>
+        <button type="submit" class="btn primary" id="dlg-save">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="config.js"></script>
   <script src="app.js"></script>
+  <script src="soundboard.js"></script>
 </body>
 </html>
