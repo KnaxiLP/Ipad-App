@@ -31,7 +31,7 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-  // Nur eigene Dateien cachen – Community-Sounds (Supabase) gehen direkt ins Netz
+  // Nur eigene Dateien cachen, fremde Anfragen gehen direkt ins Netz
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
 
   event.respondWith(
