@@ -23,7 +23,8 @@
       <h1 class="sidebar-title">Test App</h1>
       <button class="nav-item active" data-view="home"><span class="nav-icon">🏠</span><span>Start</span></button>
       <button class="nav-item" data-view="todos"><span class="nav-icon">✅</span><span>Aufgaben</span></button>
-      <button class="nav-item" data-view="sounds"><span class="nav-icon">🔊</span><span>Sounds</span></button>
+      <button class="nav-item" data-view="grades"><span class="nav-icon">🎓</span><span>Noten</span></button>
+      <button class="nav-item" data-view="notes"><span class="nav-icon">✏️</span><span>Notizen</span></button>
       <button class="nav-item" data-view="counter"><span class="nav-icon">🔢</span><span>Zähler</span></button>
       <button class="nav-item" data-view="info"><span class="nav-icon">ℹ️</span><span>Info</span></button>
     </nav>
@@ -36,7 +37,7 @@
           <div class="card big-clock"><div id="clock">--:--</div><div class="muted">Aktuelle Uhrzeit</div></div>
           <div class="card"><div class="stat" id="stat-todos">0</div><div class="muted">offene Aufgaben</div></div>
           <div class="card"><div class="stat" id="stat-counter">0</div><div class="muted">Zählerstand</div></div>
-          <div class="card" id="mode-card"><div class="stat small" id="stat-mode">–</div><div class="muted">Anzeigemodus</div></div>
+          <div class="card"><div class="stat" id="stat-grade">–</div><div class="muted">Notenschnitt</div></div>
         </div>
       </section>
 
@@ -51,43 +52,64 @@
         <p class="empty muted" id="todo-empty">Noch keine Aufgaben. Füg oben eine hinzu!</p>
       </section>
 
-      <!-- Soundboard -->
-      <section class="view" id="view-sounds">
+      <!-- Noten -->
+      <section class="view" id="view-grades">
         <header class="view-header header-row">
-          <h2>Soundboard</h2>
-          <button class="btn" id="sound-stop">⏹ Stopp</button>
+          <h2>Noten</h2>
+          <button class="btn primary" id="subject-add">+ Fach</button>
         </header>
 
-        <div class="card add-sound">
+        <div class="card grade-total" id="grade-total">
           <div>
-            <strong>Eigenen Sound hinzufügen</strong>
-            <div class="muted small-text">Max. 15 Sekunden · max. 1 MB</div>
+            <div class="muted-light">Gesamtschnitt</div>
+            <div class="grade-total-value" id="grade-total-value">–</div>
           </div>
-          <div class="add-buttons">
-            <button class="btn" id="rec-btn">🎙️ Aufnehmen</button>
-            <label class="btn">📁 Datei<input type="file" id="sound-file" accept="audio/*" hidden></label>
+          <div class="grade-total-side">
+            <div id="grade-total-comment"></div>
+            <div class="muted-light small-text" id="grade-total-count"></div>
           </div>
         </div>
 
-        <div id="community-section" hidden>
-          <div class="section-head">
-            <h3>🌍 Community <span class="muted small-text" id="community-status"></span></h3>
-            <button class="btn link" id="community-refresh">↻ Aktualisieren</button>
+        <div id="subject-list"></div>
+
+        <div class="card empty-card" id="grades-empty">
+          <p>Noch keine Fächer eingetragen.</p>
+          <button class="btn primary" id="subjects-default">Standard-Fächer hinzufügen</button>
+        </div>
+      </section>
+
+      <!-- Notizen -->
+      <section class="view" id="view-notes">
+        <div class="note-bar">
+          <button class="btn small" id="note-list-btn" aria-label="Alle Notizen">📒</button>
+          <input class="note-title" id="note-title" maxlength="40" placeholder="Titel" enterkeyhint="done">
+          <button class="btn small" id="note-new" aria-label="Neue Notiz">＋</button>
+        </div>
+
+        <div class="toolbar" id="toolbar">
+          <div class="tool-group">
+            <button class="tool active" data-tool="pen" aria-label="Stift">🖊️</button>
+            <button class="tool" data-tool="marker" aria-label="Textmarker">🖍️</button>
+            <button class="tool" data-tool="eraser" aria-label="Radierer">🧽</button>
           </div>
-          <div class="sound-grid" id="grid-community"></div>
-          <p class="muted empty" id="community-empty">Noch keine geteilten Sounds. Sei der Erste! 🎤</p>
+          <div class="tool-group" id="color-group"></div>
+          <div class="tool-group" id="size-group">
+            <button class="tool size" data-size="1" aria-label="Dünn"><i style="width:4px;height:4px"></i></button>
+            <button class="tool size active" data-size="2" aria-label="Mittel"><i style="width:8px;height:8px"></i></button>
+            <button class="tool size" data-size="4" aria-label="Dick"><i style="width:13px;height:13px"></i></button>
+          </div>
+          <div class="tool-group">
+            <button class="tool" id="undo" aria-label="Rückgängig">↩️</button>
+            <button class="tool" id="redo" aria-label="Wiederholen">↪️</button>
+          </div>
+          <div class="tool-group">
+            <button class="tool" id="finger-toggle" aria-label="Mit Finger zeichnen">☝️</button>
+            <button class="tool" id="note-more" aria-label="Mehr">⋯</button>
+          </div>
         </div>
 
-        <div class="section-head">
-          <h3>⭐ Meine Sounds</h3>
-          <button class="btn link" id="mine-edit" hidden>Bearbeiten</button>
-        </div>
-        <div class="sound-grid" id="grid-mine"></div>
-        <p class="muted empty" id="mine-empty">Nimm was auf oder lade eine Datei hoch!</p>
-
-        <div class="section-head"><h3>🎺 Klassiker</h3></div>
-        <div class="sound-grid" id="grid-builtin"></div>
-        <p class="muted small-text center">Kein Ton? Lautstärke und Stummschalter prüfen 🔇</p>
+        <div class="pages" id="pages"></div>
+        <button class="btn add-page" id="add-page">＋ Seite hinzufügen</button>
       </section>
 
       <!-- Zähler -->
@@ -107,7 +129,7 @@
       <section class="view" id="view-info">
         <header class="view-header"><h2>Info</h2></header>
         <div class="list-group">
-          <div class="row"><span>Version</span><span class="muted">1.2</span></div>
+          <div class="row"><span>Version</span><span class="muted">2.0</span></div>
           <div class="row"><span>Als App gestartet</span><span class="muted" id="info-standalone">–</span></div>
           <div class="row"><span>Offline-Modus</span><span class="muted" id="info-sw">–</span></div>
           <div class="row"><span>Bildschirm</span><span class="muted" id="info-screen">–</span></div>
@@ -130,38 +152,72 @@
     <button class="btn link" id="banner-close" aria-label="Schließen">✕</button>
   </div>
 
-  <!-- Dialog: neuen Sound speichern -->
-  <dialog id="sound-dialog">
-    <form id="sound-form" autocomplete="off">
-      <h3>Sound speichern</h3>
-      <button type="button" class="btn full" id="dlg-preview">▶️ Anhören</button>
-      <div class="dlg-row">
-        <input id="dlg-emoji" class="emoji-input" maxlength="8" aria-label="Emoji">
-        <input id="dlg-name" maxlength="30" placeholder="Name, z. B. Bruh" required enterkeyhint="done">
-      </div>
-      <label class="share-row" id="dlg-share-row"><input type="checkbox" id="dlg-share" checked> Mit allen teilen 🌍</label>
-      <p class="muted small-text" id="dlg-share-hint">Alle App-Nutzer können den Sound hören und er lässt sich nicht selbst löschen. Nichts Gemeines hochladen! 😇</p>
-      <p class="error" id="dlg-error"></p>
+  <!-- Dialog: Note hinzufügen -->
+  <dialog id="grade-dialog">
+    <h3 id="grade-dialog-title">Note hinzufügen</h3>
+    <div class="segmented" id="grade-type">
+      <button type="button" data-type="s" class="active">✍️ Schriftlich</button>
+      <button type="button" data-type="m">💬 Mündlich</button>
+    </div>
+    <input class="text-input" id="grade-label" maxlength="40" placeholder="Bezeichnung (optional), z. B. Klassenarbeit 1">
+    <div class="grade-picker" id="grade-picker"></div>
+    <div class="dlg-actions"><button type="button" class="btn" data-close>Abbrechen</button></div>
+  </dialog>
+
+  <!-- Dialog: Fach bearbeiten -->
+  <dialog id="subject-dialog">
+    <form id="subject-form" autocomplete="off">
+      <h3 id="subject-dialog-title">Neues Fach</h3>
+      <input class="text-input" id="subject-name" maxlength="30" placeholder="Name, z. B. Mathe" required enterkeyhint="done">
+      <label class="weight-label">
+        <span>Gewichtung</span>
+        <span id="subject-weight-text" class="muted"></span>
+      </label>
+      <input type="range" id="subject-weight" min="0" max="100" step="5" value="50">
+      <div class="weight-scale muted small-text"><span>✍️ Schriftlich</span><span>💬 Mündlich</span></div>
       <div class="dlg-actions">
-        <button type="button" class="btn" id="dlg-cancel">Abbrechen</button>
-        <button type="submit" class="btn primary" id="dlg-save">Speichern</button>
+        <button type="button" class="btn danger-text" id="subject-delete">Löschen</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Abbrechen</button>
+        <button type="submit" class="btn primary">Speichern</button>
       </div>
     </form>
   </dialog>
 
-  <!-- Dialog: Hilfe, wenn das Mikrofon nicht geht -->
-  <dialog id="mic-help">
-    <h3 id="mic-title"></h3>
-    <p id="mic-text"></p>
-    <ol class="help-steps" id="mic-steps"></ol>
-    <p class="muted small-text" id="mic-code"></p>
-    <div class="dlg-actions"><button type="button" class="btn primary" id="mic-close">OK</button></div>
+  <!-- Dialog: Liste aller Notizen -->
+  <dialog id="notes-dialog">
+    <h3>📒 Meine Notizen</h3>
+    <ul class="list notes-list" id="notes-list"></ul>
+    <div class="dlg-actions">
+      <button type="button" class="btn" data-close>Schließen</button>
+      <button type="button" class="btn primary" id="notes-dialog-new">＋ Neue Notiz</button>
+    </div>
   </dialog>
+
+  <!-- Dialog: Mehr (Papier, Export, Löschen) -->
+  <dialog id="more-dialog">
+    <h3>Notiz-Einstellungen</h3>
+    <div class="muted small-text">Papier</div>
+    <div class="segmented" id="paper-group">
+      <button type="button" data-paper="blank">Blanko</button>
+      <button type="button" data-paper="lines">Liniert</button>
+      <button type="button" data-paper="grid">Kariert</button>
+      <button type="button" data-paper="dots">Punkte</button>
+    </div>
+    <div class="menu-list">
+      <button type="button" class="menu-item" id="note-export">📤 Als Bild teilen / speichern</button>
+      <button type="button" class="menu-item" id="note-clear-page">🧹 Alle Seiten leeren</button>
+      <button type="button" class="menu-item danger-text" id="note-delete">🗑 Notiz löschen</button>
+    </div>
+    <p class="muted small-text">☝️ = Mit dem Finger zeichnen an/aus. Sobald du mit dem Apple Pencil schreibst, geht's automatisch aus: Dann scrollt der Finger und nur der Stift schreibt.</p>
+    <div class="dlg-actions"><button type="button" class="btn primary" data-close>Fertig</button></div>
+  </dialog>
+
 
   <div class="toast" id="toast" role="status"></div>
 
-  <script src="config.js"></script>
   <script src="app.js"></script>
-  <script src="soundboard.js"></script>
+  <script src="grades.js"></script>
+  <script src="notes.js"></script>
 </body>
 </html>

@@ -1,14 +1,14 @@
 // Service Worker: speichert alle App-Dateien, damit die App auch offline startet.
 // Strategie: sofort aus dem Speicher laden und im Hintergrund aktualisieren.
 // Neue Versionen erscheinen dadurch spätestens beim zweiten Öffnen.
-const CACHE = 'test-app-v3';
+const CACHE = 'test-app-v4';
 const FILES = [
   './',
   'index.html',
   'style.css',
-  'config.js',
   'app.js',
-  'soundboard.js',
+  'grades.js',
+  'notes.js',
   'manifest.webmanifest',
   'icons/icon-180.png',
   'icons/icon-192.png',

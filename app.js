@@ -18,6 +18,27 @@ const isStandalone =
   window.navigator.standalone === true ||
   window.matchMedia('(display-mode: standalone)').matches;
 
+// Note schön anzeigen: 2.25 → "2,25"
+const formatGrade = (n) => n.toFixed(2).replace('.', ',');
+
+// ---------- Kleine Meldung oben ----------
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// Alle Dialoge: Buttons mit data-close schließen, Tippen auf den Hintergrund auch
+document.querySelectorAll('dialog').forEach((d) => {
+  d.addEventListener('click', (e) => {
+    const r = d.getBoundingClientRect();
+    const outside = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+    if ((e.target === d && outside) || e.target.closest('[data-close]')) d.close();
+  });
+});
+
 // ---------- Navigation ----------
 function showView(name) {
   document.querySelectorAll('.nav-item').forEach((b) =>
@@ -28,7 +49,9 @@ function showView(name) {
   );
   $('.content').scrollTop = 0;
   store.set('view', name);
+  document.body.dataset.view = name;
   updateStats();
+  window.dispatchEvent(new CustomEvent('viewchange', { detail: name }));
 }
 
 document.querySelectorAll('.nav-item').forEach((btn) =>
@@ -50,7 +73,8 @@ function updateClock() {
 function updateStats() {
   $('#stat-todos').textContent = todos.filter((t) => !t.done).length;
   $('#stat-counter').textContent = counter;
-  $('#stat-mode').textContent = isStandalone ? '📱 App' : '🌐 Browser';
+  const avg = window.gradeAverage ? window.gradeAverage() : null;
+  $('#stat-grade').textContent = avg == null ? '–' : formatGrade(avg);
 }
 
 // ---------- Aufgaben ----------
