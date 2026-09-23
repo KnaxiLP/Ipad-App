@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>Test App</title>
+
+  <!-- Macht die Website auf iPad/iPhone zur "App" ohne Safari-Leisten -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Test App">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#6d5dfc">
+
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <nav class="sidebar" aria-label="Navigation">
+      <h1 class="sidebar-title">Test App</h1>
+      <button class="nav-item active" data-view="home"><span class="nav-icon">🏠</span><span>Start</span></button>
+      <button class="nav-item" data-view="todos"><span class="nav-icon">✅</span><span>Aufgaben</span></button>
+      <button class="nav-item" data-view="counter"><span class="nav-icon">🔢</span><span>Zähler</span></button>
+      <button class="nav-item" data-view="info"><span class="nav-icon">ℹ️</span><span>Info</span></button>
+    </nav>
+
+    <main class="content">
+      <!-- Start -->
+      <section class="view active" id="view-home">
+        <header class="view-header"><h2 id="greeting">Hallo!</h2><p class="subtitle" id="date"></p></header>
+        <div class="grid">
+          <div class="card big-clock"><div id="clock">--:--</div><div class="muted">Aktuelle Uhrzeit</div></div>
+          <div class="card"><div class="stat" id="stat-todos">0</div><div class="muted">offene Aufgaben</div></div>
+          <div class="card"><div class="stat" id="stat-counter">0</div><div class="muted">Zählerstand</div></div>
+          <div class="card" id="mode-card"><div class="stat small" id="stat-mode">–</div><div class="muted">Anzeigemodus</div></div>
+        </div>
+      </section>
+
+      <!-- Aufgaben -->
+      <section class="view" id="view-todos">
+        <header class="view-header"><h2>Aufgaben</h2></header>
+        <form class="todo-form" id="todo-form" autocomplete="off">
+          <input id="todo-input" type="text" placeholder="Neue Aufgabe…" enterkeyhint="done">
+          <button type="submit" class="btn primary">Hinzufügen</button>
+        </form>
+        <ul class="list" id="todo-list"></ul>
+        <p class="empty muted" id="todo-empty">Noch keine Aufgaben. Füg oben eine hinzu!</p>
+      </section>
+
+      <!-- Zähler -->
+      <section class="view" id="view-counter">
+        <header class="view-header"><h2>Zähler</h2></header>
+        <div class="card counter-card">
+          <div class="counter-value" id="counter-value">0</div>
+          <div class="counter-buttons">
+            <button class="btn round" data-step="-1" aria-label="Minus">−</button>
+            <button class="btn round primary" data-step="1" aria-label="Plus">+</button>
+          </div>
+          <button class="btn link" id="counter-reset">Zurücksetzen</button>
+        </div>
+      </section>
+
+      <!-- Info -->
+      <section class="view" id="view-info">
+        <header class="view-header"><h2>Info</h2></header>
+        <div class="list-group">
+          <div class="row"><span>Version</span><span class="muted">1.0</span></div>
+          <div class="row"><span>Als App gestartet</span><span class="muted" id="info-standalone">–</span></div>
+          <div class="row"><span>Offline-Modus</span><span class="muted" id="info-sw">–</span></div>
+          <div class="row"><span>Bildschirm</span><span class="muted" id="info-screen">–</span></div>
+        </div>
+        <div class="card hint">
+          <strong>Zum Home-Bildschirm hinzufügen:</strong>
+          <ol>
+            <li>Seite in <b>Safari</b> öffnen</li>
+            <li>Auf das <b>Teilen</b>-Symbol tippen (Quadrat mit Pfeil)</li>
+            <li><b>„Zum Home-Bildschirm“</b> wählen</li>
+          </ol>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Hinweis-Banner, wenn die Seite noch im Browser läuft -->
+  <div class="install-banner" id="install-banner" hidden>
+    <span>📲 Tipp: Teilen → „Zum Home-Bildschirm“ für die App-Ansicht</span>
+    <button class="btn link" id="banner-close" aria-label="Schließen">✕</button>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
