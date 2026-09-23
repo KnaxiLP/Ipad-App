@@ -107,7 +107,7 @@
       <section class="view" id="view-info">
         <header class="view-header"><h2>Info</h2></header>
         <div class="list-group">
-          <div class="row"><span>Version</span><span class="muted">1.1</span></div>
+          <div class="row"><span>Version</span><span class="muted">1.2</span></div>
           <div class="row"><span>Als App gestartet</span><span class="muted" id="info-standalone">–</span></div>
           <div class="row"><span>Offline-Modus</span><span class="muted" id="info-sw">–</span></div>
           <div class="row"><span>Bildschirm</span><span class="muted" id="info-screen">–</span></div>
@@ -147,6 +147,15 @@
         <button type="submit" class="btn primary" id="dlg-save">Speichern</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- Dialog: Hilfe, wenn das Mikrofon nicht geht -->
+  <dialog id="mic-help">
+    <h3 id="mic-title"></h3>
+    <p id="mic-text"></p>
+    <ol class="help-steps" id="mic-steps"></ol>
+    <p class="muted small-text" id="mic-code"></p>
+    <div class="dlg-actions"><button type="button" class="btn primary" id="mic-close">OK</button></div>
   </dialog>
 
   <div class="toast" id="toast" role="status"></div>

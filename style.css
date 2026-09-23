@@ -288,6 +288,9 @@ dialog h3 { margin: 0 0 16px; font-size: 22px; }
 .error:empty { display: none; }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 
+.help-steps { padding-left: 20px; line-height: 1.6; margin: 12px 0; }
+.help-steps li { margin-bottom: 8px; }
+
 /* ---------- Toast ---------- */
 .toast {
   position: fixed;

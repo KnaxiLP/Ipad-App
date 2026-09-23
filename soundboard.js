@@ -5,8 +5,12 @@ const MAX_BYTES = 1024 * 1024; // 1 MB
 const MAX_SECONDS = 15;
 const REC_SECONDS = 10;
 
-// iOS: Töne auch abspielen, wenn der Stummschalter an ist (iOS 17+)
-try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
+// iOS: Töne auch abspielen, wenn der Stummschalter an ist (iOS 17+).
+// Achtung: Im Modus "playback" blockiert iOS das Mikrofon – vor dem Aufnehmen umschalten.
+function setAudioSession(type) {
+  try { if (navigator.audioSession) navigator.audioSession.type = type; } catch {}
+}
+setAudioSession('playback');
 
 // ---------- Web-Audio-Synthesizer für die Klassiker ----------
 let ctx, master, noiseBuf;
@@ -415,12 +419,15 @@ let recorder = null, recTimer = null;
 function recLabel(text) { $('#rec-btn').textContent = text; }
 
 async function startRecording() {
-  if (!navigator.mediaDevices || !window.MediaRecorder) return toast('Aufnehmen wird hier nicht unterstützt');
+  if (!window.isSecureContext) return showMicHelp('insecure');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) return showMicHelp('unsupported');
   let stream;
+  setAudioSession('play-and-record');
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch {
-    return toast('Kein Zugriff aufs Mikrofon 🎙️');
+  } catch (err) {
+    setAudioSession('playback');
+    return showMicHelp(err && err.name, err && err.message);
   }
   const mimeType = ['audio/mp4', 'audio/webm', 'audio/ogg'].find((t) => MediaRecorder.isTypeSupported(t));
   recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
@@ -428,6 +435,7 @@ async function startRecording() {
   recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
   recorder.onstop = () => {
     stream.getTracks().forEach((t) => t.stop());
+    setAudioSession('playback');
     clearInterval(recTimer);
     $('#rec-btn').classList.remove('recording');
     recLabel('🎙️ Aufnehmen');
@@ -446,6 +454,51 @@ async function startRecording() {
     else recLabel(`⏹ Stopp (${left})`);
   }, 1000);
 }
+
+// Hilfe, wenn das Mikrofon nicht geht – mit dem genauen Grund
+const MIC_HELP = {
+  NotAllowedError: {
+    title: 'Mikrofon ist blockiert 🚫',
+    text: 'Das iPad hat den Zugriff abgelehnt, ohne zu fragen. Meistens ist er in den Einstellungen gesperrt:',
+    steps: [
+      '<b>Einstellungen → Apps → Safari → Mikrofon</b> auf <b>„Fragen“</b> oder <b>„Erlauben“</b> stellen (bei älterem iOS: <b>Einstellungen → Safari → Mikrofon</b>)',
+      '<b>Einstellungen → Bildschirmzeit → Beschränkungen → Mikrofon</b> muss erlaubt sein',
+      'Dann die App <b>ganz schließen</b> (vom App-Umschalter wegwischen) und neu öffnen',
+      'Ist es ein <b>Schul-iPad</b>? Dann kann die Schule das Mikrofon gesperrt haben. Das lässt sich nicht selbst ändern. Nimm stattdessen eine Sprachmemo auf und lade sie über <b>📁 Datei</b> hoch.'
+    ]
+  },
+  NotFoundError: {
+    title: 'Kein Mikrofon gefunden 🎙️',
+    text: 'Das Gerät meldet kein Mikrofon.',
+    steps: ['Prüfe, ob ein Headset angeschlossen ist, und versuch es ohne', 'Alternativ: Sprachmemo aufnehmen und über <b>📁 Datei</b> hochladen']
+  },
+  NotReadableError: {
+    title: 'Mikrofon ist belegt',
+    text: 'Eine andere App benutzt gerade das Mikrofon (z. B. ein Anruf oder FaceTime).',
+    steps: ['Die andere App schließen und nochmal versuchen']
+  },
+  insecure: {
+    title: 'Nur über https',
+    text: 'Das Mikrofon funktioniert nur, wenn die Seite über <b>https://</b> geöffnet wird.',
+    steps: ['Die App über den GitHub-Pages-Link (https://…github.io/…) öffnen']
+  },
+  unsupported: {
+    title: 'Aufnehmen nicht unterstützt',
+    text: 'Dieser Browser bzw. diese iOS-Version kann nicht aufnehmen.',
+    steps: ['iPadOS aktualisieren', 'Alternativ: Sprachmemo aufnehmen und über <b>📁 Datei</b> hochladen']
+  }
+};
+
+function showMicHelp(code, detail) {
+  const h = MIC_HELP[code] || MIC_HELP.NotAllowedError;
+  $('#mic-title').textContent = h.title;
+  $('#mic-text').innerHTML = h.text;
+  $('#mic-steps').innerHTML = h.steps.map((s) => `<li>${s}</li>`).join('');
+  $('#mic-code').textContent = `Fehlercode: ${code || 'unbekannt'}${detail ? ' – ' + detail : ''}`;
+  $('#mic-help').showModal();
+}
+
+$('#mic-close').addEventListener('click', () => $('#mic-help').close());
 
 $('#rec-btn').addEventListener('click', () => (recorder ? recorder.stop() : startRecording()));
 
