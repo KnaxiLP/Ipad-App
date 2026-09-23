@@ -25,6 +25,7 @@
       <button class="nav-item" data-view="todos"><span class="nav-icon">✅</span><span>Aufgaben</span></button>
       <button class="nav-item" data-view="grades"><span class="nav-icon">🎓</span><span>Noten</span></button>
       <button class="nav-item" data-view="notes"><span class="nav-icon">✏️</span><span>Notizen</span></button>
+      <button class="nav-item" data-view="python"><span class="nav-icon">🐍</span><span>Python</span></button>
       <button class="nav-item" data-view="counter"><span class="nav-icon">🔢</span><span>Zähler</span></button>
       <button class="nav-item" data-view="info"><span class="nav-icon">ℹ️</span><span>Info</span></button>
     </nav>
@@ -112,6 +113,32 @@
         <button class="btn add-page" id="add-page">＋ Seite hinzufügen</button>
       </section>
 
+      <!-- Python -->
+      <section class="view" id="view-python">
+        <div class="py-bar">
+          <select id="py-program" class="py-select" aria-label="Programm"></select>
+          <button class="btn small" id="py-new" aria-label="Neues Programm">＋</button>
+          <button class="btn small" id="py-rename" aria-label="Umbenennen">✏️</button>
+          <button class="btn small" id="py-delete" aria-label="Löschen">🗑</button>
+          <span class="spacer"></span>
+          <button class="btn primary py-run" id="py-run">▶ Ausführen</button>
+        </div>
+
+        <div class="py-editor">
+          <pre class="py-gutter" id="py-gutter" aria-hidden="true">1</pre>
+          <textarea id="py-code" wrap="off" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" aria-label="Python-Code"></textarea>
+        </div>
+
+        <div class="py-keys" id="py-keys"></div>
+
+        <div class="py-console-head">
+          <span>Ausgabe</span>
+          <span class="py-status" id="py-status"></span>
+          <button class="btn link small-text" id="py-clear">Leeren</button>
+        </div>
+        <div class="py-console" id="py-console"></div>
+      </section>
+
       <!-- Zähler -->
       <section class="view" id="view-counter">
         <header class="view-header"><h2>Zähler</h2></header>
@@ -129,7 +156,7 @@
       <section class="view" id="view-info">
         <header class="view-header"><h2>Info</h2></header>
         <div class="list-group">
-          <div class="row"><span>Version</span><span class="muted">2.0</span></div>
+          <div class="row"><span>Version</span><span class="muted">2.1</span></div>
           <div class="row"><span>Als App gestartet</span><span class="muted" id="info-standalone">–</span></div>
           <div class="row"><span>Offline-Modus</span><span class="muted" id="info-sw">–</span></div>
           <div class="row"><span>Bildschirm</span><span class="muted" id="info-screen">–</span></div>
@@ -214,10 +241,18 @@
   </dialog>
 
 
+  <!-- Dialog: Neues Python-Programm -->
+  <dialog id="py-new-dialog">
+    <h3>🐍 Neues Programm</h3>
+    <div class="menu-list" id="py-templates"></div>
+    <div class="dlg-actions"><button type="button" class="btn" data-close>Abbrechen</button></div>
+  </dialog>
+
   <div class="toast" id="toast" role="status"></div>
 
   <script src="app.js"></script>
   <script src="grades.js"></script>
   <script src="notes.js"></script>
+  <script src="python.js"></script>
 </body>
 </html>

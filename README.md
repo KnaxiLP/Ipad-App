@@ -5,7 +5,7 @@ Eine einfache Website, die sich auf dem iPad wie eine echte App anfühlt
 Safari-Leisten, funktioniert offline und speichert Daten auf dem Gerät.
 
 **Inhalt:** Startseite mit Uhr, Aufgabenliste, **Notenrechner**, **Notizen zum
-Schreiben mit dem Apple Pencil**, Zähler und Info-Seite.
+Schreiben mit dem Apple Pencil**, **Python-Editor**, Zähler und Info-Seite.
 Auf dem iPad mit Seitenleiste, auf schmalen Bildschirmen (iPhone, Split View)
 mit Tab-Leiste unten. Hell- und Dunkelmodus automatisch.
 
@@ -45,6 +45,23 @@ Jetzt startet die Seite vom Home-Bildschirm aus wie eine App.
 - Als Bild teilen oder speichern (⋯ → „Als Bild teilen“)
 - Alles wird nur auf dem Gerät gespeichert
 
+## Python
+
+- Python-Programme schreiben und direkt auf dem iPad ausführen (mit [Pyodide](https://pyodide.org))
+- Beim ersten Öffnen werden ca. 10 MB geladen, danach funktioniert es auch offline
+- `input()` funktioniert: Die Eingabe erscheint direkt in der Ausgabe
+- `matplotlib` für Diagramme, `numpy` usw. werden bei `import` automatisch geladen
+- Zeilennummern, Fehlerzeile wird rot markiert, automatisches Einrücken nach `:`
+- Leiste mit Sonderzeichen (`: ( ) " [ ]` …), die auf der iPad-Tastatur umständlich sind
+- ⏹ Stopp beendet auch Endlosschleifen
+- Mehrere Programme speicherbar, Beispiele: Zahlenraten, Einmaleins, Funktionsgraph …
+
+**Technischer Hinweis:** Python läuft in einem Hintergrund-Worker. Bei `input()` wird
+das Programm angehalten und nach der Eingabe neu gestartet. Bis zu dieser Stelle wird
+alles unsichtbar „vorgespult“ (gleicher Zufalls-Seed, `sleep` wird übersprungen).
+Programme, die z. B. von der Uhrzeit abhängen, können sich dadurch in Einzelfällen
+anders verhalten als in normalem Python.
+
 ## Lokal testen
 
 ```bash
@@ -61,6 +78,8 @@ python3 -m http.server 8000
 | `app.js` | Logik (Navigation, Aufgaben, Zähler, Speichern) |
 | `grades.js` | Notenrechner |
 | `notes.js` | Notizen mit Stift |
+| `python.js` | Python-Editor (Oberfläche) |
+| `py-worker.js` | Führt Python im Hintergrund aus (Pyodide) |
 | `manifest.webmanifest` | App-Name, Farben, Icons |
 | `sw.js` | Service Worker für Offline-Nutzung |
 | `icons/` | App-Icons (aus `icon.svg` erzeugt) |
