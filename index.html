@@ -25,6 +25,7 @@
       <button class="nav-item" data-view="todos"><span class="nav-icon">✅</span><span>Aufgaben</span></button>
       <button class="nav-item" data-view="grades"><span class="nav-icon">🎓</span><span>Noten</span></button>
       <button class="nav-item" data-view="notes"><span class="nav-icon">✏️</span><span>Notizen</span></button>
+      <button class="nav-item" data-view="braces"><span class="nav-icon">〰️</span><span>Klammern</span></button>
       <button class="nav-item" data-view="python"><span class="nav-icon">🐍</span><span>Python</span></button>
       <button class="nav-item" data-view="counter"><span class="nav-icon">🔢</span><span>Zähler</span></button>
       <button class="nav-item" data-view="info"><span class="nav-icon">ℹ️</span><span>Info</span></button>
@@ -113,6 +114,57 @@
         <button class="btn add-page" id="add-page">＋ Seite hinzufügen</button>
       </section>
 
+      <!-- Klammern -->
+      <section class="view" id="view-braces">
+        <header class="view-header"><h2>Klammern</h2></header>
+        <p class="subtitle">Zusammenfassungs-Klammern zum Kopieren, z. B. für Goodnotes</p>
+
+        <div class="card brace-card">
+          <div class="brace-stage" id="brace-stage">
+            <img id="brace-preview" alt="Geschweifte Klammer" draggable="true">
+          </div>
+          <button class="btn primary brace-copy" id="brace-copy">📋 Kopieren</button>
+        </div>
+
+        <div class="card brace-options">
+          <div class="muted small-text">Richtung</div>
+          <div class="segmented brace-dir" id="brace-dir">
+            <button type="button" data-dir="down">nach oben offen</button>
+            <button type="button" data-dir="up">nach unten offen</button>
+            <button type="button" data-dir="left">links</button>
+            <button type="button" data-dir="right">rechts</button>
+          </div>
+
+          <label class="weight-label"><span>Länge</span><span class="muted" id="brace-length-text"></span></label>
+          <input type="range" id="brace-length" min="120" max="1500" step="10">
+
+          <div class="brace-row">
+            <div>
+              <div class="muted small-text">Dicke</div>
+              <div class="segmented" id="brace-width">
+                <button type="button" data-width="1">Dünn</button>
+                <button type="button" data-width="2">Mittel</button>
+                <button type="button" data-width="3">Dick</button>
+              </div>
+            </div>
+            <div>
+              <div class="muted small-text">Farbe</div>
+              <div class="brace-colors" id="brace-colors"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card hint">
+          <strong>So kommt die Klammer in Goodnotes:</strong>
+          <ol>
+            <li>Oben auf <b>📋 Kopieren</b> tippen (oder lange auf die Klammer drücken → <b>Kopieren</b>)</li>
+            <li>In Goodnotes auf die Seite tippen und <b>Einfügen</b> wählen</li>
+            <li>Mit den Ecken kleiner oder größer ziehen und an die richtige Stelle schieben</li>
+          </ol>
+          <p class="muted small-text">Tipp: Mit Split View kannst du die Klammer auch direkt in Goodnotes <b>hinüberziehen</b>. Brauchst du eine längere oder kürzere Klammer, stell hier die Länge ein, statt sie in Goodnotes zu verzerren.</p>
+        </div>
+      </section>
+
       <!-- Python -->
       <section class="view" id="view-python">
         <div class="py-bar">
@@ -156,7 +208,7 @@
       <section class="view" id="view-info">
         <header class="view-header"><h2>Info</h2></header>
         <div class="list-group">
-          <div class="row"><span>Version</span><span class="muted">2.1</span></div>
+          <div class="row"><span>Version</span><span class="muted">2.2</span></div>
           <div class="row"><span>Als App gestartet</span><span class="muted" id="info-standalone">–</span></div>
           <div class="row"><span>Offline-Modus</span><span class="muted" id="info-sw">–</span></div>
           <div class="row"><span>Bildschirm</span><span class="muted" id="info-screen">–</span></div>
@@ -254,5 +306,6 @@
   <script src="grades.js"></script>
   <script src="notes.js"></script>
   <script src="python.js"></script>
+  <script src="braces.js"></script>
 </body>
 </html>

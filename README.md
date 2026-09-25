@@ -5,7 +5,7 @@ Eine einfache Website, die sich auf dem iPad wie eine echte App anfühlt
 Safari-Leisten, funktioniert offline und speichert Daten auf dem Gerät.
 
 **Inhalt:** Startseite mit Uhr, Aufgabenliste, **Notenrechner**, **Notizen zum
-Schreiben mit dem Apple Pencil**, **Python-Editor**, Zähler und Info-Seite.
+Schreiben mit dem Apple Pencil**, **Klammern zum Kopieren**, **Python-Editor**, Zähler und Info-Seite.
 Auf dem iPad mit Seitenleiste, auf schmalen Bildschirmen (iPhone, Split View)
 mit Tab-Leiste unten. Hell- und Dunkelmodus automatisch.
 
@@ -45,6 +45,13 @@ Jetzt startet die Seite vom Home-Bildschirm aus wie eine App.
 - Als Bild teilen oder speichern (⋯ → „Als Bild teilen“)
 - Alles wird nur auf dem Gerät gespeichert
 
+## Klammern (für Goodnotes)
+
+- Geschweifte Zusammenfassungs-Klammern: nach oben offen ︸, nach unten offen ︷, links `{`, rechts `}`
+- Länge, Dicke und Farbe einstellbar; durchsichtiger Hintergrund
+- **📋 Kopieren** und in Goodnotes einfügen, oder per Split View hinüberziehen
+- Die Länge wird beim Erzeugen gesetzt, dadurch verzerrt die Strichdicke nicht
+
 ## Python
 
 - Python-Programme schreiben und direkt auf dem iPad ausführen (mit [Pyodide](https://pyodide.org))
@@ -78,6 +85,7 @@ python3 -m http.server 8000
 | `app.js` | Logik (Navigation, Aufgaben, Zähler, Speichern) |
 | `grades.js` | Notenrechner |
 | `notes.js` | Notizen mit Stift |
+| `braces.js` | Klammern-Generator zum Kopieren |
 | `python.js` | Python-Editor (Oberfläche) |
 | `py-worker.js` | Führt Python im Hintergrund aus (Pyodide) |
 | `manifest.webmanifest` | App-Name, Farben, Icons |

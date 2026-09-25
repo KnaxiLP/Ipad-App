@@ -387,6 +387,26 @@ body.finger-draw .page-live { touch-action: none; }
   background: transparent; color: #f9e2af; font: inherit; padding: 2px 0;
 }
 
+/* ---------- Klammern ---------- */
+.brace-card { display: flex; flex-direction: column; gap: 14px; margin-bottom: 14px; }
+.brace-stage {
+  display: grid; place-items: center; height: 220px; padding: 20px; border-radius: 12px;
+  /* Schachbrett = durchsichtiger Hintergrund */
+  background: repeating-conic-gradient(#f4f4f5 0 25%, #ffffff 0 50%) 0 0 / 20px 20px;
+  border: 1px solid var(--border);
+}
+.brace-stage.vertical { height: 320px; }
+.brace-stage img { max-width: 100%; max-height: 100%; object-fit: contain; -webkit-touch-callout: default; }
+.brace-copy { font-size: 19px; padding: 14px; }
+.brace-options { margin-bottom: 14px; }
+.brace-dir { flex-wrap: wrap; }
+.brace-dir button { min-width: 45%; }
+.brace-dir button { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.brace-icon { height: 20px; width: auto; max-width: 36px; object-fit: contain; }
+.brace-row { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 12px; }
+.brace-row > div { flex: 1; min-width: 200px; }
+.brace-colors { display: flex; gap: 4px; margin-top: 8px; }
+
 /* ---------- Dialog ---------- */
 dialog {
   width: min(420px, calc(100% - 32px));
