@@ -52,12 +52,30 @@ let saveTimer = null;
 
 const isEmpty = (n) => !n.title && n.pages.every((p) => p.strokes.length === 0);
 
+// Gespeichert wird spätestens 1 s nach einer Änderung – auch beim Dauerschreiben.
+// (Nicht bei jedem Strich sofort, weil das Speichern die ganze Notiz kopiert.)
+let saveTarget = null;
+
+function writeNow() {
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  const n = saveTarget;
+  saveTarget = null;
+  if (n) noteDb.put(n).catch(() => toast('Speichern fehlgeschlagen 😕'));
+}
+
+function cancelSave() {
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  saveTarget = null;
+}
+
 function saveNote() {
   if (!note) return;
   note.updated = Date.now();
-  clearTimeout(saveTimer);
-  const n = note;
-  saveTimer = setTimeout(() => noteDb.put(n).catch(() => toast('Speichern fehlgeschlagen 😕')), 1500);
+  if (saveTarget && saveTarget !== note) writeNow();
+  saveTarget = note;
+  if (!saveTimer) saveTimer = setTimeout(writeNow, 1000);
 }
 
 // ---------- Zeichnen ----------
@@ -572,7 +590,7 @@ function newNote() {
 async function openNote(n) {
   // leere Notizen nicht aufheben
   if (note && note.id !== n.id && isEmpty(note)) {
-    clearTimeout(saveTimer);
+    cancelSave();
     await noteDb.del(note.id).catch(() => {});
   }
   note = n;
@@ -675,7 +693,7 @@ $('#note-clear-page').addEventListener('click', () => {
 
 $('#note-delete').addEventListener('click', async () => {
   if (!confirm(`„${noteName(note)}“ wirklich löschen?`)) return;
-  clearTimeout(saveTimer);
+  cancelSave();
   await noteDb.del(note.id).catch(() => {});
   $('#more-dialog').close();
   const rest = (await noteDb.all().catch(() => [])).sort((a, b) => b.updated - a.updated);
@@ -721,10 +739,7 @@ $('#note-export').addEventListener('click', () => {
 
 // Beim Wechseln/Schließen der App sofort speichern
 function flushNoteSave() {
-  if (!saveTimer || !note) return;
-  clearTimeout(saveTimer);
-  saveTimer = null;
-  noteDb.put(note).catch(() => {});
+  if (saveTarget) writeNow();
 }
 window.addEventListener('pagehide', flushNoteSave);
 document.addEventListener('visibilitychange', () => document.hidden && flushNoteSave());
