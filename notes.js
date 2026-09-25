@@ -56,12 +56,12 @@ function saveNote() {
   note.updated = Date.now();
   clearTimeout(saveTimer);
   const n = note;
-  saveTimer = setTimeout(() => noteDb.put(n).catch(() => toast('Speichern fehlgeschlagen 😕')), 300);
+  saveTimer = setTimeout(() => noteDb.put(n).catch(() => toast('Speichern fehlgeschlagen 😕')), 1500);
 }
 
 // ---------- Zeichnen ----------
 const strokeWidth = (s) => s.size * BASE_WIDTH[s.tool];
-const pressureFactor = (p) => 0.45 + p * 1.1;
+const pressureFactor = (p) => 0.4 + 1.2 * Math.pow(p, 0.7);
 
 function drawStroke(ctx, s) {
   const p = s.pts, n = p.length / 3, w = strokeWidth(s);
@@ -145,6 +145,28 @@ function drawPage(i) {
   renderPageTo(pe.base.getContext('2d'), note.pages[i], pe.scale);
 }
 
+// Zeichnet nur die neuen Stücke eines Strichs auf die Live-Ebene (statt jedes Mal alles neu).
+// Ein Stück endet in der Mitte zwischen zwei Punkten – genau wie drawStroke, damit der
+// fertige Strich beim Loslassen exakt gleich aussieht.
+function drawNewSegments() {
+  const s = active.stroke, p = s.pts, n = p.length / 3;
+  if (n - 2 < active.drawn) return;
+  const ctx = active.liveCtx, w = strokeWidth(s);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = s.color;
+  for (let i = active.drawn; i <= n - 2; i++) {
+    const sx = i === 1 ? p[0] : (p[i * 3 - 3] + p[i * 3]) / 2;
+    const sy = i === 1 ? p[1] : (p[i * 3 - 2] + p[i * 3 + 1]) / 2;
+    ctx.lineWidth = s.tool === 'marker' ? w : w * pressureFactor((p[i * 3 - 1] + p[i * 3 + 2]) / 2);
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.quadraticCurveTo(p[i * 3], p[i * 3 + 1], (p[i * 3] + p[i * 3 + 3]) / 2, (p[i * 3 + 1] + p[i * 3 + 4]) / 2);
+    ctx.stroke();
+  }
+  active.drawn = n - 1;
+}
+
 function clearLive(pe) {
   const ctx = pe.live.getContext('2d');
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -163,6 +185,8 @@ function buildPages() {
     const base = document.createElement('canvas');
     const live = document.createElement('canvas');
     live.className = 'page-live';
+    // "desynchronized" = weniger Verzögerung zwischen Stift und Bildschirm (wo unterstützt)
+    try { live.getContext('2d', { desynchronized: true }); } catch {}
     live.dataset.page = i;
     const num = document.createElement('span');
     num.className = 'page-num';
@@ -326,18 +350,19 @@ function onDown(e) {
   } else {
     const colors = tool === 'marker' ? MARKER_COLORS : PEN_COLORS;
     active.stroke = { tool, color: colors[colorSel[tool]], size, pts: [x, y, p] };
-    drawLive();
+    active.pressure = p;
+    active.drawn = 1;
+    const pe = pageEls[i];
+    // Mischmodus nur für den Textmarker – für den Stift kostet er nur Leistung
+    pe.live.classList.toggle('blend', tool === 'marker');
+    active.liveCtx = clearLive(pe);
+    // sofort einen Punkt zeigen, damit der Strich ohne Verzögerung beginnt
+    const ctx = active.liveCtx, w = strokeWidth(active.stroke);
+    ctx.fillStyle = active.stroke.color;
+    ctx.beginPath();
+    ctx.arc(x, y, (tool === 'marker' ? w : w * pressureFactor(p)) / 2, 0, Math.PI * 2);
+    ctx.fill();
   }
-}
-
-let liveFrame = 0;
-function drawLive() {
-  if (liveFrame) return;
-  liveFrame = requestAnimationFrame(() => {
-    liveFrame = 0;
-    if (!active || !active.stroke) return;
-    drawStroke(clearLive(pageEls[active.page]), active.stroke);
-  });
 }
 
 function onMove(e) {
@@ -361,11 +386,13 @@ function onMove(e) {
     } else {
       const pts = active.stroke.pts;
       const n = pts.length;
-      if (Math.hypot(x - pts[n - 3], y - pts[n - 2]) < 0.8) continue;
-      pts.push(Math.round(x * 10) / 10, Math.round(y * 10) / 10, p);
+      if (Math.hypot(x - pts[n - 3], y - pts[n - 2]) < 0.6) continue;
+      // Druck leicht glätten, sonst wird die Linie "perlig" (dick-dünn-dick)
+      active.pressure = active.pressure * 0.65 + p * 0.35;
+      pts.push(Math.round(x * 10) / 10, Math.round(y * 10) / 10, Math.round(active.pressure * 100) / 100);
     }
   }
-  if (active.tool !== 'eraser') drawLive();
+  if (active.tool !== 'eraser') drawNewSegments();
 }
 
 function onUp(e) {
@@ -628,6 +655,16 @@ $('#note-export').addEventListener('click', () => {
     });
   }
 });
+
+// Beim Wechseln/Schließen der App sofort speichern
+function flushNoteSave() {
+  if (!saveTimer || !note) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  noteDb.put(note).catch(() => {});
+}
+window.addEventListener('pagehide', flushNoteSave);
+document.addEventListener('visibilitychange', () => document.hidden && flushNoteSave());
 
 // ---------- Start ----------
 (async () => {
