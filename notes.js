@@ -6,7 +6,7 @@ const PAGE_H = 1414;
 const MAX_PAGES = 30;
 const PEN_COLORS = ['#1c1c1e', '#2563eb', '#dc2626', '#16a34a', '#9333ea'];
 const MARKER_COLORS = ['#fde047', '#86efac', '#93c5fd', '#f9a8d4', '#fdba74'];
-const BASE_WIDTH = { pen: 2.2, marker: 16 };
+const BASE_WIDTH = { pen: 1.25, marker: 16 }; // Stift: mittel ≈ 0,5 mm auf A4
 const ERASER_RADIUS = 8;
 
 // ---------- Speicher (IndexedDB) ----------
@@ -39,7 +39,8 @@ const noteDb = {
 
 // ---------- Zustand ----------
 let note = null;
-let tool = 'pen';
+let tool = store.get('noteTool', 'pen');
+if (!['pen', 'ball', 'marker', 'eraser'].includes(tool)) tool = 'pen';
 let size = store.get('noteSize', 2);
 const colorSel = store.get('noteColors', { pen: 0, marker: 0 });
 let fingerDraw = store.get('fingerDraw', true);
@@ -61,18 +62,108 @@ function saveNote() {
 
 // ---------- Zeichnen ----------
 const strokeWidth = (s) => s.size * BASE_WIDTH[s.tool];
-const pressureFactor = (p) => 0.4 + 1.2 * Math.pow(p, 0.7);
+// Radius je Punkt: Füller reagiert auf Druck, Kugelschreiber bleibt fast gleich dick
+function pointRadius(s, p) {
+  const w = strokeWidth(s) / 2;
+  return s.style === 'ball' ? w * (0.9 + 0.2 * p) : w * (0.3 + 1.4 * Math.pow(p, 0.8));
+}
+
+// Berechnet den Umriss eines Strichs (wie bei Goodnotes): Punkte werden leicht geglättet,
+// links und rechts davon liegt der Rand im Abstand des Radius.
+function strokeOutline(s) {
+  const p = s.pts, n = p.length / 3;
+  const pts = [];
+  let x = p[0], y = p[1], pr = p[2];
+  pts.push([x, y, pr]);
+  for (let i = 1; i < n; i++) {
+    // Zittern herausfiltern: jeder Punkt zieht die Linie nur zu 55 % zu sich
+    x += (p[i * 3] - x) * 0.55;
+    y += (p[i * 3 + 1] - y) * 0.55;
+    pr += (p[i * 3 + 2] - pr) * 0.5;
+    const last = pts[pts.length - 1];
+    if (Math.hypot(x - last[0], y - last[1]) >= 0.4) pts.push([x, y, pr]);
+  }
+  // Ende genau an der Stiftspitze, damit die Linie nicht "hinterherhängt"
+  if (n > 1) {
+    const ex = p[(n - 1) * 3], ey = p[(n - 1) * 3 + 1];
+    const last = pts[pts.length - 1];
+    if (Math.hypot(ex - last[0], ey - last[1]) >= 0.2) pts.push([ex, ey, pr]);
+  }
+
+  // Radien berechnen und in beide Richtungen glätten, damit die Dicke weich verläuft
+  const r = pts.map((q) => pointRadius(s, q[2]));
+  for (let i = 1; i < r.length; i++) r[i] = r[i - 1] * 0.5 + r[i] * 0.5;
+  for (let i = r.length - 2; i >= 0; i--) r[i] = r[i + 1] * 0.5 + r[i] * 0.5;
+
+  const left = [], right = [], angles = [], corners = [];
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+    let dx = b[0] - a[0], dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy) || 1;
+    dx /= len; dy /= len;
+    const nx = -dy, ny = dx;
+    left.push([pts[i][0] + nx * r[i], pts[i][1] + ny * r[i]]);
+    right.push([pts[i][0] - nx * r[i], pts[i][1] - ny * r[i]]);
+    angles.push(Math.atan2(ny, nx));
+    // scharfe Kehren (z. B. bei m, n, u) bekommen einen runden Punkt, sonst entstehen Kerben
+    if (i > 0 && i < pts.length - 1) {
+      const ax = pts[i][0] - pts[i - 1][0], ay = pts[i][1] - pts[i - 1][1];
+      const bx = pts[i + 1][0] - pts[i][0], by = pts[i + 1][1] - pts[i][1];
+      const dot = (ax * bx + ay * by) / ((Math.hypot(ax, ay) * Math.hypot(bx, by)) || 1);
+      if (dot < 0.2) corners.push(i);
+    }
+  }
+  return { pts, r, left, right, angles, corners };
+}
+
+function smoothThrough(ctx, arr, reverse) {
+  const list = reverse ? arr.slice().reverse() : arr;
+  if (list.length < 3) { list.forEach((q) => ctx.lineTo(q[0], q[1])); return; }
+  ctx.lineTo(list[0][0], list[0][1]);
+  for (let i = 1; i < list.length - 1; i++) {
+    ctx.quadraticCurveTo(list[i][0], list[i][1], (list[i][0] + list[i + 1][0]) / 2, (list[i][1] + list[i + 1][1]) / 2);
+  }
+  const last = list[list.length - 1];
+  ctx.lineTo(last[0], last[1]);
+}
+
+function fillPenStroke(ctx, s) {
+  const o = strokeOutline(s);
+  ctx.fillStyle = s.color;
+  const k = o.pts.length;
+  if (k === 1) {
+    ctx.beginPath();
+    ctx.arc(o.pts[0][0], o.pts[0][1], o.r[0], 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+  const e = k - 1;
+  ctx.beginPath();
+  ctx.moveTo(o.left[0][0], o.left[0][1]);
+  smoothThrough(ctx, o.left, false);
+  // runde Kappe am Ende
+  ctx.arc(o.pts[e][0], o.pts[e][1], o.r[e], o.angles[e], o.angles[e] - Math.PI, true);
+  smoothThrough(ctx, o.right, true);
+  // runde Kappe am Anfang
+  ctx.arc(o.pts[0][0], o.pts[0][1], o.r[0], o.angles[0] + Math.PI, o.angles[0], true);
+  ctx.closePath();
+  ctx.fill();
+  o.corners.forEach((i) => {
+    ctx.beginPath();
+    ctx.arc(o.pts[i][0], o.pts[i][1], o.r[i], 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
 
 function drawStroke(ctx, s) {
   const p = s.pts, n = p.length / 3, w = strokeWidth(s);
   ctx.save();
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.strokeStyle = ctx.fillStyle = s.color;
-
   if (s.tool === 'marker') {
     // Textmarker: ein durchgehender Pfad, "multiply" lässt die Schrift darunter sichtbar
-    ctx.globalCompositeOperation = 'multiply';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = s.color;
+    if (!ctx.canvas.classList || !ctx.canvas.classList.contains('page-live')) ctx.globalCompositeOperation = 'multiply';
     ctx.lineWidth = w;
     ctx.beginPath();
     ctx.moveTo(p[0], p[1]);
@@ -83,26 +174,7 @@ function drawStroke(ctx, s) {
     if (n > 1) ctx.lineTo(p[(n - 1) * 3], p[(n - 1) * 3 + 1]);
     ctx.stroke();
   } else {
-    // Stift: jedes Stück mit eigener Breite je nach Druck
-    if (n === 1) {
-      ctx.beginPath();
-      ctx.arc(p[0], p[1], (w * pressureFactor(p[2])) / 2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    let lx = p[0], ly = p[1];
-    for (let i = 1; i < n; i++) {
-      const x = p[i * 3], y = p[i * 3 + 1];
-      const last = i === n - 1;
-      const ex = last ? x : (x + p[i * 3 + 3]) / 2;
-      const ey = last ? y : (y + p[i * 3 + 4]) / 2;
-      ctx.lineWidth = w * pressureFactor((p[i * 3 - 1] + p[i * 3 + 2]) / 2);
-      ctx.beginPath();
-      ctx.moveTo(lx, ly);
-      ctx.quadraticCurveTo(x, y, ex, ey);
-      ctx.stroke();
-      lx = ex;
-      ly = ey;
-    }
+    fillPenStroke(ctx, s);
   }
   ctx.restore();
 }
@@ -145,26 +217,18 @@ function drawPage(i) {
   renderPageTo(pe.base.getContext('2d'), note.pages[i], pe.scale);
 }
 
-// Zeichnet nur die neuen Stücke eines Strichs auf die Live-Ebene (statt jedes Mal alles neu).
-// Ein Stück endet in der Mitte zwischen zwei Punkten – genau wie drawStroke, damit der
-// fertige Strich beim Loslassen exakt gleich aussieht.
-function drawNewSegments() {
-  const s = active.stroke, p = s.pts, n = p.length / 3;
-  if (n - 2 < active.drawn) return;
-  const ctx = active.liveCtx, w = strokeWidth(s);
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.strokeStyle = s.color;
-  for (let i = active.drawn; i <= n - 2; i++) {
-    const sx = i === 1 ? p[0] : (p[i * 3 - 3] + p[i * 3]) / 2;
-    const sy = i === 1 ? p[1] : (p[i * 3 - 2] + p[i * 3 + 1]) / 2;
-    ctx.lineWidth = s.tool === 'marker' ? w : w * pressureFactor((p[i * 3 - 1] + p[i * 3 + 2]) / 2);
-    ctx.beginPath();
-    ctx.moveTo(sx, sy);
-    ctx.quadraticCurveTo(p[i * 3], p[i * 3 + 1], (p[i * 3] + p[i * 3 + 3]) / 2, (p[i * 3 + 1] + p[i * 3 + 4]) / 2);
-    ctx.stroke();
-  }
-  active.drawn = n - 1;
+// Live-Vorschau: nur den Bereich um den aktuellen Strich löschen und neu zeichnen.
+// Das ist schnell und sieht exakt so aus wie der fertige Strich.
+function drawActiveStroke() {
+  const st = active.stroke, p = st.pts, ctx = active.liveCtx;
+  const n = p.length / 3;
+  const x = p[(n - 1) * 3], y = p[(n - 1) * 3 + 1];
+  const b = active.bbox;
+  b.x0 = Math.min(b.x0, x); b.y0 = Math.min(b.y0, y);
+  b.x1 = Math.max(b.x1, x); b.y1 = Math.max(b.y1, y);
+  const m = strokeWidth(st) * 1.5 + 4;
+  ctx.clearRect(b.x0 - m, b.y0 - m, b.x1 - b.x0 + 2 * m, b.y1 - b.y0 + 2 * m);
+  drawStroke(ctx, st);
 }
 
 function clearLive(pe) {
@@ -348,20 +412,17 @@ function onDown(e) {
     active.ly = y;
     eraseAt(x, y);
   } else {
-    const colors = tool === 'marker' ? MARKER_COLORS : PEN_COLORS;
-    active.stroke = { tool, color: colors[colorSel[tool]], size, pts: [x, y, p] };
+    const isMarker = tool === 'marker';
+    const colors = isMarker ? MARKER_COLORS : PEN_COLORS;
+    active.stroke = { tool: isMarker ? 'marker' : 'pen', color: colors[colorSel[isMarker ? 'marker' : 'pen']], size, pts: [x, y, p] };
+    if (tool === 'ball') active.stroke.style = 'ball';
     active.pressure = p;
-    active.drawn = 1;
+    active.bbox = { x0: x, y0: y, x1: x, y1: y };
     const pe = pageEls[i];
     // Mischmodus nur für den Textmarker – für den Stift kostet er nur Leistung
     pe.live.classList.toggle('blend', tool === 'marker');
     active.liveCtx = clearLive(pe);
-    // sofort einen Punkt zeigen, damit der Strich ohne Verzögerung beginnt
-    const ctx = active.liveCtx, w = strokeWidth(active.stroke);
-    ctx.fillStyle = active.stroke.color;
-    ctx.beginPath();
-    ctx.arc(x, y, (tool === 'marker' ? w : w * pressureFactor(p)) / 2, 0, Math.PI * 2);
-    ctx.fill();
+    drawActiveStroke(); // sofort einen Punkt zeigen
   }
 }
 
@@ -392,7 +453,7 @@ function onMove(e) {
       pts.push(Math.round(x * 10) / 10, Math.round(y * 10) / 10, Math.round(active.pressure * 100) / 100);
     }
   }
-  if (active.tool !== 'eraser') drawNewSegments();
+  if (active.tool !== 'eraser') drawActiveStroke();
 }
 
 function onUp(e) {
@@ -445,14 +506,15 @@ function renderColors() {
   g.innerHTML = '';
   g.hidden = tool === 'eraser';
   if (tool === 'eraser') return;
-  const list = tool === 'marker' ? MARKER_COLORS : PEN_COLORS;
+  const key = tool === 'marker' ? 'marker' : 'pen';
+  const list = key === 'marker' ? MARKER_COLORS : PEN_COLORS;
   list.forEach((c, i) => {
     const b = document.createElement('button');
-    b.className = 'tool swatch' + (i === colorSel[tool] ? ' active' : '');
+    b.className = 'tool swatch' + (i === colorSel[key] ? ' active' : '');
     b.style.setProperty('--c', c);
     b.setAttribute('aria-label', 'Farbe ' + (i + 1));
     b.addEventListener('click', () => {
-      colorSel[tool] = i;
+      colorSel[key] = i;
       store.set('noteColors', colorSel);
       renderColors();
     });
@@ -463,6 +525,7 @@ function renderColors() {
 document.querySelectorAll('[data-tool]').forEach((b) =>
   b.addEventListener('click', () => {
     tool = b.dataset.tool;
+    if (tool !== 'eraser') store.set('noteTool', tool);
     document.querySelectorAll('[data-tool]').forEach((x) => x.classList.toggle('active', x === b));
     renderColors();
   })
@@ -670,6 +733,7 @@ document.addEventListener('visibilitychange', () => document.hidden && flushNote
 (async () => {
   document.body.classList.toggle('finger-draw', fingerDraw);
   $('#finger-toggle').classList.toggle('active', fingerDraw);
+  document.querySelectorAll('[data-tool]').forEach((x) => x.classList.toggle('active', x.dataset.tool === tool));
   renderColors();
   renderSize();
   let all = [];

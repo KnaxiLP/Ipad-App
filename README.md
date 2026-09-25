@@ -35,8 +35,8 @@ Jetzt startet die Seite vom Home-Bildschirm aus wie eine App.
 
 ## Notizen
 
-- Schreiben mit dem **Apple Pencil**, inkl. Druckstärke
-- Stift, Textmarker und Radierer; 5 Farben und 3 Stärken; Rückgängig und Wiederholen
+- Schreiben mit dem **Apple Pencil**: glatte Linien mit Druckstärke, leichte Glättung gegen Zittern
+- Füller (reagiert auf Druck), Kugelschreiber (gleichmäßig), Textmarker und Radierer; 5 Farben und 3 Stärken; Rückgängig und Wiederholen
 - Papier: blanko, liniert, kariert oder gepunktet; beliebig viele Seiten
 - **☝️-Schalter:** Ohne Pencil zeichnet der Finger (zum Scrollen zwei Finger nehmen).
   Sobald der Pencil benutzt wird, schaltet die App automatisch um: Dann schreibt nur
