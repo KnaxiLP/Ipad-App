@@ -5,17 +5,25 @@ Läuft unsichtbar im Hintergrund und schließt jedes Fenster, das nicht zu einem
 erlaubten Programm gehört. Erlaubt sind nur Chrome (darin läuft die Test-App), Teams
 und die Teile von Windows, die man zum Bedienen braucht (Taskleiste, Bildschirmtastatur …).
 
-Beenden:  Strg + Alt + Umschalt + Q   (oder im Task-Manager "pythonw" beenden)
+Anzeige:  Oben in der Bildschirmmitte steht "Fokus-Modus aktiv", solange das Programm läuft.
+Beenden:  Strg + Alt + Umschalt(⇧) + Q, danach zweimal bestätigen.
+          Beim Beenden wird die Lautstärke auf Maximum gestellt und ein lauter Ton gespielt,
+          damit alle im Raum mitbekommen, dass der Fokus-Modus aus ist.
 Protokoll: fokus-log.txt im selben Ordner
 
 Das ist eine Notlösung, keine echte Sperre: Abmelden, Task-Manager oder ein anderes
 Benutzerkonto umgehen sie. Nur Python-Bordmittel, keine Zusatzpakete nötig.
 """
 
+import io
+import math
 import os
+import struct
 import subprocess
 import sys
+import threading
 import time
+import wave
 
 # ---------------------------------------------------------------------------
 # Einstellungen
@@ -64,6 +72,13 @@ START_URLS = ["https://knaxilp.github.io/Ipad-App/"]
 
 CHECK_EVERY_SECONDS = 0.7
 
+# Hinweis-Schild oben in der Bildschirmmitte
+SHOW_BADGE = True
+BADGE_TEXT = "Fokus-Modus aktiv – nur Chrome und Teams"
+
+# Ton beim Beenden: Dauer in Sekunden
+ALARM_SECONDS = 3
+
 LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fokus-log.txt")
 
 
@@ -84,6 +99,51 @@ def should_close(exe_name, window_class):
     if exe in SYSTEM:
         return False
     return True
+
+
+def make_alarm_wav(seconds=ALARM_SECONDS, rate=22050):
+    """Erzeugt einen lauten Wechselton (wie ein Alarm) als WAV-Datei im Speicher."""
+    frames = bytearray()
+    for i in range(int(seconds * rate)):
+        t = i / rate
+        freq = 880 if int(t * 4) % 2 == 0 else 660          # alle 0,25 s wechseln
+        sample = 0.9 * math.copysign(1, math.sin(2 * math.pi * freq * t))  # Rechteckton = gut hörbar
+        frames += struct.pack("<h", int(sample * 32767))
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(bytes(frames))
+    return buf.getvalue()
+
+
+def show_badge(stop):
+    """Kleines Schild oben in der Mitte, immer im Vordergrund. Verschwindet mit dem Programm."""
+    try:
+        import tkinter as tk
+    except ImportError:
+        log("Hinweis: tkinter fehlt, Schild wird nicht angezeigt")
+        return
+    root = tk.Tk()
+    root.overrideredirect(True)            # ohne Rahmen und Titelleiste
+    root.attributes("-topmost", True)
+    label = tk.Label(root, text="\U0001F512  " + BADGE_TEXT, bg="#1f3b6e", fg="white",
+                     font=("Segoe UI", 11, "bold"), padx=16, pady=6)
+    label.pack()
+    root.update_idletasks()
+    x = (root.winfo_screenwidth() - root.winfo_width()) // 2
+    root.geometry(f"+{x}+0")
+
+    def keep_on_top():
+        if stop.is_set():
+            root.destroy()
+            return
+        root.attributes("-topmost", True)
+        root.after(1000, keep_on_top)
+
+    keep_on_top()
+    root.mainloop()
 
 
 def log(text):
@@ -128,6 +188,8 @@ def run():
     user32.PostMessageW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
     user32.IsWindow.argtypes = [wt.HWND]
     user32.RegisterHotKey.argtypes = [wt.HWND, ctypes.c_int, wt.UINT, wt.UINT]
+    user32.MessageBoxW.argtypes = [wt.HWND, wt.LPCWSTR, wt.LPCWSTR, wt.UINT]
+    user32.keybd_event.argtypes = [wt.BYTE, wt.BYTE, wt.DWORD, ctypes.c_size_t]
     user32.PeekMessageW.argtypes = [ctypes.POINTER(wt.MSG), wt.HWND, wt.UINT, wt.UINT, wt.UINT]
     kernel32.OpenProcess.argtypes = [wt.DWORD, wt.BOOL, wt.DWORD]
     kernel32.OpenProcess.restype = wt.HANDLE
@@ -183,6 +245,32 @@ def run():
     if not user32.RegisterHotKey(None, HOTKEY_ID, MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, VK_Q):
         log("Warnung: Tastenkürzel Strg+Alt+Umschalt+Q konnte nicht registriert werden")
 
+    MB_YESNO, MB_ICONWARNING, MB_DEFBUTTON2, MB_TOPMOST, IDYES = 0x4, 0x30, 0x100, 0x40000, 6
+    VK_VOLUME_UP, KEYEVENTF_KEYUP = 0xAF, 0x2
+
+    def confirm_exit():
+        """Zweimal nachfragen – "Nein" ist jeweils vorausgewählt."""
+        flags = MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 | MB_TOPMOST
+        title = "Fokus-Modus beenden?"
+        if user32.MessageBoxW(None, "Möchtest du den Fokus-Modus wirklich beenden?", title, flags) != IDYES:
+            return False
+        return user32.MessageBoxW(
+            None,
+            "Bist du sicher?\n\nBeim Beenden wird die Lautstärke auf Maximum gestellt und ein lauter Ton gespielt.",
+            title, flags) == IDYES
+
+    def alarm():
+        # Lautstärke auf Maximum: 50-mal die "Lauter"-Taste (hebt auch eine Stummschaltung auf)
+        for _ in range(50):
+            user32.keybd_event(VK_VOLUME_UP, 0, 0, 0)
+            user32.keybd_event(VK_VOLUME_UP, 0, KEYEVENTF_KEYUP, 0)
+        import winsound
+        winsound.PlaySound(make_alarm_wav(), winsound.SND_MEMORY)
+
+    stop = threading.Event()
+    if SHOW_BADGE:
+        threading.Thread(target=show_badge, args=(stop,), daemon=True).start()
+
     log("Fokus-Modus gestartet")
     for url in START_URLS:
         # "start chrome <url>" findet Chrome auch ohne festen Pfad
@@ -193,7 +281,12 @@ def run():
     while True:
         while user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, PM_REMOVE):
             if msg.message == WM_HOTKEY and msg.wParam == HOTKEY_ID:
-                log("Fokus-Modus beendet (Tastenkürzel)")
+                if not confirm_exit():
+                    log("Beenden abgebrochen")
+                    continue
+                log("Fokus-Modus beendet (Tastenkürzel, zweimal bestätigt)")
+                stop.set()
+                alarm()
                 return
 
         now = time.time()

@@ -16,9 +16,18 @@ Ein kleines Python-Programm, das im Hintergrund läuft und jedes Fenster schlie�
 
 ## Beenden
 
-- **Strg + Alt + Umschalt + Q**
-- oder im Task-Manager den Prozess **pythonw** beenden
-- Autostart wieder entfernen: `autostart-entfernen.bat`
+1. **Strg + Alt + Umschalt + Q** drücken (Umschalt = die **Shift-Taste ⇧** für Großbuchstaben)
+2. Zweimal mit **Ja** bestätigen (vorausgewählt ist jeweils **Nein**)
+3. Die Lautstärke geht auf Maximum und ein **lauter Ton** ertönt – so merkt jeder im Raum,
+   dass der Fokus-Modus aus ist
+
+Solange der Fokus-Modus läuft, steht oben in der Bildschirmmitte das Schild
+**„Fokus-Modus aktiv – nur Chrome und Teams“**. Ist das Schild weg, ist auch der Modus aus.
+
+Autostart wieder entfernen: `autostart-entfernen.bat`
+
+> Hinweis: Über den Task-Manager lässt sich das Programm ohne Ton beenden. Dann
+> verschwindet aber auch das Schild – das sieht man.
 
 ## Was bleibt offen, was wird geschlossen?
 
