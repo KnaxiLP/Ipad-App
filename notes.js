@@ -37,10 +37,19 @@ const noteDb = {
   del(id) { return this.tx('readwrite', (s) => s.delete(id)); }
 };
 
+// ---------- Plattform ----------
+// iPad/iPhone: Finger scrollen nativ, der Apple Pencil wird per Touch-Event am Scrollen gehindert.
+// Windows (Surface) & Co.: Dort würde der Browser auch mit dem Stift scrollen. Deshalb übernimmt
+// die App Scrollen und Zoomen mit den Fingern selbst.
+const IS_IOS = /iP(ad|hone|od)/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+if (!IS_IOS) document.body.classList.add('manual-touch');
+
 // ---------- Zustand ----------
 let note = null;
 let tool = store.get('noteTool', 'pen');
 if (!['pen', 'ball', 'marker', 'eraser'].includes(tool)) tool = 'pen';
+Object.defineProperty(window, 'noteTool', { get: () => tool });
 let size = store.get('noteSize', 2);
 const colorSel = store.get('noteColors', { pen: 0, marker: 0 });
 let fingerDraw = store.get('fingerDraw', true);
@@ -99,12 +108,14 @@ function strokeOutline(s) {
   const p = s.pts, n = p.length / 3;
 
   // 1. Zittern herausfiltern: jeder Punkt zieht die Linie nur zu 55 % zu sich
+  // (erkannte Formen wie Linien oder Rechtecke werden nicht geglättet – Ecken bleiben spitz)
+  const follow = s.shape ? 1 : 0.55;
   const raw = [];
   let x = p[0], y = p[1], pr = p[2];
   raw.push([x, y, pr]);
   for (let i = 1; i < n; i++) {
-    x += (p[i * 3] - x) * 0.55;
-    y += (p[i * 3 + 1] - y) * 0.55;
+    x += (p[i * 3] - x) * follow;
+    y += (p[i * 3 + 1] - y) * follow;
     pr += (p[i * 3 + 2] - pr) * 0.5;
     raw.push([x, y, pr]);
   }
@@ -131,7 +142,7 @@ function strokeOutline(s) {
   if (Math.hypot(end[0] - lastP[0], end[1] - lastP[1]) > RESAMPLE_STEP * 0.3) pts.push(end.slice());
 
   // 3. Sanft glätten (Anfang und Ende bleiben, wo sie sind)
-  for (let pass = 0; pass < 2; pass++) {
+  for (let pass = 0; pass < (s.shape ? 0 : 2); pass++) {
     for (let i = pts.length - 2; i >= 1; i--) {
       pts[i][0] = pts[i - 1][0] * 0.25 + pts[i][0] * 0.5 + pts[i + 1][0] * 0.25;
       pts[i][1] = pts[i - 1][1] * 0.25 + pts[i][1] * 0.5 + pts[i + 1][1] * 0.25;
@@ -489,11 +500,168 @@ function eraseAt(x, y) {
   c.setAttribute('r', r);
 }
 
+// ---------- Formen erkennen (wie in Goodnotes: am Ende kurz stillhalten) ----------
+const HOLD_MS = 550;
+let shapeRecog = store.get('shapeRecog', true);
+
+function rdp(points, eps) {
+  // Ramer-Douglas-Peucker: vereinfacht eine Linie auf ihre wichtigsten Eckpunkte
+  if (points.length < 3) return points.slice();
+  const [a, b] = [points[0], points[points.length - 1]];
+  let maxD = 0, idx = 0;
+  for (let i = 1; i < points.length - 1; i++) {
+    const d = distToSegment(points[i][0], points[i][1], a[0], a[1], b[0], b[1]);
+    if (d > maxD) { maxD = d; idx = i; }
+  }
+  if (maxD <= eps) return [a, b];
+  const left = rdp(points.slice(0, idx + 1), eps);
+  return left.slice(0, -1).concat(rdp(points.slice(idx), eps));
+}
+
+function along(poly, step = 4) {
+  // Punkte gleichmäßig entlang eines Streckenzugs verteilen
+  const out = [poly[0]];
+  for (let i = 1; i < poly.length; i++) {
+    const [ax, ay] = poly[i - 1], [bx, by] = poly[i];
+    const k = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / step));
+    for (let j = 1; j <= k; j++) out.push([ax + (bx - ax) * j / k, ay + (by - ay) * j / k]);
+  }
+  return out;
+}
+
+function maxDistToPoly(points, poly) {
+  let worst = 0;
+  for (const [x, y] of points) {
+    let best = Infinity;
+    for (let i = 1; i < poly.length; i++) best = Math.min(best, distToSegment(x, y, poly[i - 1][0], poly[i - 1][1], poly[i][0], poly[i][1]));
+    worst = Math.max(worst, best);
+  }
+  return worst;
+}
+
+function fitShape(P) {
+  const n = P.length;
+  if (n < 5) return null;
+  let len = 0;
+  for (let i = 1; i < n; i++) len += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]);
+  if (len < 30) return null;
+  const a = P[0], b = P[n - 1];
+  const chord = Math.hypot(b[0] - a[0], b[1] - a[1]);
+
+  // gerade Linie – fast waagerecht/senkrecht wird ganz gerade ausgerichtet
+  if (chord > 0.8 * len && maxDistToPoly(P, [a, b]) < Math.max(3, chord * 0.05)) {
+    const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    const snap = Math.round(ang / (Math.PI / 2)) * (Math.PI / 2);
+    if (Math.abs(ang - snap) < (5 * Math.PI) / 180) {
+      const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, h = chord / 2;
+      return along([[mx - Math.cos(snap) * h, my - Math.sin(snap) * h], [mx + Math.cos(snap) * h, my + Math.sin(snap) * h]]);
+    }
+    return along([a, b]);
+  }
+
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of P) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  const diag = Math.hypot(x1 - x0, y1 - y0);
+  const eps = Math.max(4, diag * 0.07);
+  const closed = chord < Math.max(18, len * 0.12);
+
+  if (closed) {
+    // Dreieck oder Viereck?
+    let poly = rdp(P, eps);
+    if (poly.length > 2 && Math.hypot(poly[0][0] - poly[poly.length - 1][0], poly[0][1] - poly[poly.length - 1][1]) < eps * 2) poly = poly.slice(0, -1);
+    if (poly.length === 3 || poly.length === 4) {
+      let ring = poly.concat([poly[0]]);
+      if (maxDistToPoly(P, ring) < eps * 1.3) {
+        // Viereck mit fast waagerechten/senkrechten Kanten → sauberes Rechteck
+        if (poly.length === 4) {
+          const straight = poly.every((q, i) => {
+            const r = poly[(i + 1) % 4];
+            const ang = Math.abs(Math.atan2(r[1] - q[1], r[0] - q[0])) % (Math.PI / 2);
+            return Math.min(ang, Math.PI / 2 - ang) < (12 * Math.PI) / 180;
+          });
+          if (straight) {
+            const xs = poly.map((q) => q[0]).sort((m, k) => m - k);
+            const ys = poly.map((q) => q[1]).sort((m, k) => m - k);
+            const l = (xs[0] + xs[1]) / 2, r = (xs[2] + xs[3]) / 2, t = (ys[0] + ys[1]) / 2, btm = (ys[2] + ys[3]) / 2;
+            ring = [[l, t], [r, t], [r, btm], [l, btm], [l, t]];
+          }
+        }
+        return along(ring);
+      }
+    }
+    // Kreis / Ellipse
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, rx = (x1 - x0) / 2, ry = (y1 - y0) / 2;
+    if (rx > 5 && ry > 5) {
+      let err = 0;
+      for (const [x, y] of P) err += Math.abs(Math.hypot((x - cx) / rx, (y - cy) / ry) - 1);
+      if (err / n < 0.12) {
+        // fast rund → echter Kreis
+        const r = Math.abs(rx - ry) < Math.max(rx, ry) * 0.12 ? (rx + ry) / 2 : null;
+        const start = Math.atan2(a[1] - cy, a[0] - cx);
+        const out = [];
+        for (let i = 0; i <= 72; i++) {
+          const t = start + (i / 72) * Math.PI * 2;
+          out.push([cx + Math.cos(t) * (r || rx), cy + Math.sin(t) * (r || ry)]);
+        }
+        return out;
+      }
+    }
+    return null;
+  }
+
+  // offener Streckenzug mit 2–3 Abschnitten (z. B. Winkel, Pfeilspitze)
+  const poly = rdp(P, eps);
+  if (poly.length >= 3 && poly.length <= 4 && maxDistToPoly(P, poly) < eps * 1.2) return along(poly);
+  return null;
+}
+
+function recognizeShape() {
+  if (!active || !active.stroke || active.shaped || !shapeRecog) return;
+  const s = active.stroke, p = s.pts, P = [];
+  let pr = 0;
+  for (let i = 0; i < p.length; i += 3) { P.push([p[i], p[i + 1]]); pr += p[i + 2]; }
+  const shape = fitShape(P);
+  if (!shape) return;
+  pr = Math.round((pr / P.length) * 100) / 100;
+  s.pts = [];
+  shape.forEach(([x, y]) => s.pts.push(Math.round(x * 10) / 10, Math.round(y * 10) / 10, pr));
+  s.shape = true;
+  active.shaped = true;
+  drawActiveStroke();
+}
+
 // ---------- Stift-Eingabe ----------
 const pagesBox = $('#pages');        // scrollbarer Bereich mit den Seiten
 const pagesInner = $('#pages-inner');
 const touches = new Map();
 let pan = null;
+let pinch = null;
+let inertia = null;
+const touchDist = () => {
+  const [a, b] = [...touches.values()];
+  return Math.hypot(a.x - b.x, a.y - b.y) || 1;
+};
+function stopInertia() { if (inertia) cancelAnimationFrame(inertia.raf); inertia = null; }
+function startInertia(vx, vy) {
+  // Schwung nach dem Loslassen (px pro ms)
+  stopInertia();
+  if (Math.hypot(vx, vy) < 0.05) return;
+  let last = performance.now();
+  inertia = { vx, vy, raf: 0 };
+  const step = (now) => {
+    if (!inertia) return;
+    const dt = Math.min(32, now - last);
+    last = now;
+    pagesBox.scrollLeft -= inertia.vx * dt;
+    pagesBox.scrollTop -= inertia.vy * dt;
+    const f = Math.pow(0.995, dt);
+    inertia.vx *= f;
+    inertia.vy *= f;
+    if (Math.hypot(inertia.vx, inertia.vy) < 0.02) { inertia = null; return; }
+    inertia.raf = requestAnimationFrame(step);
+  };
+  inertia.raf = requestAnimationFrame(step);
+}
 const avgTouch = () => {
   const list = [...touches.values()];
   return { x: list.reduce((a, t) => a + t.x, 0) / list.length, y: list.reduce((a, t) => a + t.y, 0) / list.length };
@@ -510,6 +678,7 @@ function toPage(e) {
 // Strich verwerfen (z. B. wenn aus einem Finger-Strich doch eine Zwei-Finger-Geste wird)
 function cancelActive() {
   if (!active) return;
+  clearTimeout(active.holdTimer);
   const pe = pageEls[active.page];
   if (active.tool === 'eraser' && active.before) {
     note.pages[active.page].strokes = active.before;
@@ -534,7 +703,7 @@ function tryJoin(i, x, y) {
   const old = page.strokes[page.strokes.length - 1];
   const s = le.stroke;
   // nur, wenn es wirklich derselbe Stift mit derselben Einstellung ist und nichts dazwischenkam
-  if (old !== s || s.color !== active.color || s.size !== size || (s.style || 'pen') !== active.style || s.tool !== active.strokeTool) return null;
+  if (old !== s || s.shape || active.shaped || s.color !== active.color || s.size !== size || (s.style || 'pen') !== active.style || s.tool !== active.strokeTool) return null;
   // letzten Eintrag in "Rückgängig" zusammenfassen: der verbundene Strich ist dann EIN Schritt
   const h = undoStack[undoStack.length - 1];
   if (h && h.length === 1 && h[0].page === i && h[0].after[h[0].after.length - 1] === old) undoStack.pop();
@@ -546,6 +715,7 @@ function tryJoin(i, x, y) {
 // Strich fertigstellen und speichern
 function finishActive() {
   if (!active) return;
+  clearTimeout(active.holdTimer);
   const pe = pageEls[active.page];
   const page = note.pages[active.page];
   if (active.tool === 'eraser') {
@@ -579,17 +749,26 @@ function onDown(e) {
 
   if (e.pointerType === 'touch') {
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (!fingerDraw) return; // Finger scrollt nur
+    stopInertia();
     if (touches.size >= 2) {
       // Zwei Finger = scrollen/zoomen: angefangenen Finger-Strich verwerfen
       if (active && active.pointerType === 'touch') cancelActive();
-      pan = avgTouch();
+      pan = { ...avgTouch(), vx: 0, vy: 0, t: performance.now() };
+      if (!IS_IOS) pinch = { dist: touchDist(), zoom };   // iPad zoomt über Safaris Gesten
+      return;
+    }
+    if (!fingerDraw) {
+      // Finger scrollt: auf dem iPad macht das der Browser, sonst die App selbst
+      if (!IS_IOS) pan = { ...avgTouch(), vx: 0, vy: 0, t: performance.now() };
       return;
     }
     // große Auflagefläche = Handballen, nicht zeichnen
     if (e.width > 40 || e.height > 40) return;
   }
   if (active) return;
+  // Radiergummi-Ende oder Seitentaste am Stift (z. B. Surface Pen) = Radierer
+  const penEraser = e.pointerType === 'pen' && ((e.buttons & 32) || (e.buttons & 2));
+  const tool = penEraser ? 'eraser' : window.noteTool;
 
   e.preventDefault();
   try { canvas.setPointerCapture(e.pointerId); } catch {}
@@ -651,16 +830,24 @@ function onMove(e) {
     const t = touches.get(e.pointerId);
     t.x = e.clientX;
     t.y = e.clientY;
-    if (pan && touches.size >= 2) {
+    if (pan && (touches.size >= 2 || (!fingerDraw && !IS_IOS))) {
       const c = avgTouch();
-      pagesBox.scrollLeft -= c.x - pan.x;
-      pagesBox.scrollTop -= c.y - pan.y;
-      pan = c;
+      if (pinch && touches.size >= 2) {
+        const r = pagesBox.getBoundingClientRect();
+        setZoom(pinch.zoom * touchDist() / pinch.dist, c.x - r.left, c.y - r.top);
+      }
+      const now = performance.now(), dt = Math.max(1, now - pan.t);
+      const dx = c.x - pan.x, dy = c.y - pan.y;
+      pagesBox.scrollLeft -= dx;
+      pagesBox.scrollTop -= dy;
+      // Geschwindigkeit für den Schwung merken (geglättet)
+      pan = { ...c, vx: pan.vx * 0.6 + (dx / dt) * 0.4, vy: pan.vy * 0.6 + (dy / dt) * 0.4, t: now };
       return;
     }
   }
   if (!active || e.pointerId !== active.id) return;
   e.preventDefault();
+  if (active.shaped) return; // Form ist erkannt – weiteres Wackeln ignorieren
 
   const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
   for (const ev of events.length ? events : [e]) {
@@ -674,15 +861,25 @@ function onMove(e) {
       // Druck leicht glätten, sonst wird die Linie "perlig" (dick-dünn-dick)
       active.pressure = active.pressure * 0.65 + p * 0.35;
       pts.push(Math.round(x * 10) / 10, Math.round(y * 10) / 10, Math.round(active.pressure * 100) / 100);
+      // Stift bleibt kurz still → Form erkennen
+      if (!active.hold || Math.hypot(x - active.hold[0], y - active.hold[1]) > 3) {
+        active.hold = [x, y];
+        clearTimeout(active.holdTimer);
+        active.holdTimer = setTimeout(recognizeShape, HOLD_MS);
+      }
     }
   }
   if (active.tool !== 'eraser') drawActiveStroke();
 }
 
 function onUp(e) {
-  if (e.pointerType === 'touch') {
+  if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
+    const wasPanning = pan && !fingerDraw && !IS_IOS && touches.size === 1;
     touches.delete(e.pointerId);
-    if (touches.size < 2) pan = null;
+    pinch = null;
+    if (wasPanning && e.type === 'pointerup' && performance.now() - pan.t < 80) startInertia(pan.vx, pan.vy);
+    // bleibt ein Finger liegen, scrollt er weiter – ohne Sprung
+    pan = touches.size && (touches.size >= 2 || (!fingerDraw && !IS_IOS)) ? { ...avgTouch(), vx: 0, vy: 0, t: performance.now() } : null;
   }
   if (!active || e.pointerId !== active.id) return;
   // Bricht iOS einen Stift-Strich ab, wird er trotzdem behalten – bisher verschwand er dann.
@@ -695,6 +892,8 @@ pagesBox.addEventListener('pointerdown', onDown);
 pagesBox.addEventListener('pointermove', onMove);
 pagesBox.addEventListener('pointerup', onUp);
 pagesBox.addEventListener('pointercancel', onUp);
+// Langes Drücken mit dem Stift öffnet unter Windows sonst das Rechtsklick-Menü
+pagesBox.addEventListener('contextmenu', (e) => e.preventDefault());
 pagesBox.addEventListener('lostpointercapture', (e) => {
   if (active && e.pointerId === active.id) finishActive();
 });
@@ -900,6 +1099,16 @@ $('#notes-dialog-new').addEventListener('click', () => {
 function renderPaper() {
   document.querySelectorAll('[data-paper]').forEach((b) => b.classList.toggle('active', b.dataset.paper === note.paper));
 }
+
+function renderShapeToggle() {
+  $('#shape-toggle').textContent = `📐 Formen erkennen (Stift am Ende kurz halten): ${shapeRecog ? 'An' : 'Aus'}`;
+}
+$('#shape-toggle').addEventListener('click', () => {
+  shapeRecog = !shapeRecog;
+  store.set('shapeRecog', shapeRecog);
+  renderShapeToggle();
+});
+renderShapeToggle();
 
 $('#note-more').addEventListener('click', () => {
   renderPaper();
