@@ -219,10 +219,20 @@
       <section class="view" id="view-info">
         <header class="view-header"><h2>Info</h2></header>
         <div class="list-group">
-          <div class="row"><span>Version</span><span class="muted">3.7</span></div>
+          <div class="row"><span>Version</span><span class="muted">3.8</span></div>
           <div class="row"><span>Als App gestartet</span><span class="muted" id="info-standalone">–</span></div>
           <div class="row"><span>Offline-Modus</span><span class="muted" id="info-sw">–</span></div>
           <div class="row"><span>Bildschirm</span><span class="muted" id="info-screen">–</span></div>
+        </div>
+        <div class="card update-card">
+          <button class="btn primary full" id="update-check">Nach Update suchen</button>
+          <p class="muted small-text">Deine Notizen, Noten, Aufgaben und Python-Programme bleiben beim Update erhalten – sie liegen getrennt von den App-Dateien.</p>
+          <div class="update-row">
+            <button class="btn small" id="backup-save">Sicherung speichern</button>
+            <button class="btn small" id="backup-load">Sicherung laden</button>
+          </div>
+          <p class="muted small-text">Die Sicherung ist eine Datei mit allen Daten. Wichtig, bevor du die App vom Home-Bildschirm löschst oder den Browser-Verlauf leerst.</p>
+          <input type="file" id="backup-file" accept=".json,application/json" hidden>
         </div>
         <div class="card hint">
           <strong>Zum Home-Bildschirm hinzufügen:</strong>
@@ -240,6 +250,12 @@
   <div class="install-banner" id="install-banner" hidden>
     <span>Tipp: Teilen → „Zum Home-Bildschirm“ für die App-Ansicht</span>
     <button class="btn link" id="banner-close" aria-label="Schließen">✕</button>
+  </div>
+
+  <!-- Hinweis: neue Version bereit -->
+  <div class="install-banner update-banner" id="update-banner" hidden>
+    <span>Neue Version verfügbar</span>
+    <button class="btn small primary" id="update-now">Jetzt aktualisieren</button>
   </div>
 
   <!-- Dialog: Note hinzufügen -->

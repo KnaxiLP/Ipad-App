@@ -70,7 +70,7 @@ function writeNow() {
   saveTimer = null;
   const n = saveTarget;
   saveTarget = null;
-  if (n) noteDb.put(n).catch(() => toast('Speichern fehlgeschlagen'));
+  if (n) return noteDb.put(n).catch(() => toast('Speichern fehlgeschlagen'));
 }
 
 function cancelSave() {
@@ -1803,10 +1803,13 @@ $('#import-file').addEventListener('change', async (e) => {
 
 // Beim Wechseln/Schließen der App sofort speichern
 function flushNoteSave() {
-  if (saveTarget) writeNow();
+  if (window.appRestoring) return cancelSave();
+  if (saveTarget) return writeNow();
 }
 window.addEventListener('pagehide', flushNoteSave);
 document.addEventListener('visibilitychange', () => document.hidden && flushNoteSave());
+// Vor einem Update: offenes Textfeld übernehmen und fertig speichern
+window.appFlush.push(async () => { commitEditor(); await flushNoteSave(); });
 
 // ---------- Start ----------
 setupFastInk();

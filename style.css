@@ -529,6 +529,11 @@ dialog h3 { margin: 0 0 16px; font-size: 22px; }
   max-width: calc(100% - 32px);
 }
 .install-banner[hidden] { display: none; }
+.update-banner { z-index: 11; }
+.update-card { display: flex; flex-direction: column; gap: 10px; }
+.update-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.update-row .btn { flex: 1; }
+.small-text { font-size: 13px; margin: 0; line-height: 1.4; }
 
 /* ---------- Schmale Bildschirme (iPhone / Split View): Tab-Bar unten ---------- */
 @media (max-width: 700px) {

@@ -391,9 +391,10 @@ window.addEventListener('viewchange', (e) => {
 });
 
 // Beim Schließen/Wechseln der App sofort speichern
-const flushSave = () => { clearTimeout(pySaveTimer); savePrograms(); };
+const flushSave = () => { clearTimeout(pySaveTimer); if (!window.appRestoring) savePrograms(); };
 window.addEventListener('pagehide', flushSave);
 document.addEventListener('visibilitychange', () => document.hidden && flushSave());
+window.appFlush.push(flushSave);
 
 // ---------- Start ----------
 openProgram(current);

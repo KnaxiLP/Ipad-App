@@ -1,3 +1,6 @@
+// Funktionen, die vor einem Update/Neuladen offene Änderungen speichern
+window.appFlush = [];
+
 // ---------- Speicher (bleibt auf dem Gerät erhalten) ----------
 const store = {
   get(key, fallback) {
@@ -157,14 +160,122 @@ $('#banner-close').addEventListener('click', () => {
   store.set('bannerClosed', true);
 });
 
-// ---------- Service Worker (Offline) ----------
+// ---------- Service Worker (Offline) & Updates ----------
+// Die Daten (IndexedDB/localStorage) liegen getrennt vom App-Speicher des Service Workers –
+// ein Update tauscht nur die Programmdateien aus. Vorher wird trotzdem alles fertig gespeichert.
+async function flushAll() {
+  for (const f of window.appFlush) {
+    try { await f(); } catch {}
+  }
+}
+async function applyUpdate() {
+  await flushAll();
+  location.reload();
+}
+function showUpdateBanner() {
+  $('#install-banner').hidden = true;
+  $('#update-banner').hidden = false;
+}
+$('#update-now').addEventListener('click', applyUpdate);
+
+let swReg = null;
 if ('serviceWorker' in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController) showUpdateBanner();   // neue Version ist aktiv, Seite läuft noch mit der alten
+  });
   navigator.serviceWorker.register('sw.js')
-    .then(() => { $('#info-sw').textContent = 'Aktiv'; })
+    .then((reg) => { swReg = reg; $('#info-sw').textContent = 'Aktiv'; })
     .catch(() => { $('#info-sw').textContent = 'Nicht verfügbar'; });
 } else {
   $('#info-sw').textContent = 'Nicht unterstützt';
 }
+
+$('#update-check').addEventListener('click', async () => {
+  const btn = $('#update-check');
+  if (!navigator.onLine) return toast('Keine Internetverbindung');
+  btn.disabled = true;
+  btn.textContent = 'Suche…';
+  try {
+    await flushAll();
+    const reg = swReg || (await navigator.serviceWorker?.getRegistration());
+    if (!reg) { location.reload(); return; }
+    await reg.update();
+    const sw = reg.installing || reg.waiting;
+    if (sw) {
+      btn.textContent = 'Update wird geladen…';
+      await new Promise((resolve) => {
+        if (sw.state === 'activated') return resolve();
+        sw.addEventListener('statechange', () => (sw.state === 'activated' || sw.state === 'redundant') && resolve());
+        setTimeout(resolve, 15000);
+      });
+      toast('Update installiert');
+      setTimeout(applyUpdate, 400);
+      return;
+    }
+    toast('Du hast bereits die neueste Version');
+  } catch {
+    toast('Update-Suche fehlgeschlagen');
+  }
+  btn.disabled = false;
+  btn.textContent = 'Nach Update suchen';
+});
+
+// ---------- Datensicherung (Datei) ----------
+function bytesToB64(u8) {
+  let s = '';
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function b64ToBytes(b64) {
+  const s = atob(b64);
+  const u8 = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i);
+  return u8;
+}
+
+$('#backup-save').addEventListener('click', async () => {
+  await flushAll();
+  const local = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    local[k] = localStorage.getItem(k);
+  }
+  let notes = [];
+  try { notes = await noteDb.all(); } catch {}
+  const json = JSON.stringify({ app: 'Lernheft', backup: 1, date: new Date().toISOString(), local, notes },
+    (k, v) => (v instanceof Uint8Array ? { __u8: bytesToB64(v) } : v));
+  const d = new Date();
+  const name = `Lernheft-Sicherung-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.json`;
+  shareFiles([new File([json], name, { type: 'application/json' })], 'Lernheft-Sicherung');
+});
+
+$('#backup-load').addEventListener('click', () => $('#backup-file').click());
+$('#backup-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  let data;
+  try {
+    data = JSON.parse(await file.text(), (k, v) => (v && typeof v === 'object' && typeof v.__u8 === 'string' ? b64ToBytes(v.__u8) : v));
+  } catch { data = null; }
+  if (!data || data.app !== 'Lernheft' || !data.local || !Array.isArray(data.notes)) return toast('Keine gültige Lernheft-Sicherung');
+  const when = data.date ? new Date(data.date).toLocaleDateString('de-DE') : '?';
+  if (!confirm(`Sicherung vom ${when} laden?\n${data.notes.length} Notizen. Deine jetzigen Daten werden dabei ersetzt.`)) return;
+  try {
+    await flushAll();
+    window.appRestoring = true;
+    for (const n of await noteDb.all()) await noteDb.del(n.id);
+    for (const n of data.notes) await noteDb.put(n);
+    localStorage.clear();
+    for (const [k, v] of Object.entries(data.local)) localStorage.setItem(k, v);
+  } catch {
+    window.appRestoring = false;
+    return toast('Laden fehlgeschlagen');
+  }
+  window.appRestoring = true;   // beim Neuladen nichts Altes mehr über die Sicherung schreiben
+  location.reload();
+});
 
 // ---------- Start ----------
 renderTodos();

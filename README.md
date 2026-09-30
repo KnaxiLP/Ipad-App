@@ -102,3 +102,10 @@ python3 -m http.server 8000
 
 > Die App lädt Updates im Hintergrund – Änderungen erscheinen spätestens beim
 > zweiten Öffnen. Neue Dateien müssen in `sw.js` in die `FILES`-Liste.
+
+## Updates & Datensicherung
+
+- **Info → „Nach Update suchen“** lädt die neueste Version. Offene Änderungen werden vorher gespeichert.
+- Liegt eine neue Version bereit, erscheint unten **„Jetzt aktualisieren“**.
+- Notizen, Noten, Aufgaben und Python-Programme bleiben bei Updates erhalten, weil sie getrennt von den App-Dateien gespeichert sind.
+- **„Sicherung speichern“** erzeugt eine JSON-Datei mit allen Daten. **„Sicherung laden“** spielt diese Datei wieder ein. Mach das, bevor du die App vom Home-Bildschirm löschst.

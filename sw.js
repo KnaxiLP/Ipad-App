@@ -1,7 +1,7 @@
 // Service Worker: speichert alle App-Dateien, damit die App auch offline startet.
 // Strategie: sofort aus dem Speicher laden und im Hintergrund aktualisieren.
 // Neue Versionen erscheinen dadurch spätestens beim zweiten Öffnen.
-const CACHE = 'test-app-v21';
+const CACHE = 'test-app-v22';
 // Python (Pyodide) separat speichern – ändert sich nie, bleibt über App-Updates erhalten
 const PY_CACHE = 'pyodide-v0.26.4';
 const PY_HOST = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/';
@@ -25,7 +25,8 @@ const FILES = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(FILES)));
+  // am HTTP-Cache vorbei laden, damit wirklich die neue Version gespeichert wird
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(FILES.map((f) => new Request(f, { cache: 'reload' })))));
   self.skipWaiting();
 });
 
