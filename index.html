@@ -82,28 +82,31 @@
 
       <!-- Notizen -->
       <section class="view" id="view-notes">
-        <div class="note-bar">
-          <button class="btn small" id="note-list-btn" aria-label="Alle Notizen">📒</button>
-          <input class="note-title" id="note-title" maxlength="40" placeholder="Titel" enterkeyhint="done">
-          <button class="btn small" id="note-new" aria-label="Neue Notiz">＋</button>
+        <div class="gn-top">
+          <button class="gn-btn" id="note-back" aria-label="Zurück"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+          <button class="gn-btn" id="note-list-btn" aria-label="Alle Notizen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg></button>
+          <input class="note-title" id="note-title" maxlength="40" placeholder="Unbenannte Notiz" enterkeyhint="done">
+          <button class="gn-btn" id="note-new" aria-label="Neue Notiz"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+          <button class="gn-btn" id="note-more" aria-label="Mehr"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></button>
         </div>
 
         <div class="toolbar" id="toolbar">
           <div class="tool-group">
-            <button class="tool active" data-tool="pen" aria-label="Füller">🖋️</button>
-            <button class="tool" data-tool="ball" aria-label="Kugelschreiber">🖊️</button>
-            <button class="tool" data-tool="marker" aria-label="Textmarker">🖍️</button>
-            <button class="tool" data-tool="eraser" aria-label="Radierer">🧽</button>
+            <button class="tool" id="undo" aria-label="Rückgängig"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button>
+            <button class="tool" id="redo" aria-label="Wiederholen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg></button>
+          </div>
+          <div class="tool-group tools-main">
+            <button class="tool active" data-tool="pen" aria-label="Füller"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l5 7-5 11-5-11z"/><path d="M12 10v5"/><circle cx="12" cy="10" r="1"/></svg></button>
+            <button class="tool" data-tool="ball" aria-label="Kugelschreiber"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19l2-6L17 3l4 4-10 10z"/><path d="M15 5l4 4"/><path d="M5 19l2.5-.5"/></svg></button>
+            <button class="tool" data-tool="marker" aria-label="Textmarker"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 15l-2 4h5l1-2"/><path d="M8 13l8-9 4 4-9 8z"/><path d="M4 21h8"/></svg></button>
+            <button class="tool" data-tool="eraser" aria-label="Radierer"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15l9-9a2 2 0 012.8 0l3.2 3.2a2 2 0 010 2.8L13 18H7z"/><path d="M9 11l6 6"/><path d="M7 21h13"/></svg></button>
+            <button class="tool" id="shape-toggle" aria-label="Formen erkennen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8.5" cy="8.5" r="4.5"/><rect x="11" y="11" width="9" height="9" rx="1"/></svg></button>
           </div>
           <div class="tool-group" id="color-group"></div>
           <div class="tool-group" id="size-group">
             <button class="tool size" data-size="1" aria-label="Dünn"><i style="width:4px;height:4px"></i></button>
-            <button class="tool size active" data-size="2" aria-label="Mittel"><i style="width:8px;height:8px"></i></button>
-            <button class="tool size" data-size="4" aria-label="Dick"><i style="width:13px;height:13px"></i></button>
-          </div>
-          <div class="tool-group">
-            <button class="tool" id="undo" aria-label="Rückgängig">↩️</button>
-            <button class="tool" id="redo" aria-label="Wiederholen">↪️</button>
+            <button class="tool size active" data-size="2" aria-label="Mittel"><i style="width:7px;height:7px"></i></button>
+            <button class="tool size" data-size="4" aria-label="Dick"><i style="width:11px;height:11px"></i></button>
           </div>
           <div class="tool-group zoom-group">
             <button class="tool" id="zoom-out" aria-label="Verkleinern">−</button>
@@ -111,8 +114,7 @@
             <button class="tool" id="zoom-in" aria-label="Vergrößern">+</button>
           </div>
           <div class="tool-group">
-            <button class="tool" id="finger-toggle" aria-label="Mit Finger zeichnen">☝️</button>
-            <button class="tool" id="note-more" aria-label="Mehr">⋯</button>
+            <button class="tool" id="finger-toggle" aria-label="Mit Finger zeichnen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 13V5.5a1.5 1.5 0 013 0V11"/><path d="M12 10.5a1.5 1.5 0 013 0V12"/><path d="M15 11.5a1.5 1.5 0 013 0V15a6 6 0 01-6 6h-1a6 6 0 01-4.8-2.4L4 15.5a1.5 1.5 0 012.3-1.9L9 16"/></svg></button>
           </div>
         </div>
 
@@ -216,7 +218,7 @@
       <section class="view" id="view-info">
         <header class="view-header"><h2>Info</h2></header>
         <div class="list-group">
-          <div class="row"><span>Version</span><span class="muted">3.0</span></div>
+          <div class="row"><span>Version</span><span class="muted">3.1</span></div>
           <div class="row"><span>Als App gestartet</span><span class="muted" id="info-standalone">–</span></div>
           <div class="row"><span>Offline-Modus</span><span class="muted" id="info-sw">–</span></div>
           <div class="row"><span>Bildschirm</span><span class="muted" id="info-screen">–</span></div>
@@ -292,13 +294,12 @@
       <button type="button" data-paper="dots">Punkte</button>
     </div>
     <div class="menu-list">
-      <button type="button" class="menu-item" id="shape-toggle"></button>
       <button type="button" class="menu-item" id="note-export-pdf">📄 Als PDF teilen (Vektor – scharf in Goodnotes)</button>
       <button type="button" class="menu-item" id="note-export">🖼️ Als Bild teilen / speichern</button>
       <button type="button" class="menu-item" id="note-clear-page">🧹 Alle Seiten leeren</button>
       <button type="button" class="menu-item danger-text" id="note-delete">🗑 Notiz löschen</button>
     </div>
-    <p class="muted small-text">✏️ Radiergummi-Ende oder Seitentaste am Stift = Radierer.<br>☝️ = Mit dem Finger zeichnen an/aus. Sobald du mit dem Apple Pencil schreibst, geht's automatisch aus: Dann scrollt der Finger und nur der Stift schreibt.</p>
+    <p class="muted small-text">✏️ Radiergummi-Ende oder Seitentaste am Stift = Radierer.<br>📐 Formen: Strich zeichnen, Stift kurz halten, dann weiterziehen zum Vergrößern.<br>☝️ = Mit dem Finger zeichnen an/aus. Sobald du mit dem Apple Pencil schreibst, geht's automatisch aus: Dann scrollt der Finger und nur der Stift schreibt.</p>
     <div class="dlg-actions"><button type="button" class="btn primary" data-close>Fertig</button></div>
   </dialog>
 

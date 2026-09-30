@@ -42,7 +42,8 @@ Jetzt startet die Seite vom Home-Bildschirm aus wie eine App.
   Sobald der Pencil benutzt wird, schaltet die App automatisch um: Dann schreibt nur
   noch der Stift und der Finger scrollt. So stört der Handballen nicht.
 - Mehrere Notizen (📒), Titel oben eingeben
-- **Formen erkennen** wie in Goodnotes: Strich zeichnen und den Stift am Ende kurz stillhalten → gerade Linie, Kreis/Ellipse, Dreieck, Rechteck oder Winkel
+- **Formen erkennen** wie in Goodnotes: Strich zeichnen und den Stift am Ende kurz stillhalten → gerade Linie, Kreis/Ellipse, Dreieck, Rechteck oder Winkel; danach ohne Absetzen weiterziehen = größer/kleiner
+- Handballen wird ignoriert, solange der Stift schreibt oder in der Nähe ist
 - Radiergummi-Ende oder Seitentaste am Stift (z. B. Surface Pen) radiert
 - Läuft auf iPad **und** Windows-Tablets wie dem Surface (dort übernimmt die App Finger-Scrollen und Zoomen selbst)
 - **Zoomen** mit zwei Fingern (oder − / + in der Leiste, Tippen auf die Prozentzahl = 100 %)

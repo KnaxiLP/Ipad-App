@@ -554,9 +554,9 @@ function fitShape(P) {
     const snap = Math.round(ang / (Math.PI / 2)) * (Math.PI / 2);
     if (Math.abs(ang - snap) < (5 * Math.PI) / 180) {
       const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, h = chord / 2;
-      return along([[mx - Math.cos(snap) * h, my - Math.sin(snap) * h], [mx + Math.cos(snap) * h, my + Math.sin(snap) * h]]);
+      return { kind: 'line', pts: along([[mx - Math.cos(snap) * h, my - Math.sin(snap) * h], [mx + Math.cos(snap) * h, my + Math.sin(snap) * h]]) };
     }
-    return along([a, b]);
+    return { kind: 'line', pts: along([a, b]) };
   }
 
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -586,7 +586,7 @@ function fitShape(P) {
             ring = [[l, t], [r, t], [r, btm], [l, btm], [l, t]];
           }
         }
-        return along(ring);
+        return { kind: 'poly', pts: along(ring) };
       }
     }
     // Kreis / Ellipse
@@ -603,7 +603,7 @@ function fitShape(P) {
           const t = start + (i / 72) * Math.PI * 2;
           out.push([cx + Math.cos(t) * (r || rx), cy + Math.sin(t) * (r || ry)]);
         }
-        return out;
+        return { kind: r ? 'circle' : 'ellipse', pts: out };
       }
     }
     return null;
@@ -611,7 +611,7 @@ function fitShape(P) {
 
   // offener Streckenzug mit 2–3 Abschnitten (z. B. Winkel, Pfeilspitze)
   const poly = rdp(P, eps);
-  if (poly.length >= 3 && poly.length <= 4 && maxDistToPoly(P, poly) < eps * 1.2) return along(poly);
+  if (poly.length >= 3 && poly.length <= 4 && maxDistToPoly(P, poly) < eps * 1.2) return { kind: 'open', pts: along(poly) };
   return null;
 }
 
@@ -623,11 +623,50 @@ function recognizeShape() {
   const shape = fitShape(P);
   if (!shape) return;
   pr = Math.round((pr / P.length) * 100) / 100;
-  s.pts = [];
-  shape.forEach(([x, y]) => s.pts.push(Math.round(x * 10) / 10, Math.round(y * 10) / 10, pr));
   s.shape = true;
   active.shaped = true;
+  // Für das anschließende Größer-/Kleinerziehen merken: Grundform, Ankerpunkt und Stiftposition
+  const pts = shape.pts;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  pts.forEach(([x, y]) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); });
+  const open = shape.kind === 'line' || shape.kind === 'open';
+  active.shapeEdit = {
+    kind: shape.kind,
+    base: pts,
+    pr,
+    anchor: open ? pts[0] : [(x0 + x1) / 2, (y0 + y1) / 2],   // Linie: Anfang bleibt, Form: Mitte bleibt
+    hold: active.hold.slice()
+  };
+  setShapePts(pts);
+}
+
+function setShapePts(pts) {
+  const pr = active.shapeEdit.pr, out = [];
+  pts.forEach(([x, y]) => out.push(Math.round(x * 10) / 10, Math.round(y * 10) / 10, pr));
+  active.stroke.pts = out;
   drawActiveStroke();
+}
+
+// Nach dem Erkennen den Stift weiterbewegen (ohne abzusetzen) = Form vergrößern/verkleinern
+function resizeShape(x, y) {
+  const e = active.shapeEdit, [ax, ay] = e.anchor, [hx, hy] = e.hold;
+  let pts;
+  if (e.kind === 'line' || e.kind === 'open') {
+    // Linie folgt dem Stift: drehen und strecken um den Anfangspunkt
+    const v0 = Math.hypot(hx - ax, hy - ay) || 1, v1 = Math.hypot(x - ax, y - ay);
+    const k = v1 / v0, rot = Math.atan2(y - ay, x - ax) - Math.atan2(hy - ay, hx - ax);
+    const c = Math.cos(rot) * k, sn = Math.sin(rot) * k;
+    pts = e.base.map(([px, py]) => [ax + (px - ax) * c - (py - ay) * sn, ay + (px - ax) * sn + (py - ay) * c]);
+  } else if (e.kind === 'circle') {
+    const k = Math.hypot(x - ax, y - ay) / (Math.hypot(hx - ax, hy - ay) || 1);
+    pts = e.base.map(([px, py]) => [ax + (px - ax) * k, ay + (py - ay) * k]);
+  } else {
+    // Rechteck, Dreieck, Ellipse: Breite und Höhe getrennt
+    const kx = Math.abs(hx - ax) > 10 ? Math.abs(x - ax) / Math.abs(hx - ax) : 1;
+    const ky = Math.abs(hy - ay) > 10 ? Math.abs(y - ay) / Math.abs(hy - ay) : 1;
+    pts = e.base.map(([px, py]) => [ax + (px - ax) * kx, ay + (py - ay) * ky]);
+  }
+  setShapePts(pts);
 }
 
 // ---------- Stift-Eingabe ----------
@@ -635,6 +674,12 @@ const pagesBox = $('#pages');        // scrollbarer Bereich mit den Seiten
 const pagesInner = $('#pages-inner');
 const touches = new Map();
 let pan = null;
+// Handballen: Solange der Stift schreibt oder gerade eben noch in der Nähe war (auch schwebend),
+// werden Berührungen komplett ignoriert – sie scrollen nicht und zeichnen nicht.
+let lastPenTime = 0;
+const PALM_MS = 700;
+const penNear = () => (active && active.pointerType === 'pen') || performance.now() - lastPenTime < PALM_MS;
+const isPalm = (e) => e.width > 45 || e.height > 45;
 let pinch = null;
 let inertia = null;
 const touchDist = () => {
@@ -742,12 +787,14 @@ function onDown(e) {
   if (!canvas) return;
 
   if (e.pointerType === 'pen') {
+    lastPenTime = performance.now();
     if (fingerDraw) setFingerDraw(false, true);
     if (active && active.pointerType === 'touch') cancelActive();       // Handballen war zuerst da
     else if (active && active.pointerType === 'pen') finishActive();    // "Loslassen" ging verloren
   }
 
   if (e.pointerType === 'touch') {
+    if (penNear() || isPalm(e)) return;   // Handballen
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     stopInertia();
     if (touches.size >= 2) {
@@ -826,6 +873,7 @@ function onDown(e) {
 }
 
 function onMove(e) {
+  if (e.pointerType === 'pen') lastPenTime = performance.now();   // auch schwebender Stift zählt
   if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
     const t = touches.get(e.pointerId);
     t.x = e.clientX;
@@ -847,7 +895,12 @@ function onMove(e) {
   }
   if (!active || e.pointerId !== active.id) return;
   e.preventDefault();
-  if (active.shaped) return; // Form ist erkannt – weiteres Wackeln ignorieren
+  if (active.shaped) {
+    // Form ist erkannt – Stift weiterbewegen zieht sie größer oder kleiner
+    const [x, y] = toPage(e);
+    resizeShape(x, y);
+    return;
+  }
 
   const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
   for (const ev of events.length ? events : [e]) {
@@ -873,6 +926,7 @@ function onMove(e) {
 }
 
 function onUp(e) {
+  if (e.pointerType === 'pen') lastPenTime = performance.now();
   if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
     const wasPanning = pan && !fingerDraw && !IS_IOS && touches.size === 1;
     touches.delete(e.pointerId);
@@ -892,6 +946,11 @@ pagesBox.addEventListener('pointerdown', onDown);
 pagesBox.addEventListener('pointermove', onMove);
 pagesBox.addEventListener('pointerup', onUp);
 pagesBox.addEventListener('pointercancel', onUp);
+// Scrollt die Seite während eines Strichs (z. B. durch den Handballen), bleibt der Strich unter dem Stift
+pagesBox.addEventListener('scroll', () => {
+  if (active) active.rect = pageEls[active.page].svg.getBoundingClientRect();
+}, { passive: true });
+
 // Langes Drücken mit dem Stift öffnet unter Windows sonst das Rechtsklick-Menü
 pagesBox.addEventListener('contextmenu', (e) => e.preventDefault());
 pagesBox.addEventListener('lostpointercapture', (e) => {
@@ -900,7 +959,8 @@ pagesBox.addEventListener('lostpointercapture', (e) => {
 // Apple Pencil soll nie scrollen – nur der Finger (wenn "Finger zeichnet" aus ist)
 const blockScroll = (e) => {
   if (!e.target.closest || !e.target.closest('.page-live')) return;
-  if (fingerDraw || [...e.touches].some((t) => t.touchType === 'stylus')) e.preventDefault();
+  // Stift oder Handballen (Stift schreibt gerade / war eben noch da) dürfen nicht scrollen
+  if (fingerDraw || penNear() || [...e.touches].some((t) => t.touchType === 'stylus')) e.preventDefault();
 };
 pagesBox.addEventListener('touchstart', blockScroll, { passive: false });
 pagesBox.addEventListener('touchmove', blockScroll, { passive: false });
@@ -920,6 +980,7 @@ function setZoom(z, cx, cy) {
   const top = (pagesBox.scrollTop + cy) * ratio - cy;
   zoom = z;
   pagesInner.style.width = zoom * 100 + '%';
+  pagesInner.style.maxWidth = 900 * zoom + 'px';
   pagesBox.scrollLeft = left;
   pagesBox.scrollTop = top;
   $('#zoom-label').textContent = Math.round(zoom * 100) + '%';
@@ -1101,13 +1162,16 @@ function renderPaper() {
 }
 
 function renderShapeToggle() {
-  $('#shape-toggle').textContent = `📐 Formen erkennen (Stift am Ende kurz halten): ${shapeRecog ? 'An' : 'Aus'}`;
+  $('#shape-toggle').classList.toggle('active', shapeRecog);
+  $('#shape-toggle').setAttribute('aria-pressed', shapeRecog);
 }
 $('#shape-toggle').addEventListener('click', () => {
   shapeRecog = !shapeRecog;
   store.set('shapeRecog', shapeRecog);
   renderShapeToggle();
+  toast(shapeRecog ? '📐 Formen: Stift am Ende kurz halten, dann weiterziehen zum Vergrößern' : 'Formerkennung aus');
 });
+$('#note-back').addEventListener('click', () => showView('home'));
 renderShapeToggle();
 
 $('#note-more').addEventListener('click', () => {
