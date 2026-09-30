@@ -1,13 +1,13 @@
 // ================= Python-Editor =================
 const PY_TEMPLATES = [
   { name: 'Leeres Programm', code: '' },
-  { name: '👋 Hallo', code: `name = input("Wie heißt du? ")
+  { name: 'Hallo', code: `name = input("Wie heißt du? ")
 print("Hallo", name + "!")
 
 alter = int(input("Wie alt bist du? "))
 print("In 10 Jahren bist du", alter + 10)
 ` },
-  { name: '🎲 Zahlenraten', code: `import random
+  { name: 'Zahlenraten', code: `import random
 
 zahl = random.randint(1, 100)
 versuche = 0
@@ -17,20 +17,20 @@ while True:
     tipp = int(input("Dein Tipp: "))
     versuche += 1
     if tipp < zahl:
-        print("Zu klein! ⬆️")
+        print("Zu klein!")
     elif tipp > zahl:
-        print("Zu groß! ⬇️")
+        print("Zu groß!")
     else:
-        print(f"Richtig! 🎉 Du hast {versuche} Versuche gebraucht.")
+        print(f"Richtig! Du hast {versuche} Versuche gebraucht.")
         break
 ` },
-  { name: '✖️ Einmaleins', code: `for i in range(1, 11):
+  { name: 'Einmaleins', code: `for i in range(1, 11):
     zeile = ""
     for j in range(1, 11):
         zeile += f"{i * j:4}"
     print(zeile)
 ` },
-  { name: '🎓 Notenschnitt', code: `noten = [2, 3, 1, 2, 4, 2]
+  { name: 'Notenschnitt', code: `noten = [2, 3, 1, 2, 4, 2]
 
 schnitt = sum(noten) / len(noten)
 print("Noten:", noten)
@@ -38,7 +38,7 @@ print(f"Schnitt: {schnitt:.2f}")
 print("Beste Note:", min(noten))
 print("Schlechteste Note:", max(noten))
 ` },
-  { name: '📈 Funktionsgraph', code: `import matplotlib.pyplot as plt
+  { name: 'Funktionsgraph', code: `import matplotlib.pyplot as plt
 
 x = [i / 10 for i in range(-50, 51)]
 y = [wert ** 2 - 4 for wert in x]
@@ -51,12 +51,12 @@ plt.legend()
 plt.title("Parabel")
 plt.show()
 ` },
-  { name: '⏳ Countdown', code: `import time
+  { name: 'Countdown', code: `import time
 
 for i in range(5, 0, -1):
     print(i, "...")
     time.sleep(1)
-print("🚀 Start!")
+print("Start!")
 ` }
 ];
 
@@ -125,7 +125,7 @@ PY_TEMPLATES.forEach((t) => {
   b.textContent = t.name;
   b.addEventListener('click', () => {
     $('#py-new-dialog').close();
-    const base = t.code ? t.name.replace(/^\S+\s/, '') : 'Programm';
+    const base = t.code ? t.name : 'Programm';
     let name = base, n = 2;
     while (programs.some((p) => p.name === name)) name = `${base} ${n++}`;
     const p = { id: Date.now().toString(36), name, code: t.code };
@@ -268,7 +268,7 @@ let run = null; // { code, inputs, seed, start }
 
 function startWorker() {
   pyReady = false;
-  setStatus('🐍 Python wird geladen … (beim ersten Mal ca. 10 MB)');
+  setStatus('Python wird geladen … (beim ersten Mal ca. 10 MB)');
   worker = new Worker('py-worker.js');
   worker.onmessage = onWorkerMessage;
   worker.onerror = () => {
@@ -283,7 +283,7 @@ function onWorkerMessage(e) {
   const m = e.data;
   if (m.type === 'ready') {
     pyReady = true;
-    setStatus(running ? '⏳ Läuft …' : `Bereit · Python ${m.version ? '(Pyodide ' + m.version + ')' : ''}`);
+    setStatus(running ? 'Läuft …' : `Bereit · Python ${m.version ? '(Pyodide ' + m.version + ')' : ''}`);
   } else if (m.type === 'fatal') {
     setStatus('');
     writeConsole('Python konnte nicht geladen werden. Beim ersten Start braucht die App Internet.\n', 'err');
@@ -291,7 +291,7 @@ function onWorkerMessage(e) {
     worker = null;
     setRunning(false);
   } else if (m.type === 'status') {
-    setStatus('📦 ' + m.text.replace(/^Loading/, 'Lade').replace(/^Loaded/, 'Geladen:'));
+    setStatus(m.text.replace(/^Loading/, 'Lade').replace(/^Loaded/, 'Geladen:'));
   } else if (m.type === 'out') {
     writeConsole(m.text);
   } else if (m.type === 'err') {
@@ -318,9 +318,9 @@ function onDone(result) {
     ensureNewline();
     writeConsole(result.error, 'err');
     markErrorLine(result.line);
-    setStatus(`❌ Fehler${result.line ? ' in Zeile ' + result.line : ''}`);
+    setStatus(`Fehler${result.line ? ' in Zeile ' + result.line : ''}`);
   } else {
-    setStatus(`✅ Fertig (${secs} s)`);
+    setStatus(`Fertig (${secs} s)`);
   }
 }
 
@@ -348,7 +348,7 @@ function askInput(promptText) {
     writeConsole(promptText);
     writeConsole(value + '\n', 'echo');
     run.inputs.push(value);
-    setStatus('⏳ Läuft …');
+    setStatus('Läuft …');
     worker.postMessage({ type: 'run', code: run.code, inputs: run.inputs, seed: run.seed });
   });
 }
@@ -356,7 +356,7 @@ function askInput(promptText) {
 function setRunning(on) {
   running = on;
   const b = $('#py-run');
-  b.textContent = on ? '⏹ Stopp' : '▶ Ausführen';
+  b.textContent = on ? '■ Stopp' : '▶ Ausführen';
   b.classList.toggle('stop', on);
 }
 
@@ -369,14 +369,14 @@ function startRun() {
   if (!worker) startWorker();
   run = { code: code.value, inputs: [], seed: Math.floor(Math.random() * 1e9), start: performance.now() };
   setRunning(true);
-  if (pyReady) setStatus('⏳ Läuft …');
+  if (pyReady) setStatus('Läuft …');
   worker.postMessage({ type: 'run', code: run.code, inputs: [], seed: run.seed });
 }
 
 function stopRun() {
   consoleEl.querySelectorAll('.py-input-row').forEach((r) => r.remove());
   ensureNewline();
-  writeConsole('⏹ Programm gestoppt\n', 'info');
+  writeConsole('Programm gestoppt\n', 'info');
   setRunning(false);
   if (worker) worker.terminate();
   worker = null;

@@ -121,11 +121,11 @@ async function copyBrace() {
     // Safari möchte das Bild als Promise – so zählt es noch als Tipp des Nutzers
     const blob = new Promise((resolve) => braceCanvas.toBlob(resolve, 'image/png'));
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-    toast('📋 Kopiert! In Goodnotes tippen → Einfügen');
+    toast('Kopiert – in Goodnotes tippen und „Einfügen“ wählen');
     const btn = $('#brace-copy');
-    btn.textContent = '✅ Kopiert';
+    btn.textContent = 'Kopiert ✓';
     clearTimeout(btn._t);
-    btn._t = setTimeout(() => { btn.textContent = '📋 Kopieren'; }, 1500);
+    btn._t = setTimeout(() => { btn.textContent = 'Kopieren'; }, 1500);
   } catch {
     toast('Lange auf die Klammer drücken → „Kopieren“');
   }

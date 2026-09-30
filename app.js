@@ -67,7 +67,7 @@ function updateClock() {
   });
   const h = now.getHours();
   $('#greeting').textContent =
-    h < 11 ? 'Guten Morgen! ☀️' : h < 18 ? 'Hallo! 👋' : 'Guten Abend! 🌙';
+    h < 11 ? 'Guten Morgen' : h < 18 ? 'Guten Tag' : 'Guten Abend';
 }
 
 function updateStats() {
@@ -99,7 +99,7 @@ function renderTodos() {
 
     const del = document.createElement('button');
     del.className = 'delete';
-    del.textContent = '🗑';
+    del.textContent = '×';
     del.setAttribute('aria-label', 'Löschen');
     del.onclick = () => { todos.splice(i, 1); saveTodos(); };
 
@@ -143,7 +143,7 @@ $('#counter-reset').addEventListener('click', () => setCounter(0));
 
 // ---------- Info ----------
 function updateInfo() {
-  $('#info-standalone').textContent = isStandalone ? 'Ja ✅' : 'Nein (Browser)';
+  $('#info-standalone').textContent = isStandalone ? 'Ja' : 'Nein (Browser)';
   $('#info-screen').textContent = `${window.innerWidth} × ${window.innerHeight}`;
 }
 window.addEventListener('resize', updateInfo);
@@ -160,7 +160,7 @@ $('#banner-close').addEventListener('click', () => {
 // ---------- Service Worker (Offline) ----------
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js')
-    .then(() => { $('#info-sw').textContent = 'Aktiv ✅'; })
+    .then(() => { $('#info-sw').textContent = 'Aktiv'; })
     .catch(() => { $('#info-sw').textContent = 'Nicht verfügbar'; });
 } else {
   $('#info-sw').textContent = 'Nicht unterstützt';

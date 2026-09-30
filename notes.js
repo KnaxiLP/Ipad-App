@@ -70,7 +70,7 @@ function writeNow() {
   saveTimer = null;
   const n = saveTarget;
   saveTarget = null;
-  if (n) noteDb.put(n).catch(() => toast('Speichern fehlgeschlagen 😕'));
+  if (n) noteDb.put(n).catch(() => toast('Speichern fehlgeschlagen'));
 }
 
 function cancelSave() {
@@ -1060,8 +1060,8 @@ function setFingerDraw(on, auto) {
   store.set('fingerDraw', on);
   document.body.classList.toggle('finger-draw', on);
   $('#finger-toggle').classList.toggle('active', on);
-  if (auto) toast('✏️ Stift erkannt – der Finger scrollt jetzt');
-  else toast(on ? '☝️ Finger zeichnet (2 Finger scrollen)' : '✏️ Nur der Stift zeichnet, Finger scrollt');
+  if (auto) toast('Stift erkannt – der Finger scrollt jetzt');
+  else toast(on ? 'Finger zeichnet (2 Finger scrollen)' : 'Nur der Stift zeichnet, Finger scrollt');
 }
 $('#finger-toggle').addEventListener('click', () => setFingerDraw(!fingerDraw));
 
@@ -1148,7 +1148,7 @@ async function showNotesList() {
 
 $('#note-list-btn').addEventListener('click', showNotesList);
 $('#note-new').addEventListener('click', () => {
-  if (isEmpty(note)) return toast('Diese Notiz ist noch leer ✏️');
+  if (isEmpty(note)) return toast('Diese Notiz ist noch leer');
   createNote();
 });
 $('#notes-dialog-new').addEventListener('click', () => {
@@ -1169,7 +1169,7 @@ $('#shape-toggle').addEventListener('click', () => {
   shapeRecog = !shapeRecog;
   store.set('shapeRecog', shapeRecog);
   renderShapeToggle();
-  toast(shapeRecog ? '📐 Formen: Stift am Ende kurz halten, dann weiterziehen zum Vergrößern' : 'Formerkennung aus');
+  toast(shapeRecog ? 'Formerkennung an: Stift am Ende kurz halten' : 'Formerkennung aus');
 });
 $('#note-back').addEventListener('click', () => showView('home'));
 renderShapeToggle();

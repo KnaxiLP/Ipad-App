@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-  <title>Test App</title>
+  <title>Lernheft</title>
 
   <!-- Macht die Website auf iPad/iPhone zur "App" ohne Safari-Leisten -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Test App">
+  <meta name="apple-mobile-web-app-title" content="Lernheft">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="theme-color" content="#6d5dfc">
+  <meta name="theme-color" content="#1f3b6e">
 
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="icon" type="image/png" href="icons/icon-192.png">
@@ -20,15 +20,15 @@
 <body>
   <div class="app">
     <nav class="sidebar" aria-label="Navigation">
-      <h1 class="sidebar-title">Test App</h1>
-      <button class="nav-item active" data-view="home"><span class="nav-icon">🏠</span><span>Start</span></button>
-      <button class="nav-item" data-view="todos"><span class="nav-icon">✅</span><span>Aufgaben</span></button>
-      <button class="nav-item" data-view="grades"><span class="nav-icon">🎓</span><span>Noten</span></button>
-      <button class="nav-item" data-view="notes"><span class="nav-icon">✏️</span><span>Notizen</span></button>
-      <button class="nav-item" data-view="braces"><span class="nav-icon">〰️</span><span>Klammern</span></button>
-      <button class="nav-item" data-view="python"><span class="nav-icon">🐍</span><span>Python</span></button>
-      <button class="nav-item" data-view="counter"><span class="nav-icon">🔢</span><span>Zähler</span></button>
-      <button class="nav-item" data-view="info"><span class="nav-icon">ℹ️</span><span>Info</span></button>
+      <h1 class="sidebar-title"><img src="icons/icon-192.png" alt="" class="brand-icon">Lernheft</h1>
+      <button class="nav-item active" data-view="home"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/></svg></span><span>Start</span></button>
+      <button class="nav-item" data-view="todos"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg></span><span>Aufgaben</span></button>
+      <button class="nav-item" data-view="grades"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span><span>Noten</span></button>
+      <button class="nav-item" data-view="notes"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/></svg></span><span>Notizen</span></button>
+      <button class="nav-item" data-view="braces"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4c-2 0-3 1-3 3v2c0 1.5-1 2.5-2 3 1 .5 2 1.5 2 3v2c0 2 1 3 3 3"/><path d="M16 4c2 0 3 1 3 3v2c0 1.5 1 2.5 2 3-1 .5-2 1.5-2 3v2c0 2-1 3-3 3"/></svg></span><span>Klammern</span></button>
+      <button class="nav-item" data-view="python"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8l-5 4 5 4M16 8l5 4-5 4M13.5 5l-3 14"/></svg></span><span>Python</span></button>
+      <button class="nav-item" data-view="counter"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4L7 20M17 4l-2 16M4 9h16M3 15h16"/></svg></span><span>Zähler</span></button>
+      <button class="nav-item" data-view="info"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg></span><span>Info</span></button>
     </nav>
 
     <main class="content">
@@ -133,7 +133,7 @@
           <div class="brace-stage" id="brace-stage">
             <img id="brace-preview" alt="Geschweifte Klammer" draggable="true">
           </div>
-          <button class="btn primary brace-copy" id="brace-copy">📋 Kopieren</button>
+          <button class="btn primary brace-copy" id="brace-copy">Kopieren</button>
         </div>
 
         <div class="card brace-options">
@@ -167,7 +167,7 @@
         <div class="card hint">
           <strong>So kommt die Klammer in Goodnotes:</strong>
           <ol>
-            <li>Oben auf <b>📋 Kopieren</b> tippen (oder lange auf die Klammer drücken → <b>Kopieren</b>)</li>
+            <li>Oben auf <b>Kopieren</b> tippen (oder lange auf die Klammer drücken → <b>Kopieren</b>)</li>
             <li>In Goodnotes auf die Seite tippen und <b>Einfügen</b> wählen</li>
             <li>Mit den Ecken kleiner oder größer ziehen und an die richtige Stelle schieben</li>
           </ol>
@@ -180,8 +180,8 @@
         <div class="py-bar">
           <select id="py-program" class="py-select" aria-label="Programm"></select>
           <button class="btn small" id="py-new" aria-label="Neues Programm">＋</button>
-          <button class="btn small" id="py-rename" aria-label="Umbenennen">✏️</button>
-          <button class="btn small" id="py-delete" aria-label="Löschen">🗑</button>
+          <button class="btn small" id="py-rename" aria-label="Umbenennen">Umbenennen</button>
+          <button class="btn small" id="py-delete" aria-label="Löschen">Löschen</button>
           <span class="spacer"></span>
           <button class="btn primary py-run" id="py-run">▶ Ausführen</button>
         </div>
@@ -218,7 +218,7 @@
       <section class="view" id="view-info">
         <header class="view-header"><h2>Info</h2></header>
         <div class="list-group">
-          <div class="row"><span>Version</span><span class="muted">3.1</span></div>
+          <div class="row"><span>Version</span><span class="muted">3.2</span></div>
           <div class="row"><span>Als App gestartet</span><span class="muted" id="info-standalone">–</span></div>
           <div class="row"><span>Offline-Modus</span><span class="muted" id="info-sw">–</span></div>
           <div class="row"><span>Bildschirm</span><span class="muted" id="info-screen">–</span></div>
@@ -237,7 +237,7 @@
 
   <!-- Hinweis-Banner, wenn die Seite noch im Browser läuft -->
   <div class="install-banner" id="install-banner" hidden>
-    <span>📲 Tipp: Teilen → „Zum Home-Bildschirm“ für die App-Ansicht</span>
+    <span>Tipp: Teilen → „Zum Home-Bildschirm“ für die App-Ansicht</span>
     <button class="btn link" id="banner-close" aria-label="Schließen">✕</button>
   </div>
 
@@ -245,8 +245,8 @@
   <dialog id="grade-dialog">
     <h3 id="grade-dialog-title">Note hinzufügen</h3>
     <div class="segmented" id="grade-type">
-      <button type="button" data-type="s" class="active">✍️ Schriftlich</button>
-      <button type="button" data-type="m">💬 Mündlich</button>
+      <button type="button" data-type="s" class="active">Schriftlich</button>
+      <button type="button" data-type="m">Mündlich</button>
     </div>
     <input class="text-input" id="grade-label" maxlength="40" placeholder="Bezeichnung (optional), z. B. Klassenarbeit 1">
     <div class="grade-picker" id="grade-picker"></div>
@@ -263,7 +263,7 @@
         <span id="subject-weight-text" class="muted"></span>
       </label>
       <input type="range" id="subject-weight" min="0" max="100" step="5" value="50">
-      <div class="weight-scale muted small-text"><span>✍️ Schriftlich</span><span>💬 Mündlich</span></div>
+      <div class="weight-scale muted small-text"><span>Schriftlich</span><span>Mündlich</span></div>
       <div class="dlg-actions">
         <button type="button" class="btn danger-text" id="subject-delete">Löschen</button>
         <span class="spacer"></span>
@@ -275,7 +275,7 @@
 
   <!-- Dialog: Liste aller Notizen -->
   <dialog id="notes-dialog">
-    <h3>📒 Meine Notizen</h3>
+    <h3>Meine Notizen</h3>
     <ul class="list notes-list" id="notes-list"></ul>
     <div class="dlg-actions">
       <button type="button" class="btn" data-close>Schließen</button>
@@ -294,19 +294,19 @@
       <button type="button" data-paper="dots">Punkte</button>
     </div>
     <div class="menu-list">
-      <button type="button" class="menu-item" id="note-export-pdf">📄 Als PDF teilen (Vektor – scharf in Goodnotes)</button>
-      <button type="button" class="menu-item" id="note-export">🖼️ Als Bild teilen / speichern</button>
-      <button type="button" class="menu-item" id="note-clear-page">🧹 Alle Seiten leeren</button>
-      <button type="button" class="menu-item danger-text" id="note-delete">🗑 Notiz löschen</button>
+      <button type="button" class="menu-item" id="note-export-pdf">Als PDF teilen (Vektor, scharf in Goodnotes)</button>
+      <button type="button" class="menu-item" id="note-export">Als Bild teilen oder speichern</button>
+      <button type="button" class="menu-item" id="note-clear-page">Alle Seiten leeren</button>
+      <button type="button" class="menu-item danger-text" id="note-delete">Notiz löschen</button>
     </div>
-    <p class="muted small-text">✏️ Radiergummi-Ende oder Seitentaste am Stift = Radierer.<br>📐 Formen: Strich zeichnen, Stift kurz halten, dann weiterziehen zum Vergrößern.<br>☝️ = Mit dem Finger zeichnen an/aus. Sobald du mit dem Apple Pencil schreibst, geht's automatisch aus: Dann scrollt der Finger und nur der Stift schreibt.</p>
+    <p class="muted small-text">Radiergummi-Ende oder Seitentaste am Stift: Radierer.<br>Formen: Strich zeichnen, Stift kurz halten, dann weiterziehen zum Vergrößern.<br>Hand-Symbol: Mit dem Finger zeichnen an/aus.</p>
     <div class="dlg-actions"><button type="button" class="btn primary" data-close>Fertig</button></div>
   </dialog>
 
 
   <!-- Dialog: Neues Python-Programm -->
   <dialog id="py-new-dialog">
-    <h3>🐍 Neues Programm</h3>
+    <h3>Neues Programm</h3>
     <div class="menu-list" id="py-templates"></div>
     <div class="dlg-actions"><button type="button" class="btn" data-close>Abbrechen</button></div>
   </dialog>

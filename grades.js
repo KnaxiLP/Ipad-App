@@ -46,13 +46,12 @@ function gradeColor(v) {
 }
 
 function comment(avg) {
-  if (avg <= 1.5) return 'Überflieger! 🚀';
-  if (avg <= 2.0) return 'Richtig stark 💪';
-  if (avg <= 2.5) return 'Gut dabei 👍';
-  if (avg <= 3.0) return 'Solide 🙂';
-  if (avg <= 3.5) return 'Geht noch was 😅';
-  if (avg <= 4.0) return 'Durchgekommen 😬';
-  return 'Wir reden nicht drüber … 💀';
+  if (avg <= 1.5) return 'Sehr gut';
+  if (avg <= 2.5) return 'Gut';
+  if (avg <= 3.5) return 'Befriedigend';
+  if (avg <= 4.5) return 'Ausreichend';
+  if (avg <= 5.5) return 'Mangelhaft';
+  return 'Ungenügend';
 }
 
 // ---------- Anzeige ----------
@@ -123,7 +122,7 @@ function renderGrades() {
     foot.className = 'subject-foot';
     foot.append(weight, add);
 
-    card.append(head, gradeRow(sub, 's', '✍️ Schriftlich'), gradeRow(sub, 'm', '💬 Mündlich'), foot);
+    card.append(head, gradeRow(sub, 's', 'Schriftlich'), gradeRow(sub, 'm', 'Mündlich'), foot);
     list.append(card);
   });
 
@@ -131,7 +130,7 @@ function renderGrades() {
   $('#grades-empty').hidden = subjects.length > 0;
   $('#grade-total').hidden = subjects.length === 0;
   $('#grade-total-value').textContent = total != null ? formatGrade(total) : '–';
-  $('#grade-total-comment').textContent = total != null ? comment(total) : 'Trag deine erste Note ein ✏️';
+  $('#grade-total-comment').textContent = total != null ? comment(total) : 'Noch keine Noten eingetragen';
   const count = subjects.reduce((n, s) => n + s.grades.length, 0);
   $('#grade-total-count').textContent = `${count} ${count === 1 ? 'Note' : 'Noten'} in ${subjects.length} ${subjects.length === 1 ? 'Fach' : 'Fächern'}`;
 }

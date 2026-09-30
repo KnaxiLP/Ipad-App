@@ -1,4 +1,4 @@
-# Test App – iPad Web-App
+# Lernheft – Web-App für iPad und Surface
 
 Eine einfache Website, die sich auf dem iPad wie eine echte App anfühlt
 (Progressive Web App): eigenes Icon auf dem Home-Bildschirm, Vollbild ohne
