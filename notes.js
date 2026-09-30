@@ -90,52 +90,92 @@ function pointRadius(s, p) {
   return s.style === 'ball' ? w * (0.9 + 0.2 * p) : w * (0.3 + 1.4 * Math.pow(p, 0.8));
 }
 
-// Berechnet den Umriss eines Strichs (wie bei Goodnotes): Punkte werden leicht geglättet,
-// links und rechts davon liegt der Rand im Abstand des Radius.
+// Berechnet den Umriss eines Strichs (wie bei Goodnotes):
+// 1. Zittern herausfiltern  2. Punkte in gleichmäßigem Abstand neu verteilen
+// 3. Linie sanft glätten    4. links/rechts im Abstand des Radius den Rand bilden
+const RESAMPLE_STEP = 1.5; // Abstand der Punkte in Seiten-Einheiten (≈ 0,3 mm)
+
 function strokeOutline(s) {
   const p = s.pts, n = p.length / 3;
-  const pts = [];
+
+  // 1. Zittern herausfiltern: jeder Punkt zieht die Linie nur zu 55 % zu sich
+  const raw = [];
   let x = p[0], y = p[1], pr = p[2];
-  pts.push([x, y, pr]);
+  raw.push([x, y, pr]);
   for (let i = 1; i < n; i++) {
-    // Zittern herausfiltern: jeder Punkt zieht die Linie nur zu 55 % zu sich
     x += (p[i * 3] - x) * 0.55;
     y += (p[i * 3 + 1] - y) * 0.55;
     pr += (p[i * 3 + 2] - pr) * 0.5;
-    const last = pts[pts.length - 1];
-    if (Math.hypot(x - last[0], y - last[1]) >= 0.4) pts.push([x, y, pr]);
+    raw.push([x, y, pr]);
   }
   // Ende genau an der Stiftspitze, damit die Linie nicht "hinterherhängt"
-  if (n > 1) {
-    const ex = p[(n - 1) * 3], ey = p[(n - 1) * 3 + 1];
-    const last = pts[pts.length - 1];
-    if (Math.hypot(ex - last[0], ey - last[1]) >= 0.2) pts.push([ex, ey, pr]);
+  if (n > 1) raw.push([p[(n - 1) * 3], p[(n - 1) * 3 + 1], pr]);
+
+  // 2. Gleichmäßig verteilen: Der Pencil liefert sehr dichte, unregelmäßige Punkte. Aus winzigen
+  //    Abständen lässt sich die Richtung nicht sauber bestimmen – der Rand würde wellig.
+  const pts = [raw[0].slice()];
+  let carry = 0;
+  for (let i = 1; i < raw.length; i++) {
+    const a = raw[i - 1], b = raw[i];
+    const seg = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (!seg) continue;
+    let t = RESAMPLE_STEP - carry;
+    while (t <= seg) {
+      const k = t / seg;
+      pts.push([a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k]);
+      t += RESAMPLE_STEP;
+    }
+    carry = seg - (t - RESAMPLE_STEP);
+  }
+  const end = raw[raw.length - 1], lastP = pts[pts.length - 1];
+  if (Math.hypot(end[0] - lastP[0], end[1] - lastP[1]) > RESAMPLE_STEP * 0.3) pts.push(end.slice());
+
+  // 3. Sanft glätten (Anfang und Ende bleiben, wo sie sind)
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = pts.length - 2; i >= 1; i--) {
+      pts[i][0] = pts[i - 1][0] * 0.25 + pts[i][0] * 0.5 + pts[i + 1][0] * 0.25;
+      pts[i][1] = pts[i - 1][1] * 0.25 + pts[i][1] * 0.5 + pts[i + 1][1] * 0.25;
+    }
   }
 
-  // Radien berechnen und in beide Richtungen glätten, damit die Dicke weich verläuft
+  // Radien berechnen und glätten, damit die Dicke weich verläuft
   const r = pts.map((q) => pointRadius(s, q[2]));
-  for (let i = 1; i < r.length; i++) r[i] = r[i - 1] * 0.5 + r[i] * 0.5;
-  for (let i = r.length - 2; i >= 0; i--) r[i] = r[i + 1] * 0.5 + r[i] * 0.5;
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 1; i < r.length - 1; i++) r[i] = r[i - 1] * 0.25 + r[i] * 0.5 + r[i + 1] * 0.25;
+  }
 
-  const left = [], right = [], angles = [], corners = [];
+  // 4. Rand bilden. Die Richtung wird über mehrere Punkte bestimmt (ruhiger).
+  const left = [], right = [], angles = [], corners = [], dirs = [];
   for (let i = 0; i < pts.length; i++) {
-    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+    const a = pts[Math.max(0, i - 2)], b = pts[Math.min(pts.length - 1, i + 2)];
     let dx = b[0] - a[0], dy = b[1] - a[1];
     const len = Math.hypot(dx, dy) || 1;
     dx /= len; dy /= len;
+    dirs.push([dx, dy]);
     const nx = -dy, ny = dx;
     left.push([pts[i][0] + nx * r[i], pts[i][1] + ny * r[i]]);
     right.push([pts[i][0] - nx * r[i], pts[i][1] - ny * r[i]]);
     angles.push(Math.atan2(ny, nx));
     // scharfe Kehren (z. B. bei m, n, u) bekommen einen runden Punkt, sonst entstehen Kerben
-    if (i > 0 && i < pts.length - 1) {
-      const ax = pts[i][0] - pts[i - 1][0], ay = pts[i][1] - pts[i - 1][1];
-      const bx = pts[i + 1][0] - pts[i][0], by = pts[i + 1][1] - pts[i][1];
+    if (i > 1 && i < pts.length - 2) {
+      const ax = pts[i][0] - pts[i - 2][0], ay = pts[i][1] - pts[i - 2][1];
+      const bx = pts[i + 2][0] - pts[i][0], by = pts[i + 2][1] - pts[i][1];
       const dot = (ax * bx + ay * by) / ((Math.hypot(ax, ay) * Math.hypot(bx, by)) || 1);
       if (dot < 0.2) corners.push(i);
     }
   }
-  return { pts, r, left, right, angles, corners };
+  // An engen Kurven läuft der innere Rand ein Stück rückwärts und bildet winzige Schleifen –
+  // die sieht man als Zacken oder helle Striche. Solche Randpunkte werden weggelassen.
+  const clean = (side) => {
+    const out = [side[0]];
+    for (let i = 1; i < side.length - 1; i++) {
+      const prev = out[out.length - 1];
+      if ((side[i][0] - prev[0]) * dirs[i][0] + (side[i][1] - prev[1]) * dirs[i][1] > 0) out.push(side[i]);
+    }
+    out.push(side[side.length - 1]);
+    return out;
+  };
+  return { pts, r, left: clean(left), right: clean(right), angles, corners };
 }
 
 // Kreisbogen als kubische Bézierkurven – so funktioniert er in SVG, Canvas und PDF gleich
