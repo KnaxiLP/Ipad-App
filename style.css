@@ -320,6 +320,7 @@ body[data-view="notes"] .content { padding-top: 12px; padding-bottom: 0; overflo
 body.finger-draw .page-live { touch-action: none; }
 .page-num { position: absolute; right: 12px; bottom: 8px; font-size: 12px; color: #a1a1aa; pointer-events: none; }
 .add-page { display: block; width: min(100%, 1000px); margin: 0 auto 20px; }
+.invisible { visibility: hidden; }
 .zoom-group .tool { font-size: 22px; font-weight: 600; }
 .tool.zoom-label { width: auto; min-width: 54px; padding: 0 6px; font-size: 14px; font-variant-numeric: tabular-nums; }
 

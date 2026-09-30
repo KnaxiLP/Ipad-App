@@ -655,8 +655,8 @@ $('#zoom-label').addEventListener('click', () => setZoom(1));
 function renderColors() {
   const g = $('#color-group');
   g.innerHTML = '';
-  g.hidden = tool === 'eraser';
-  if (tool === 'eraser') return;
+  // Beim Radierer nur unsichtbar machen – sonst ändert sich die Höhe der Leiste und die Seite springt
+  g.classList.toggle('invisible', tool === 'eraser');
   const key = tool === 'marker' ? 'marker' : 'pen';
   const list = key === 'marker' ? MARKER_COLORS : PEN_COLORS;
   list.forEach((c, i) => {
