@@ -48,7 +48,7 @@ if (!IS_IOS) document.body.classList.add('manual-touch');
 // ---------- Zustand ----------
 let note = null;
 let tool = store.get('noteTool', 'pen');
-if (!['pen', 'ball', 'marker', 'eraser'].includes(tool)) tool = 'pen';
+if (!['pen', 'ball', 'marker', 'eraser', 'text'].includes(tool)) tool = 'pen';
 Object.defineProperty(window, 'noteTool', { get: () => tool });
 let size = store.get('noteSize', 2);
 const colorSel = store.get('noteColors', { pen: 0, marker: 0 });
@@ -278,10 +278,60 @@ const svgCache = new WeakMap();
 function markerAttrs(color, width) {
   return `fill="none" stroke="${color}" stroke-width="${num(width)}" stroke-linecap="round" stroke-linejoin="round" style="mix-blend-mode:multiply"`;
 }
+// ---------- Textfelder ----------
+// Ein Textfeld liegt wie ein Strich in page.strokes: { tool: 'text', x, y, w, size, color, text }
+// (x/y = linke obere Ecke, w = Breite, alles in Seiten-Einheiten). Die Zeilenumbrüche werden
+// einmal berechnet und für Bildschirm, Bild- und PDF-Export gleich benutzt.
+const TEXT_FONT = 'Helvetica, Arial, sans-serif';
+const TEXT_SIZES = { 1: 18, 2: 24, 4: 36 };   // Schriftgröße je Stärke-Knopf (24 ≈ 14 pt auf A4)
+const TEXT_LH = 1.3;                          // Zeilenabstand
+const measureCtx = document.createElement('canvas').getContext('2d');
+const linesCache = new WeakMap();
+
+function textLines(t) {
+  let lines = linesCache.get(t);
+  if (lines) return lines;
+  measureCtx.font = `${t.size}px ${TEXT_FONT}`;
+  lines = [];
+  for (const para of t.text.split('\n')) {
+    let line = '';
+    for (const word of para.split(/(\s+)/)) {
+      const test = line + word;
+      if (line && measureCtx.measureText(test.trimEnd()).width > t.w) {
+        lines.push(line.trimEnd());
+        line = word.trimStart();
+        // sehr lange Wörter hart umbrechen
+        while (measureCtx.measureText(line).width > t.w && line.length > 1) {
+          let k = line.length - 1;
+          while (k > 1 && measureCtx.measureText(line.slice(0, k)).width > t.w) k--;
+          lines.push(line.slice(0, k));
+          line = line.slice(k);
+        }
+      } else {
+        line = test;
+      }
+    }
+    lines.push(line.trimEnd());
+  }
+  linesCache.set(t, lines);
+  return lines;
+}
+
+const textHeight = (t) => Math.max(1, textLines(t).length) * t.size * TEXT_LH;
+const escXml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+function textSvg(t) {
+  const lh = t.size * TEXT_LH;
+  const spans = textLines(t).map((l, i) =>
+    `<tspan x="${num(t.x)}" y="${num(t.y + t.size + i * lh)}">${escXml(l) || ' '}</tspan>`).join('');
+  return `<text font-family="${TEXT_FONT}" font-size="${t.size}" fill="${t.color}" xml:space="preserve">${spans}</text>`;
+}
+
 function strokeSvg(s) {
   let out = svgCache.get(s);
   if (!out) {
-    out = s.tool === 'marker'
+    out = s.tool === 'text' ? textSvg(s)
+      : s.tool === 'marker'
       ? `<path ${markerAttrs(s.color, strokeWidth(s))} d="${cmdsToSvg(markerCmds(s))}"/>`
       : penSvg(s);
     svgCache.set(s, out);
@@ -299,7 +349,11 @@ function penSvg(s) {
 // Canvas-Version (für den Bild-Export)
 function drawStroke(ctx, s) {
   ctx.save();
-  if (s.tool === 'marker') {
+  if (s.tool === 'text') {
+    ctx.font = `${s.size}px ${TEXT_FONT}`;
+    ctx.fillStyle = s.color;
+    textLines(s).forEach((l, i) => ctx.fillText(l, s.x, s.y + s.size + i * s.size * TEXT_LH));
+  } else if (s.tool === 'marker') {
     ctx.globalCompositeOperation = 'multiply';
     ctx.strokeStyle = s.color;
     ctx.lineWidth = strokeWidth(s);
@@ -554,7 +608,12 @@ function distToSegment(px, py, ax, ay, bx, by) {
   return Math.hypot(ax + t * dx - px, ay + t * dy - py);
 }
 
+function textHit(t, x, y, pad = 0) {
+  return x >= t.x - pad && x <= t.x + t.w + pad && y >= t.y - pad && y <= t.y + textHeight(t) + pad;
+}
+
 function strokeHit(s, x, y, r) {
+  if (s.tool === 'text') return textHit(s, x, y, r);
   const p = s.pts, reach = strokeWidth(s) / 2 + r;
   if (p.length === 3) return Math.hypot(p[0] - x, p[1] - y) <= reach;
   for (let i = 3; i < p.length; i += 3) {
@@ -754,6 +813,147 @@ function resizeShape(x, y) {
   setShapePts(pts);
 }
 
+// ---------- Textfelder bearbeiten ----------
+// Text-Werkzeug: tippen = neues Feld (oder vorhandenes bearbeiten), ziehen = Feld verschieben.
+let textAction = null;
+let editor = null;   // { ta, page, t, before, existing }
+
+function textAt(i, x, y) {
+  const list = note.pages[i].strokes;
+  for (let k = list.length - 1; k >= 0; k--) if (list[k].tool === 'text' && textHit(list[k], x, y, 8)) return k;
+  return -1;
+}
+
+function textDown(e, canvas) {
+  const hadEditor = !!editor;
+  if (editor) commitEditor();            // Tippen daneben schließt das offene Feld
+  if (e.pointerType !== 'touch') {
+    e.preventDefault();
+    try { canvas.setPointerCapture(e.pointerId); } catch {}
+  }
+  const i = Number(canvas.dataset.page);
+  const rect = canvas.getBoundingClientRect();
+  const x = ((e.clientX - rect.left) / rect.width) * PAGE_W;
+  const y = ((e.clientY - rect.top) / rect.height) * PAGE_H;
+  textAction = { id: e.pointerId, touch: e.pointerType === 'touch', page: i, rect, x0: x, y0: y, cx: e.clientX, cy: e.clientY, k: textAt(i, x, y), moved: false, noCreate: hadEditor };
+}
+
+function textMove(e) {
+  const a = textAction;
+  const x = ((e.clientX - a.rect.left) / a.rect.width) * PAGE_W;
+  const y = ((e.clientY - a.rect.top) / a.rect.height) * PAGE_H;
+  if (!a.moved && Math.hypot(x - a.x0, y - a.y0) < 6) return;
+  if (a.k < 0) {
+    // Ziehen auf leerer Fläche = scrollen (auf dem iPad macht das der Browser selbst)
+    a.moved = true;
+    if (a.touch && !IS_IOS) {
+      pagesBox.scrollLeft -= e.clientX - a.cx;
+      pagesBox.scrollTop -= e.clientY - a.cy;
+      a.cx = e.clientX;
+      a.cy = e.clientY;
+    }
+    return;
+  }
+  e.preventDefault();
+  const strokes = note.pages[a.page].strokes;
+  if (!a.moved) {
+    a.moved = true;
+    a.before = strokes.slice();
+    a.orig = strokes[a.k];
+  }
+  const t = a.orig, h = textHeight(t);
+  strokes[a.k] = {
+    ...t,
+    x: Math.max(0, Math.min(PAGE_W - t.w, t.x + x - a.x0)),
+    y: Math.max(0, Math.min(PAGE_H - h, t.y + y - a.y0))
+  };
+  drawPage(a.page);
+}
+
+function textUp(e) {
+  const a = textAction;
+  textAction = null;
+  if (e.type === 'pointercancel') return;      // Browser hat gescrollt
+  if (a.moved) {
+    if (a.k >= 0) {
+      pushHistory([{ page: a.page, before: a.before, after: note.pages[a.page].strokes.slice() }]);
+      saveNote();
+    }
+    return;
+  }
+  if (a.noCreate && a.k < 0) return;
+  openEditor(a.page, a.k, a.x0, a.y0);
+}
+
+function openEditor(i, k, x, y) {
+  const page = note.pages[i];
+  const before = page.strokes.slice();
+  let t;
+  if (k >= 0) {
+    t = page.strokes[k];
+    page.strokes = page.strokes.filter((_, j) => j !== k);   // während der Bearbeitung ausblenden
+    drawPage(i);
+  } else {
+    const fs = TEXT_SIZES[size] || 24;
+    let w = Math.min(600, PAGE_W - x - 30);
+    if (w < 150) { x = PAGE_W - 180; w = 150; }
+    t = { tool: 'text', x, y: Math.max(0, y - fs * 0.8), w, size: fs, color: PEN_COLORS[colorSel.pen], text: '' };
+  }
+  const wrap = pageEls[i].wrap;
+  const ta = document.createElement('textarea');
+  ta.className = 'text-editor';
+  ta.value = t.text;
+  ta.setAttribute('autocapitalize', 'sentences');
+  const px = wrap.clientWidth / PAGE_W;
+  Object.assign(ta.style, {
+    left: (t.x / PAGE_W) * 100 + '%',
+    top: (t.y / PAGE_H) * 100 + '%',
+    width: (t.w / PAGE_W) * 100 + '%',
+    fontSize: t.size * px + 'px',
+    lineHeight: TEXT_LH,
+    color: t.color,
+    fontFamily: TEXT_FONT
+  });
+  const fit = () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
+  ta.addEventListener('input', fit);
+  ta.addEventListener('blur', commitEditor);
+  ta.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') cancelEditor(); });
+  wrap.append(ta);
+  fit();
+  editor = { ta, page: i, t, before, existing: k >= 0 };
+  ta.focus();
+  const end = ta.value.length;
+  ta.setSelectionRange(end, end);
+}
+
+function commitEditor() {
+  if (!editor) return;
+  const { ta, page, t, before, existing } = editor;
+  editor = null;
+  const text = ta.value.replace(/\s+$/, '');
+  ta.remove();
+  if (existing && text === t.text) {            // nichts geändert
+    note.pages[page].strokes = before;
+    drawPage(page);
+    return;
+  }
+  if (text) note.pages[page].strokes.push({ ...t, text });
+  drawPage(page);
+  if (existing || text) {
+    pushHistory([{ page, before, after: note.pages[page].strokes.slice() }]);
+    saveNote();
+  }
+}
+
+function cancelEditor() {
+  if (!editor) return;
+  const { ta, page, before } = editor;
+  editor = null;
+  ta.remove();
+  note.pages[page].strokes = before;
+  drawPage(page);
+}
+
 // ---------- Stift-Eingabe ----------
 const pagesBox = $('#pages');        // scrollbarer Bereich mit den Seiten
 const pagesInner = $('#pages-inner');
@@ -897,6 +1097,7 @@ function onDown(e) {
       if (!IS_IOS) pinch = { dist: touchDist(), zoom };   // iPad zoomt über Safaris Gesten
       return;
     }
+    if (window.noteTool === 'text' && touches.size === 1 && !active) return textDown(e, canvas);
     if (!fingerDraw) {
       // Finger scrollt: auf dem iPad macht das der Browser, sonst die App selbst
       if (!IS_IOS) pan = { ...avgTouch(), vx: 0, vy: 0, t: performance.now() };
@@ -909,6 +1110,7 @@ function onDown(e) {
   // Radiergummi-Ende oder Seitentaste am Stift (z. B. Surface Pen) = Radierer
   const penEraser = e.pointerType === 'pen' && ((e.buttons & 32) || (e.buttons & 2));
   const tool = penEraser ? 'eraser' : window.noteTool;
+  if (tool === 'text') return textDown(e, canvas);
 
   e.preventDefault();
   try { canvas.setPointerCapture(e.pointerId); } catch {}
@@ -986,6 +1188,7 @@ function onMove(e) {
       return;
     }
   }
+  if (textAction && e.pointerId === textAction.id) return textMove(e);
   if (!active || e.pointerId !== active.id) return;
   e.preventDefault();
   if (active.shaped) {
@@ -1030,6 +1233,7 @@ function onUp(e) {
     // bleibt ein Finger liegen, scrollt er weiter – ohne Sprung
     pan = touches.size && (touches.size >= 2 || (!fingerDraw && !IS_IOS)) ? { ...avgTouch(), vx: 0, vy: 0, t: performance.now() } : null;
   }
+  if (textAction && e.pointerId === textAction.id) return textUp(e);
   if (!active || e.pointerId !== active.id) return;
   // Bricht iOS einen Stift-Strich ab, wird er trotzdem behalten – bisher verschwand er dann.
   // Nur Finger-Striche werden bei einem Abbruch verworfen (dann war es meist eine Geste).
@@ -1134,6 +1338,7 @@ document.querySelectorAll('[data-tool]').forEach((b) =>
   b.addEventListener('click', () => {
     tool = b.dataset.tool;
     if (tool !== 'eraser') store.set('noteTool', tool);
+    document.body.dataset.noteTool = tool;
     document.querySelectorAll('[data-tool]').forEach((x) => x.classList.toggle('active', x === b));
     renderColors();
   })
@@ -1178,6 +1383,7 @@ function newNote() {
 }
 
 async function openNote(n) {
+  commitEditor();
   // leere Notizen nicht aufheben
   if (note && note.id !== n.id && isEmpty(note)) {
     cancelSave();
@@ -1351,6 +1557,22 @@ function cmdsToPdf(cmds) {
   return out;
 }
 
+// Text für PDF: Sonderzeichen escapen, Umlaute als WinAnsi-Oktalcodes (Inhalt bleibt reines ASCII)
+function pdfText(s) {
+  let out = '';
+  for (const ch of s) {
+    const code = ch.codePointAt(0);
+    if (ch === '\\' || ch === '(' || ch === ')') out += '\\' + ch;
+    else if (code >= 32 && code < 127) out += ch;
+    else if (code === 0x20ac) out += '\\200';                     // €
+    else if (code >= 160 && code <= 255) out += '\\' + code.toString(8);
+    else if (code === 0x2013 || code === 0x2014) out += '-';
+    else if (code === 0x201e || code === 0x201c || code === 0x201d) out += '"';
+    else out += '?';
+  }
+  return out;
+}
+
 const pdfColor = (hex) => [1, 3, 5].map((i) => num(parseInt(hex.slice(i, i + 2), 16) / 255)).join(' ');
 
 function buildPdf(pages, paper) {
@@ -1361,6 +1583,7 @@ function buildPdf(pages, paper) {
   const catalog = add(null);
   const pagesObj = add(null);
   const gs = add('<< /Type /ExtGState /BM /Multiply >>');
+  const font = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
   const kids = [];
 
   pages.forEach((page) => {
@@ -1383,6 +1606,7 @@ function buildPdf(pages, paper) {
       c += 'f\n';
     }
     page.strokes.forEach((s) => {
+      if (s.tool === 'text') return;   // Text kommt weiter unten
       if (s.tool === 'marker') {
         c += `q /GS1 gs ${pdfColor(s.color)} RG ${num(strokeWidth(s))} w\n${cmdsToPdf(markerCmds(s))}S Q\n`;
       } else {
@@ -1392,8 +1616,16 @@ function buildPdf(pages, paper) {
       }
     });
     c += 'Q\n';
+    page.strokes.filter((t) => t.tool === 'text').forEach((t) => {
+      c += `BT /F1 ${num(t.size * S)} Tf ${pdfColor(t.color)} rg\n`;
+      textLines(t).forEach((l, i) => {
+        const yb = PAGE_H * S - (t.y + t.size + i * t.size * TEXT_LH) * S;
+        c += `1 0 0 1 ${num(t.x * S)} ${num(yb)} Tm (${pdfText(l)}) Tj\n`;
+      });
+      c += 'ET\n';
+    });
     const content = add(`<< /Length ${c.length} >>\nstream\n${c}endstream`);
-    kids.push(add(`<< /Type /Page /Parent ${pagesObj} 0 R /MediaBox [0 0 595.28 ${H}] /Resources << /ExtGState << /GS1 ${gs} 0 R >>${res} >> /Contents ${content} 0 R >>`));
+    kids.push(add(`<< /Type /Page /Parent ${pagesObj} 0 R /MediaBox [0 0 595.28 ${H}] /Resources << /ExtGState << /GS1 ${gs} 0 R >> /Font << /F1 ${font} 0 R >>${res} >> /Contents ${content} 0 R >>`));
   });
   objs[catalog - 1] = `<< /Type /Catalog /Pages ${pagesObj} 0 R >>`;
   objs[pagesObj - 1] = `<< /Type /Pages /Kids [${kids.map((k) => k + ' 0 R').join(' ')}] /Count ${kids.length} >>`;
@@ -1582,6 +1814,7 @@ setupFastInk();
   document.body.classList.toggle('finger-draw', fingerDraw);
   $('#finger-toggle').classList.toggle('active', fingerDraw);
   document.querySelectorAll('[data-tool]').forEach((x) => x.classList.toggle('active', x.dataset.tool === tool));
+  document.body.dataset.noteTool = tool;
   renderColors();
   renderSize();
   let all = [];

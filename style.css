@@ -348,6 +348,14 @@ body[data-view="notes"] .app { padding-top: 0; }
 /* Surface & Co.: App scrollt/zoomt selbst, der Browser darf mit dem Stift nicht scrollen */
 body.manual-touch .page-live { touch-action: none; }
 /* Schnelle Vorschau-Ebene (nicht iPad): liegt über den Seiten, fängt aber keine Eingaben ab */
+/* Textfeld beim Bearbeiten */
+.text-editor {
+  position: absolute; z-index: 3; margin: 0; padding: 0; border: 0; resize: none; overflow: hidden;
+  background: rgba(255, 255, 255, .85); outline: 1.5px dashed color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 4px; white-space: pre-wrap; word-break: break-word;
+  -webkit-user-select: text; user-select: text;
+}
+body[data-note-tool="text"] .pages .page-live { cursor: text; }
 .fast-ink { position: fixed; pointer-events: none; z-index: 4; display: none; }
 body[data-view="notes"] .fast-ink { display: block; }
 .fast-ink.blend { mix-blend-mode: multiply; }
