@@ -788,14 +788,22 @@ function cancelActive() {
 // Hebt der Stift beim schnellen Schreiben nur ganz kurz ab (oder meldet iOS kurz "Stift hoch"),
 // wird der Strich beim erneuten Aufsetzen weitergeführt. Sonst entstehen zwei Striche, deren
 // dünne Enden man als Kerbe oder Streifen sieht.
-const JOIN_MS = 120;     // so kurz darf die Pause sein
-const JOIN_DIST = 14;    // so nah (Seiten-Einheiten, ≈ 3 mm) muss der Stift wieder aufsetzen
-let lastEnd = null;      // { stroke, page, time, x, y, before }
+// Verbunden wird nur, wenn der vorige Strich UNSAUBER endete (vom System abgebrochen, "Stift hoch"
+// kam nie an). Normales Absetzen ist beim schnellen Schreiben gewollt und wird nie verbunden –
+// sonst verschmelzen Buchstaben. Auf dem iPad gibt es zusätzlich eine winzige Toleranz für
+// Mikro-Unterbrechungen des Pencils.
+const JOIN_MS = 120;          // Pause nach unsauberem Ende
+const JOIN_DIST = 14;         // Abstand nach unsauberem Ende (≈ 3 mm)
+const JOIN_MS_IOS = 60;       // iPad: Mikro-Unterbrechung nach normalem Absetzen
+const JOIN_DIST_IOS = 5;      // (≈ 1 mm)
+let lastEnd = null;      // { stroke, page, time, x, y, before, abnormal }
 
 function tryJoin(i, x, y) {
   const le = lastEnd;
-  if (!le || le.page !== i || performance.now() - le.time > JOIN_MS) return null;
-  if (Math.hypot(x - le.x, y - le.y) > JOIN_DIST) return null;
+  if (!le || le.page !== i) return null;
+  const dt = performance.now() - le.time, dist = Math.hypot(x - le.x, y - le.y);
+  const ok = le.abnormal ? dt <= JOIN_MS && dist <= JOIN_DIST : IS_IOS && dt <= JOIN_MS_IOS && dist <= JOIN_DIST_IOS;
+  if (!ok) return null;
   const page = note.pages[i];
   const old = page.strokes[page.strokes.length - 1];
   const s = le.stroke;
@@ -810,7 +818,7 @@ function tryJoin(i, x, y) {
 }
 
 // Strich fertigstellen und speichern
-function finishActive() {
+function finishActive(abnormal = false) {
   if (!active) return;
   clearTimeout(active.holdTimer);
   const pe = pageEls[active.page];
@@ -829,7 +837,7 @@ function finishActive() {
     pushHistory([{ page: active.page, before, after: page.strokes.slice() }]);
     saveNote();
     const pts = active.stroke.pts;
-    lastEnd = { stroke: active.stroke, page: active.page, time: performance.now(), x: pts[pts.length - 3], y: pts[pts.length - 2], before };
+    lastEnd = { stroke: active.stroke, page: active.page, time: performance.now(), x: pts[pts.length - 3], y: pts[pts.length - 2], before, abnormal };
   }
   active = null;
 }
@@ -842,7 +850,7 @@ function onDown(e) {
     lastPenTime = performance.now();
     if (fingerDraw) setFingerDraw(false, true);
     if (active && active.pointerType === 'touch') cancelActive();       // Handballen war zuerst da
-    else if (active && active.pointerType === 'pen') finishActive();    // "Loslassen" ging verloren
+    else if (active && active.pointerType === 'pen') finishActive(true);    // "Loslassen" ging verloren
   }
 
   if (e.pointerType === 'touch') {
@@ -1002,7 +1010,7 @@ function onUp(e) {
   // Bricht iOS einen Stift-Strich ab, wird er trotzdem behalten – bisher verschwand er dann.
   // Nur Finger-Striche werden bei einem Abbruch verworfen (dann war es meist eine Geste).
   if (e.type === 'pointercancel' && active.pointerType !== 'pen') cancelActive();
-  else finishActive();
+  else finishActive(e.type !== 'pointerup');   // pointercancel = vom System abgebrochen
 }
 
 pagesBox.addEventListener('pointerdown', onDown);
@@ -1017,7 +1025,7 @@ pagesBox.addEventListener('scroll', () => {
 // Langes Drücken mit dem Stift öffnet unter Windows sonst das Rechtsklick-Menü
 pagesBox.addEventListener('contextmenu', (e) => e.preventDefault());
 pagesBox.addEventListener('lostpointercapture', (e) => {
-  if (active && e.pointerId === active.id) finishActive();
+  if (active && e.pointerId === active.id) finishActive(true);
 });
 // Apple Pencil soll nie scrollen – nur der Finger (wenn "Finger zeichnet" aus ist)
 const blockScroll = (e) => {
