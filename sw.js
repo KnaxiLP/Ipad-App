@@ -1,10 +1,13 @@
 // Service Worker: speichert alle App-Dateien, damit die App auch offline startet.
 // Strategie: sofort aus dem Speicher laden und im Hintergrund aktualisieren.
 // Neue Versionen erscheinen dadurch spätestens beim zweiten Öffnen.
-const CACHE = 'test-app-v19';
+const CACHE = 'test-app-v20';
 // Python (Pyodide) separat speichern – ändert sich nie, bleibt über App-Updates erhalten
 const PY_CACHE = 'pyodide-v0.26.4';
 const PY_HOST = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/';
+// PDF.js (für den PDF-Import) ebenfalls dauerhaft speichern
+const PDF_CACHE = 'pdfjs-3.11.174';
+const PDF_HOST = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/';
 const FILES = [
   './',
   'index.html',
@@ -29,7 +32,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE && k !== PY_CACHE).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => k !== CACHE && k !== PY_CACHE && k !== PDF_CACHE).map((k) => caches.delete(k)))
     )
   );
   self.clients.claim();
@@ -39,9 +42,10 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
 
   // Pyodide-Dateien: einmal laden, danach immer aus dem Speicher (auch offline)
-  if (req.method === 'GET' && req.url.startsWith(PY_HOST)) {
+  const cdnCache = req.url.startsWith(PY_HOST) ? PY_CACHE : req.url.startsWith(PDF_HOST) ? PDF_CACHE : null;
+  if (req.method === 'GET' && cdnCache) {
     event.respondWith(
-      caches.open(PY_CACHE).then(async (cache) => {
+      caches.open(cdnCache).then(async (cache) => {
         const cached = await cache.match(req);
         if (cached) return cached;
         const res = await fetch(req);

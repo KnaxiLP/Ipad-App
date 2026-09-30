@@ -218,7 +218,7 @@
       <section class="view" id="view-info">
         <header class="view-header"><h2>Info</h2></header>
         <div class="list-group">
-          <div class="row"><span>Version</span><span class="muted">3.5</span></div>
+          <div class="row"><span>Version</span><span class="muted">3.6</span></div>
           <div class="row"><span>Als App gestartet</span><span class="muted" id="info-standalone">–</span></div>
           <div class="row"><span>Offline-Modus</span><span class="muted" id="info-sw">–</span></div>
           <div class="row"><span>Bildschirm</span><span class="muted" id="info-screen">–</span></div>
@@ -294,6 +294,8 @@
       <button type="button" data-paper="dots">Punkte</button>
     </div>
     <div class="menu-list">
+      <button type="button" class="menu-item" id="note-import">PDF oder Bild importieren</button>
+      <input type="file" id="import-file" accept="application/pdf,image/*,.pdf,.goodnotes" hidden>
       <button type="button" class="menu-item" id="note-export-pdf">Als PDF teilen (Vektor, scharf in Goodnotes)</button>
       <button type="button" class="menu-item" id="note-export">Als Bild teilen oder speichern</button>
       <button type="button" class="menu-item" id="note-clear-page">Alle Seiten leeren</button>

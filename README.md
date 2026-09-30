@@ -47,6 +47,7 @@ Jetzt startet die Seite vom Home-Bildschirm aus wie eine App.
 - Radiergummi-Ende oder Seitentaste am Stift (z. B. Surface Pen) radiert
 - Läuft auf iPad **und** Windows-Tablets wie dem Surface (dort übernimmt die App Finger-Scrollen und Zoomen selbst)
 - **Zoomen** mit zwei Fingern (oder − / + in der Leiste, Tippen auf die Prozentzahl = 100 %)
+- **Import** (⋯ → „PDF oder Bild importieren“): PDFs werden zu einer neuen Notiz, auf der man schreiben kann; Bilder kommen als neue Seite dazu. Goodnotes-Notizen vorher in Goodnotes als PDF exportieren.
 - Alles ist **Vektorgrafik (SVG)**: Schrift bleibt in jeder Größe gestochen scharf
 - Export als **PDF (Vektor)**, ideal zum Import in Goodnotes, oder als Bild (⋯ → Teilen)
 - Alles wird nur auf dem Gerät gespeichert

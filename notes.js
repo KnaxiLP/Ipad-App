@@ -59,7 +59,7 @@ let pageEls = [];
 let active = null;     // aktueller Strich / Radiervorgang
 let saveTimer = null;
 
-const isEmpty = (n) => !n.title && n.pages.every((p) => p.strokes.length === 0);
+const isEmpty = (n) => !n.title && n.pages.every((p) => p.strokes.length === 0 && !p.bg);
 
 // Gespeichert wird spätestens 1 s nach einer Änderung – auch beim Dauerschreiben.
 // (Nicht bei jedem Strich sofort, weil das Speichern die ganze Notiz kopiert.)
@@ -367,6 +367,11 @@ function drawPaper(ctx, paper) {
 function renderPageTo(ctx, page, scale) {
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   drawPaper(ctx, note.paper);
+  if (page.bg) {
+    bgUrl(page.bg);
+    const img = bgImgs.get(page.bg);
+    if (img && img.complete && img.naturalWidth) ctx.drawImage(img, page.bg.x, page.bg.y, page.bg.width, page.bg.height);
+  }
   page.strokes.forEach((s) => drawStroke(ctx, s));
 }
 
@@ -411,10 +416,32 @@ function buildPages() {
   $('#add-page').hidden = note.pages.length >= MAX_PAGES;
 }
 
+// ---------- Hintergrundbilder (importierte PDF-Seiten und Bilder) ----------
+// Gespeichert als JPEG-Bytes auf der Seite: page.bg = { data, w, h, x, y, width, height }
+// (w/h = Pixel, x/y/width/height = Position auf der Seite in Seiten-Einheiten)
+const bgUrls = new WeakMap();
+const bgImgs = new WeakMap();
+
+function bgUrl(bg) {
+  let u = bgUrls.get(bg);
+  if (!u) {
+    u = URL.createObjectURL(new Blob([bg.data], { type: 'image/jpeg' }));
+    bgUrls.set(bg, u);
+    const img = new Image();       // für den Bild-Export schon mal laden
+    img.src = u;
+    bgImgs.set(bg, img);
+  }
+  return u;
+}
+
+function bgSvg(bg) {
+  return bg ? `<image href="${bgUrl(bg)}" x="${num(bg.x)}" y="${num(bg.y)}" width="${num(bg.width)}" height="${num(bg.height)}" preserveAspectRatio="none"/>` : '';
+}
+
 function drawPage(i) {
   const pe = pageEls[i];
   if (!pe) return;
-  pe.paper.innerHTML = paperSvg(note.paper);
+  pe.paper.innerHTML = paperSvg(note.paper) + bgSvg(note.pages[i].bg);
   pe.ink.innerHTML = note.pages[i].strokes.map(strokeSvg).join('');
 }
 
@@ -1337,11 +1364,20 @@ function buildPdf(pages, paper) {
   const kids = [];
 
   pages.forEach((page) => {
-    let c = `q\n${S.toFixed(6)} 0 0 ${(-S).toFixed(6)} 0 ${H} cm\n1 J 1 j\n`;
-    paperLines(paper).forEach(([color, w, cmds]) => {
+    let c = '';
+    let res = '';
+    if (page.bg) {
+      const bg = page.bg;
+      const img = add({ head: `<< /Type /XObject /Subtype /Image /Width ${bg.w} /Height ${bg.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bg.data.length} >>`, data: bg.data });
+      res = ` /XObject << /Im1 ${img} 0 R >>`;
+      // Bild in PDF-Koordinaten (Ursprung unten links)
+      c += `q ${num(bg.width * S)} 0 0 ${num(bg.height * S)} ${num(bg.x * S)} ${num(PAGE_H * S - (bg.y + bg.height) * S)} cm /Im1 Do Q\n`;
+    }
+    c += `q\n${S.toFixed(6)} 0 0 ${(-S).toFixed(6)} 0 ${H} cm\n1 J 1 j\n`;
+    if (!page.bg) paperLines(paper).forEach(([color, w, cmds]) => {
       c += `${pdfColor(color)} RG ${w} w\n${cmdsToPdf(cmds)}S\n`;
     });
-    if (paper === 'dots') {
+    if (paper === 'dots' && !page.bg) {
       c += `${pdfColor('#b4b4bb')} rg\n`;
       forEachDot((x, y) => { const d = []; circleCmds(d, x, y, 1.4); c += cmdsToPdf(d); });
       c += 'f\n';
@@ -1357,22 +1393,34 @@ function buildPdf(pages, paper) {
     });
     c += 'Q\n';
     const content = add(`<< /Length ${c.length} >>\nstream\n${c}endstream`);
-    kids.push(add(`<< /Type /Page /Parent ${pagesObj} 0 R /MediaBox [0 0 595.28 ${H}] /Resources << /ExtGState << /GS1 ${gs} 0 R >> >> /Contents ${content} 0 R >>`));
+    kids.push(add(`<< /Type /Page /Parent ${pagesObj} 0 R /MediaBox [0 0 595.28 ${H}] /Resources << /ExtGState << /GS1 ${gs} 0 R >>${res} >> /Contents ${content} 0 R >>`));
   });
   objs[catalog - 1] = `<< /Type /Catalog /Pages ${pagesObj} 0 R >>`;
   objs[pagesObj - 1] = `<< /Type /Pages /Kids [${kids.map((k) => k + ' 0 R').join(' ')}] /Count ${kids.length} >>`;
 
-  let pdf = '%PDF-1.4\n';
+  // Zusammenbauen als Bytes – Text ist reines ASCII, Bilder sind binär
+  const enc = new TextEncoder();
+  const chunks = [];
+  let size = 0;
+  const put = (x) => { const b = typeof x === 'string' ? enc.encode(x) : x; chunks.push(b); size += b.length; };
+  put('%PDF-1.4\n');
   const offsets = [];
   objs.forEach((body, i) => {
-    offsets.push(pdf.length);
-    pdf += `${i + 1} 0 obj\n${body}\nendobj\n`;
+    offsets.push(size);
+    if (typeof body === 'string') {
+      put(`${i + 1} 0 obj\n${body}\nendobj\n`);
+    } else {
+      put(`${i + 1} 0 obj\n${body.head}\nstream\n`);
+      put(body.data);
+      put('\nendstream\nendobj\n');
+    }
   });
-  const xref = pdf.length;
-  pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
-  offsets.forEach((o) => { pdf += String(o).padStart(10, '0') + ' 00000 n \n'; });
-  pdf += `trailer\n<< /Size ${objs.length + 1} /Root ${catalog} 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
-  return pdf;
+  const xref = size;
+  let tail = `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
+  offsets.forEach((o) => { tail += String(o).padStart(10, '0') + ' 00000 n \n'; });
+  tail += `trailer\n<< /Size ${objs.length + 1} /Root ${catalog} 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  put(tail);
+  return new Blob(chunks, { type: 'application/pdf' });
 }
 
 function shareFiles(files, title) {
@@ -1391,10 +1439,134 @@ function shareFiles(files, title) {
 
 $('#note-export-pdf').addEventListener('click', () => {
   const base = (note.title || 'Notiz').replace(/[^\wäöüÄÖÜß -]/g, '').trim() || 'Notiz';
-  let pages = note.pages.filter((p) => p.strokes.length);
+  let pages = note.pages.filter((p) => p.strokes.length || p.bg);
   if (!pages.length) pages = note.pages.slice(0, 1);
   const file = new File([buildPdf(pages, note.paper)], base + '.pdf', { type: 'application/pdf' });
   shareFiles([file], base);
+});
+
+// ---------- Import: PDF und Bilder ----------
+const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/';
+const IMPORT_WIDTH = 1600;       // Pixelbreite, in der importierte Seiten gespeichert werden
+const MAX_IMPORT_PAGES = MAX_PAGES;
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Laden fehlgeschlagen'));
+    document.head.append(s);
+  });
+}
+
+async function pdfLib() {
+  if (!window.pdfjsLib) {
+    await loadScript(PDFJS + 'pdf.min.js');
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js';
+  }
+  return window.pdfjsLib;
+}
+
+// Bild so auf die A4-Seite setzen, dass es ganz draufpasst (oben bündig)
+function placeOnPage(w, h) {
+  const ratio = h / w;
+  if (ratio <= PAGE_H / PAGE_W) return { x: 0, y: 0, width: PAGE_W, height: PAGE_W * ratio };
+  const width = PAGE_H / ratio;
+  return { x: (PAGE_W - width) / 2, y: 0, width, height: PAGE_H };
+}
+
+async function canvasToBg(canvas) {
+  const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.88));
+  const data = new Uint8Array(await blob.arrayBuffer());
+  return { data, w: canvas.width, h: canvas.height, ...placeOnPage(canvas.width, canvas.height) };
+}
+
+async function imageFileToBg(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const k = Math.min(1, IMPORT_WIDTH / img.naturalWidth);
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.naturalWidth * k);
+    c.height = Math.round(img.naturalHeight * k);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff';                 // durchsichtige PNGs auf weißem Papier
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    return await canvasToBg(c);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function importPdf(file) {
+  toast('PDF wird geladen …');
+  let lib;
+  try { lib = await pdfLib(); } catch {
+    return toast('PDF-Import braucht beim ersten Mal Internet');
+  }
+  const pdf = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const count = Math.min(pdf.numPages, MAX_IMPORT_PAGES);
+  const n = newNote();
+  n.title = file.name.replace(/\.pdf$/i, '').slice(0, 40);
+  n.paper = 'blank';
+  n.pages = [];
+  for (let i = 1; i <= count; i++) {
+    toast(`Seite ${i} von ${count} …`);
+    const page = await pdf.getPage(i);
+    const base = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: IMPORT_WIDTH / base.width });
+    const c = document.createElement('canvas');
+    c.width = Math.round(viewport.width);
+    c.height = Math.round(viewport.height);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    n.pages.push({ strokes: [], bg: await canvasToBg(c) });
+  }
+  await noteDb.put(n);
+  await openNote(n);
+  toast(pdf.numPages > count ? `Importiert (nur die ersten ${count} Seiten)` : `${count} ${count === 1 ? 'Seite' : 'Seiten'} importiert`);
+}
+
+async function importImage(file) {
+  if (note.pages.length >= MAX_PAGES) return toast('Diese Notiz hat schon die maximale Seitenzahl');
+  const bg = await imageFileToBg(file);
+  // leere letzte Seite wiederverwenden, sonst neue Seite anhängen
+  const last = note.pages[note.pages.length - 1];
+  if (last && !last.strokes.length && !last.bg) last.bg = bg;
+  else note.pages.push({ strokes: [], bg });
+  buildPages();
+  saveNote();
+  pageEls[pageEls.length - 1].wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  toast('Bild importiert');
+}
+
+$('#note-import').addEventListener('click', () => $('#import-file').click());
+$('#import-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  $('#more-dialog').close();
+  if (!file) return;
+  const name = file.name.toLowerCase();
+  try {
+    if (name.endsWith('.goodnotes')) {
+      alert('Goodnotes-Dateien haben ein eigenes, nicht offenes Format.\n\nSo geht es: In Goodnotes die Notiz öffnen → Teilen → Exportieren → PDF. Diese PDF dann hier importieren.');
+    } else if (file.type === 'application/pdf' || name.endsWith('.pdf')) {
+      await importPdf(file);
+    } else if (file.type.startsWith('image/') || /\.(png|jpe?g|heic|gif|webp)$/.test(name)) {
+      await importImage(file);
+    } else {
+      toast('Dieses Dateiformat wird nicht unterstützt');
+    }
+  } catch (err) {
+    toast('Import fehlgeschlagen');
+    console.error(err);
+  }
 });
 
 // Beim Wechseln/Schließen der App sofort speichern
