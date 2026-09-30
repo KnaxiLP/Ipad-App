@@ -413,8 +413,57 @@ function drawPage(i) {
 }
 
 // Live-Vorschau: nur der Pfad des aktuellen Strichs wird neu berechnet
-function drawActiveStroke() {
+// ---------- Schnelle Vorschau (Surface, Android, PC) ----------
+// Chrome kann eine Zeichenfläche "desynchronized" direkt auf den Bildschirm bringen – ohne
+// den üblichen Umweg über den Seitenaufbau. Der Strich, der gerade geschrieben wird, landet
+// deshalb dort; erst beim Absetzen wird er als Vektor (SVG) in die Seite übernommen.
+// Auf dem iPad bleibt es beim SVG – dort ist es schon schnell genug.
+const FAST_INK = !IS_IOS;
+let fastInk = null;
+
+function setupFastInk() {
+  if (!FAST_INK || fastInk) return;
+  const c = document.createElement('canvas');
+  c.className = 'fast-ink';
+  document.body.append(c);
+  let ctx = null;
+  try { ctx = c.getContext('2d', { desynchronized: true }); } catch {}
+  if (!ctx) ctx = c.getContext('2d');
+  fastInk = { c, ctx, left: 0, top: 0, w: 0, h: 0, dpr: 1 };
+  sizeFastInk();
+  window.addEventListener('resize', sizeFastInk);
+  window.addEventListener('viewchange', () => requestAnimationFrame(sizeFastInk));
+}
+
+function sizeFastInk() {
+  if (!fastInk) return;
+  const r = pagesBox.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  if (r.left === fastInk.left && r.top === fastInk.top && r.width === fastInk.w && r.height === fastInk.h && dpr === fastInk.dpr) return;
+  Object.assign(fastInk, { left: r.left, top: r.top, w: r.width, h: r.height, dpr });
+  const st = fastInk.c.style;
+  st.left = r.left + 'px'; st.top = r.top + 'px'; st.width = r.width + 'px'; st.height = r.height + 'px';
+  fastInk.c.width = Math.max(1, Math.round(r.width * dpr));
+  fastInk.c.height = Math.max(1, Math.round(r.height * dpr));
+}
+
+function clearFastInk() {
+  if (!fastInk) return;
+  fastInk.ctx.setTransform(1, 0, 0, 1, 0, 0);
+  fastInk.ctx.clearRect(0, 0, fastInk.c.width, fastInk.c.height);
+}
+
+function drawActiveStroke(predicted) {
   const s = active.stroke;
+  if (fastInk) {
+    // vorhergesagte Punkte nur anzeigen, nicht speichern
+    const st = predicted && predicted.length ? { ...s, pts: s.pts.concat(predicted) } : s;
+    const { ctx, dpr } = fastInk, r = active.rect, k = r.width / PAGE_W;
+    clearFastInk();
+    ctx.setTransform(dpr * k, 0, 0, dpr * k, dpr * (r.left - fastInk.left), dpr * (r.top - fastInk.top));
+    drawStroke(ctx, st);
+    fastInk.c.classList.toggle('blend', s.tool === 'marker');
+    return;
+  }
   if (s.tool === 'marker') {
     active.live.setAttribute('d', cmdsToSvg(markerCmds(s)));
   } else {
@@ -425,6 +474,9 @@ function drawActiveStroke() {
 }
 
 function clearLive(pe) {
+  if (fastInk) {
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (!active) clearFastInk(); }));
+  }
   pe.live.removeAttribute('d');
   pe.liveDots.removeAttribute('d');
   pe.eraser.setAttribute('r', 0);
@@ -825,7 +877,7 @@ function onDown(e) {
     pointerType: e.pointerType,
     page: i,
     tool,
-    rect: canvas.getBoundingClientRect()
+    rect: (sizeFastInk(), canvas.getBoundingClientRect())
   };
   const [x, y, p] = toPage(e);
   if (tool === 'eraser') {
@@ -922,7 +974,18 @@ function onMove(e) {
       }
     }
   }
-  if (active.tool !== 'eraser') drawActiveStroke();
+  if (active.tool !== 'eraser') {
+    let predicted = null;
+    if (fastInk && e.getPredictedEvents) {
+      const pr = active.stroke.pts[active.stroke.pts.length - 1];
+      predicted = [];
+      e.getPredictedEvents().slice(0, 2).forEach((ev) => {
+        const [px, py] = toPage(ev);
+        predicted.push(px, py, pr);
+      });
+    }
+    drawActiveStroke(predicted);
+  }
 }
 
 function onUp(e) {
@@ -1337,6 +1400,7 @@ window.addEventListener('pagehide', flushNoteSave);
 document.addEventListener('visibilitychange', () => document.hidden && flushNoteSave());
 
 // ---------- Start ----------
+setupFastInk();
 (async () => {
   document.body.classList.toggle('finger-draw', fingerDraw);
   $('#finger-toggle').classList.toggle('active', fingerDraw);

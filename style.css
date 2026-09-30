@@ -347,6 +347,12 @@ body[data-view="notes"] .app { padding-top: 0; }
 .page-live { touch-action: pan-x pan-y; }
 /* Surface & Co.: App scrollt/zoomt selbst, der Browser darf mit dem Stift nicht scrollen */
 body.manual-touch .page-live { touch-action: none; }
+/* Schnelle Vorschau-Ebene (nicht iPad): liegt über den Seiten, fängt aber keine Eingaben ab */
+.fast-ink { position: fixed; pointer-events: none; z-index: 4; display: none; }
+body[data-view="notes"] .fast-ink { display: block; }
+.fast-ink.blend { mix-blend-mode: multiply; }
+/* Stift/Maus: kleiner Punkt statt Pfeil */
+body.manual-touch .page-live { cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'><circle cx='5' cy='5' r='2.5' fill='%231c1c1e' stroke='white' stroke-width='1'/></svg>") 5 5, crosshair; }
 body.finger-draw .page-live { touch-action: none; }
 .page-num { position: absolute; right: 12px; bottom: 8px; font-size: 12px; color: #a1a1aa; pointer-events: none; }
 .add-page { display: block; width: min(calc(100% - 40px), 860px); margin: 0 auto 28px; background: var(--bar-bg); color: var(--ink-active); }
