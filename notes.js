@@ -107,23 +107,16 @@ const RESAMPLE_STEP = 1.5; // Abstand der Punkte in Seiten-Einheiten (≈ 0,3 mm
 function strokeOutline(s) {
   const p = s.pts, n = p.length / 3;
 
-  // 1. Zittern herausfiltern: jeder Punkt zieht die Linie nur zu 55 % zu sich
-  // (erkannte Formen wie Linien oder Rechtecke werden nicht geglättet – Ecken bleiben spitz)
-  const follow = s.shape ? 1 : 0.55;
+  // 1. Rohpunkte übernehmen, der Druck wird leicht geglättet
   const raw = [];
-  let x = p[0], y = p[1], pr = p[2];
-  raw.push([x, y, pr]);
-  for (let i = 1; i < n; i++) {
-    x += (p[i * 3] - x) * follow;
-    y += (p[i * 3 + 1] - y) * follow;
+  let pr = p[2];
+  for (let i = 0; i < n; i++) {
     pr += (p[i * 3 + 2] - pr) * 0.5;
-    raw.push([x, y, pr]);
+    raw.push([p[i * 3], p[i * 3 + 1], pr]);
   }
-  // Ende genau an der Stiftspitze, damit die Linie nicht "hinterherhängt"
-  if (n > 1) raw.push([p[(n - 1) * 3], p[(n - 1) * 3 + 1], pr]);
 
-  // 2. Gleichmäßig verteilen: Der Pencil liefert sehr dichte, unregelmäßige Punkte. Aus winzigen
-  //    Abständen lässt sich die Richtung nicht sauber bestimmen – der Rand würde wellig.
+  // 2. Gleichmäßig verteilen – ZUERST, damit die Glättung danach unabhängig von der
+  //    Schreibgeschwindigkeit ist (schnell = wenige, weit entfernte Punkte, langsam = viele dichte).
   const pts = [raw[0].slice()];
   let carry = 0;
   for (let i = 1; i < raw.length; i++) {
@@ -141,9 +134,22 @@ function strokeOutline(s) {
   const end = raw[raw.length - 1], lastP = pts[pts.length - 1];
   if (Math.hypot(end[0] - lastP[0], end[1] - lastP[1]) > RESAMPLE_STEP * 0.3) pts.push(end.slice());
 
-  // 3. Sanft glätten (Anfang und Ende bleiben, wo sie sind)
+  // 3. Scharfe Kehren finden (m, n, u, h …) – die werden NICHT geglättet, sonst verschmelzen
+  //    Auf- und Abstrich. Erkannte Formen (Linie, Rechteck …) werden gar nicht geglättet.
+  const keep = new Uint8Array(pts.length);
+  keep[0] = keep[pts.length - 1] = 1;
+  const W = 3;
+  for (let i = W; i < pts.length - W; i++) {
+    const ax = pts[i][0] - pts[i - W][0], ay = pts[i][1] - pts[i - W][1];
+    const bx = pts[i + W][0] - pts[i][0], by = pts[i + W][1] - pts[i][1];
+    const cos = (ax * bx + ay * by) / ((Math.hypot(ax, ay) * Math.hypot(bx, by)) || 1);
+    if (cos < 0.2) keep[i] = 1;   // Richtungswechsel über ~80°
+  }
+
+  // 4. Sanft glätten (nur das Zittern, gleich stark bei jeder Geschwindigkeit)
   for (let pass = 0; pass < (s.shape ? 0 : 2); pass++) {
     for (let i = pts.length - 2; i >= 1; i--) {
+      if (keep[i]) continue;
       pts[i][0] = pts[i - 1][0] * 0.25 + pts[i][0] * 0.5 + pts[i + 1][0] * 0.25;
       pts[i][1] = pts[i - 1][1] * 0.25 + pts[i][1] * 0.5 + pts[i + 1][1] * 0.25;
     }
@@ -983,16 +989,7 @@ function onMove(e) {
     }
   }
   if (active.tool !== 'eraser') {
-    let predicted = null;
-    if (fastInk && e.getPredictedEvents) {
-      const pr = active.stroke.pts[active.stroke.pts.length - 1];
-      predicted = [];
-      e.getPredictedEvents().slice(0, 2).forEach((ev) => {
-        const [px, py] = toPage(ev);
-        predicted.push(px, py, pr);
-      });
-    }
-    drawActiveStroke(predicted);
+    drawActiveStroke();
   }
 }
 
