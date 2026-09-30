@@ -166,10 +166,12 @@ function smoothCmds(cmds, list) {
   cmds.push(['L', last[0], last[1]]);
 }
 
-// Stift: gefüllter Umriss mit runden Kappen
+// Stift: gefüllter Umriss mit runden Kappen. Die runden Punkte an scharfen Kehren kommen in
+// einen EIGENEN Pfad: im selben Pfad heben sie sich je nach Laufrichtung mit dem Umriss auf,
+// und es entstehen weiße Löcher.
 function penCmds(s) {
-  const o = strokeOutline(s), cmds = [], k = o.pts.length;
-  if (k === 1) { circleCmds(cmds, o.pts[0][0], o.pts[0][1], o.r[0]); return cmds; }
+  const o = strokeOutline(s), cmds = [], dots = [], k = o.pts.length;
+  if (k === 1) { circleCmds(cmds, o.pts[0][0], o.pts[0][1], o.r[0]); return { outline: cmds, dots }; }
   const e = k - 1;
   cmds.push(['M', o.left[0][0], o.left[0][1]]);
   smoothCmds(cmds, o.left);
@@ -177,8 +179,8 @@ function penCmds(s) {
   smoothCmds(cmds, o.right.slice().reverse());
   arcTo(cmds, o.pts[0][0], o.pts[0][1], o.r[0], o.angles[0] + Math.PI, o.angles[0]);   // Anfang
   cmds.push(['Z']);
-  o.corners.forEach((i) => circleCmds(cmds, o.pts[i][0], o.pts[i][1], o.r[i]));
-  return cmds;
+  o.corners.forEach((i) => circleCmds(dots, o.pts[i][0], o.pts[i][1], o.r[i]));
+  return { outline: cmds, dots };
 }
 
 // Textmarker: Mittellinie, die mit fester Breite nachgezogen wird
@@ -224,9 +226,16 @@ function strokeSvg(s) {
   if (!out) {
     out = s.tool === 'marker'
       ? `<path ${markerAttrs(s.color, strokeWidth(s))} d="${cmdsToSvg(markerCmds(s))}"/>`
-      : `<path fill="${s.color}" d="${cmdsToSvg(penCmds(s))}"/>`;
+      : penSvg(s);
     svgCache.set(s, out);
   }
+  return out;
+}
+
+function penSvg(s) {
+  const { outline, dots } = penCmds(s);
+  let out = `<path fill="${s.color}" d="${cmdsToSvg(outline)}"/>`;
+  if (dots.length) out += `<path fill="${s.color}" d="${cmdsToSvg(dots)}"/>`;
   return out;
 }
 
@@ -243,8 +252,10 @@ function drawStroke(ctx, s) {
     ctx.stroke();
   } else {
     ctx.fillStyle = s.color;
-    cmdsToCanvas(ctx, penCmds(s));
+    const { outline, dots } = penCmds(s);
+    cmdsToCanvas(ctx, outline);
     ctx.fill();
+    if (dots.length) { cmdsToCanvas(ctx, dots); ctx.fill(); }
   }
   ctx.restore();
 }
@@ -329,14 +340,15 @@ function buildPages() {
     const paper = svgEl('g');
     const ink = svgEl('g');
     const live = svgEl('path');                 // der Strich, der gerade geschrieben wird
+    const liveDots = svgEl('path');             // seine runden Punkte an Kehren
     const eraser = svgEl('circle', { fill: 'none', stroke: '#8e8e93', 'stroke-width': 1.5, r: 0 });
-    svg.append(paper, ink, live, eraser);
+    svg.append(paper, ink, live, liveDots, eraser);
     const numEl = document.createElement('span');
     numEl.className = 'page-num';
     numEl.textContent = i + 1;
     wrap.append(svg, numEl);
     box.append(wrap);
-    return { wrap, svg, paper, ink, live, eraser };
+    return { wrap, svg, paper, ink, live, liveDots, eraser };
   });
   pageEls.forEach((_, i) => drawPage(i));
   $('#add-page').hidden = note.pages.length >= MAX_PAGES;
@@ -352,11 +364,18 @@ function drawPage(i) {
 // Live-Vorschau: nur der Pfad des aktuellen Strichs wird neu berechnet
 function drawActiveStroke() {
   const s = active.stroke;
-  active.live.setAttribute('d', cmdsToSvg(s.tool === 'marker' ? markerCmds(s) : penCmds(s)));
+  if (s.tool === 'marker') {
+    active.live.setAttribute('d', cmdsToSvg(markerCmds(s)));
+  } else {
+    const { outline, dots } = penCmds(s);
+    active.live.setAttribute('d', cmdsToSvg(outline));
+    active.liveDots.setAttribute('d', cmdsToSvg(dots));
+  }
 }
 
 function clearLive(pe) {
   pe.live.removeAttribute('d');
+  pe.liveDots.removeAttribute('d');
   pe.eraser.setAttribute('r', 0);
 }
 
@@ -528,6 +547,8 @@ function onDown(e) {
     active.pressure = p;
     const live = pageEls[i].live;
     active.live = live;
+    active.liveDots = pageEls[i].liveDots;
+    active.liveDots.setAttribute('fill', active.stroke.color);
     // Aussehen des Live-Pfads passend zum Werkzeug
     for (const a of ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'style']) live.removeAttribute(a);
     if (isMarker) {
@@ -906,7 +927,9 @@ function buildPdf(pages, paper) {
       if (s.tool === 'marker') {
         c += `q /GS1 gs ${pdfColor(s.color)} RG ${num(strokeWidth(s))} w\n${cmdsToPdf(markerCmds(s))}S Q\n`;
       } else {
-        c += `${pdfColor(s.color)} rg\n${cmdsToPdf(penCmds(s))}f\n`;
+        const { outline, dots } = penCmds(s);
+        c += `${pdfColor(s.color)} rg\n${cmdsToPdf(outline)}f\n`;
+        if (dots.length) c += `${cmdsToPdf(dots)}f\n`;
       }
     });
     c += 'Q\n';
