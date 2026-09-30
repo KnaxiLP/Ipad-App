@@ -87,7 +87,7 @@ const strokeWidth = (s) => s.size * BASE_WIDTH[s.tool];
 // Radius je Punkt: Füller reagiert auf Druck, Kugelschreiber bleibt fast gleich dick
 function pointRadius(s, p) {
   const w = strokeWidth(s) / 2;
-  return s.style === 'ball' ? w * (0.9 + 0.2 * p) : w * (0.3 + 1.4 * Math.pow(p, 0.8));
+  return s.style === 'ball' ? w * (0.9 + 0.2 * p) : w * (0.5 + 1.2 * Math.pow(p, 0.8));
 }
 
 // Berechnet den Umriss eines Strichs (wie bei Goodnotes):
@@ -421,6 +421,7 @@ function clearLive(pe) {
 
 // ---------- Rückgängig / Wiederholen ----------
 function pushHistory(changes) {
+  if (!changes.some((c) => c.after.length > c.before.length)) lastEnd = null;
   undoStack.push(changes);
   if (undoStack.length > 100) undoStack.shift();
   redoStack = [];
@@ -428,6 +429,7 @@ function pushHistory(changes) {
 }
 
 function applyHistory(from, to, key) {
+  lastEnd = null;
   const changes = from.pop();
   if (!changes) return;
   changes.forEach((c) => {
@@ -517,6 +519,30 @@ function cancelActive() {
   active = null;
 }
 
+// Hebt der Stift beim schnellen Schreiben nur ganz kurz ab (oder meldet iOS kurz "Stift hoch"),
+// wird der Strich beim erneuten Aufsetzen weitergeführt. Sonst entstehen zwei Striche, deren
+// dünne Enden man als Kerbe oder Streifen sieht.
+const JOIN_MS = 120;     // so kurz darf die Pause sein
+const JOIN_DIST = 14;    // so nah (Seiten-Einheiten, ≈ 3 mm) muss der Stift wieder aufsetzen
+let lastEnd = null;      // { stroke, page, time, x, y, before }
+
+function tryJoin(i, x, y) {
+  const le = lastEnd;
+  if (!le || le.page !== i || performance.now() - le.time > JOIN_MS) return null;
+  if (Math.hypot(x - le.x, y - le.y) > JOIN_DIST) return null;
+  const page = note.pages[i];
+  const old = page.strokes[page.strokes.length - 1];
+  const s = le.stroke;
+  // nur, wenn es wirklich derselbe Stift mit derselben Einstellung ist und nichts dazwischenkam
+  if (old !== s || s.color !== active.color || s.size !== size || (s.style || 'pen') !== active.style || s.tool !== active.strokeTool) return null;
+  // letzten Eintrag in "Rückgängig" zusammenfassen: der verbundene Strich ist dann EIN Schritt
+  const h = undoStack[undoStack.length - 1];
+  if (h && h.length === 1 && h[0].page === i && h[0].after[h[0].after.length - 1] === old) undoStack.pop();
+  page.strokes.pop();
+  drawPage(i);
+  return { stroke: { ...s, pts: s.pts.slice() }, before: le.before };
+}
+
 // Strich fertigstellen und speichern
 function finishActive() {
   if (!active) return;
@@ -529,12 +555,14 @@ function finishActive() {
       saveNote();
     }
   } else {
-    const before = page.strokes.slice();
+    const before = active.joinBefore || page.strokes.slice();
     page.strokes.push(active.stroke);
     pe.ink.insertAdjacentHTML('beforeend', strokeSvg(active.stroke));
     clearLive(pe);
     pushHistory([{ page: active.page, before, after: page.strokes.slice() }]);
     saveNote();
+    const pts = active.stroke.pts;
+    lastEnd = { stroke: active.stroke, page: active.page, time: performance.now(), x: pts[pts.length - 3], y: pts[pts.length - 2], before };
   }
   active = null;
 }
@@ -582,9 +610,22 @@ function onDown(e) {
   } else {
     const isMarker = tool === 'marker';
     const colors = isMarker ? MARKER_COLORS : PEN_COLORS;
-    active.stroke = { tool: isMarker ? 'marker' : 'pen', color: colors[colorSel[isMarker ? 'marker' : 'pen']], size, pts: [x, y, p] };
-    if (tool === 'ball') active.stroke.style = 'ball';
-    active.pressure = p;
+    active.color = colors[colorSel[isMarker ? 'marker' : 'pen']];
+    active.strokeTool = isMarker ? 'marker' : 'pen';
+    active.style = tool === 'ball' ? 'ball' : 'pen';
+    const joined = tryJoin(i, x, y);
+    if (joined) {
+      // am alten Strich weiterschreiben; die Lücke wird gerade verbunden
+      active.stroke = joined.stroke;
+      active.joinBefore = joined.before;
+      active.stroke.pts.push(Math.round(x * 10) / 10, Math.round(y * 10) / 10, active.stroke.pts[active.stroke.pts.length - 1]);
+      active.pressure = active.stroke.pts[active.stroke.pts.length - 1];
+    } else {
+      active.stroke = { tool: active.strokeTool, color: active.color, size, pts: [x, y, p] };
+      if (tool === 'ball') active.stroke.style = 'ball';
+      active.pressure = p;
+    }
+    lastEnd = null;
     const live = pageEls[i].live;
     active.live = live;
     active.liveDots = pageEls[i].liveDots;
@@ -790,6 +831,7 @@ async function openNote(n) {
   note = n;
   store.set('currentNote', n.id);
   undoStack = [];
+  lastEnd = null;
   redoStack = [];
   updateUndoButtons();
   $('#note-title').value = n.title;
