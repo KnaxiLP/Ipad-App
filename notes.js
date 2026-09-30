@@ -320,7 +320,7 @@ function svgEl(name, attrs = {}) {
 }
 
 function buildPages() {
-  const box = $('#pages');
+  const box = $('#pages-inner');
   box.innerHTML = '';
   pageEls = note.pages.map((_, i) => {
     const wrap = document.createElement('div');
@@ -429,9 +429,14 @@ function eraseAt(x, y) {
 }
 
 // ---------- Stift-Eingabe ----------
+const pagesBox = $('#pages');        // scrollbarer Bereich mit den Seiten
+const pagesInner = $('#pages-inner');
 const touches = new Map();
 let pan = null;
-const avgY = () => [...touches.values()].reduce((a, t) => a + t.y, 0) / touches.size;
+const avgTouch = () => {
+  const list = [...touches.values()];
+  return { x: list.reduce((a, t) => a + t.x, 0) / list.length, y: list.reduce((a, t) => a + t.y, 0) / list.length };
+};
 
 function toPage(e) {
   return [
@@ -441,6 +446,7 @@ function toPage(e) {
   ];
 }
 
+// Strich verwerfen (z. B. wenn aus einem Finger-Strich doch eine Zwei-Finger-Geste wird)
 function cancelActive() {
   if (!active) return;
   const pe = pageEls[active.page];
@@ -452,26 +458,54 @@ function cancelActive() {
   active = null;
 }
 
+// Strich fertigstellen und speichern
+function finishActive() {
+  if (!active) return;
+  const pe = pageEls[active.page];
+  const page = note.pages[active.page];
+  if (active.tool === 'eraser') {
+    clearLive(pe);
+    if (page.strokes.length !== active.before.length) {
+      pushHistory([{ page: active.page, before: active.before, after: page.strokes.slice() }]);
+      saveNote();
+    }
+  } else {
+    const before = page.strokes.slice();
+    page.strokes.push(active.stroke);
+    pe.ink.insertAdjacentHTML('beforeend', strokeSvg(active.stroke));
+    clearLive(pe);
+    pushHistory([{ page: active.page, before, after: page.strokes.slice() }]);
+    saveNote();
+  }
+  active = null;
+}
+
 function onDown(e) {
   const canvas = e.target.closest && e.target.closest('.page-live');
   if (!canvas) return;
 
-  if (e.pointerType === 'pen' && fingerDraw) setFingerDraw(false, true);
+  if (e.pointerType === 'pen') {
+    if (fingerDraw) setFingerDraw(false, true);
+    if (active && active.pointerType === 'touch') cancelActive();       // Handballen war zuerst da
+    else if (active && active.pointerType === 'pen') finishActive();    // "Loslassen" ging verloren
+  }
 
   if (e.pointerType === 'touch') {
-    touches.set(e.pointerId, { y: e.clientY });
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (!fingerDraw) return; // Finger scrollt nur
     if (touches.size >= 2) {
-      // Zwei Finger = scrollen: angefangenen Finger-Strich verwerfen
+      // Zwei Finger = scrollen/zoomen: angefangenen Finger-Strich verwerfen
       if (active && active.pointerType === 'touch') cancelActive();
-      pan = { y: avgY() };
+      pan = avgTouch();
       return;
     }
+    // große Auflagefläche = Handballen, nicht zeichnen
+    if (e.width > 40 || e.height > 40) return;
   }
   if (active) return;
 
   e.preventDefault();
-  canvas.setPointerCapture(e.pointerId);
+  try { canvas.setPointerCapture(e.pointerId); } catch {}
   const i = Number(canvas.dataset.page);
   active = {
     id: e.pointerId,
@@ -512,11 +546,14 @@ function onDown(e) {
 
 function onMove(e) {
   if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
-    touches.get(e.pointerId).y = e.clientY;
+    const t = touches.get(e.pointerId);
+    t.x = e.clientX;
+    t.y = e.clientY;
     if (pan && touches.size >= 2) {
-      const y = avgY();
-      $('.content').scrollTop -= y - pan.y;
-      pan.y = y;
+      const c = avgTouch();
+      pagesBox.scrollLeft -= c.x - pan.x;
+      pagesBox.scrollTop -= c.y - pan.y;
+      pan = c;
       return;
     }
   }
@@ -546,41 +583,73 @@ function onUp(e) {
     if (touches.size < 2) pan = null;
   }
   if (!active || e.pointerId !== active.id) return;
-
-  const pe = pageEls[active.page];
-  const page = note.pages[active.page];
-  if (e.type === 'pointercancel') {
-    cancelActive();
-    return;
-  }
-  if (active.tool === 'eraser') {
-    clearLive(pe);
-    if (page.strokes.length !== active.before.length) {
-      pushHistory([{ page: active.page, before: active.before, after: page.strokes.slice() }]);
-      saveNote();
-    }
-  } else {
-    const before = page.strokes.slice();
-    page.strokes.push(active.stroke);
-    pe.ink.insertAdjacentHTML('beforeend', strokeSvg(active.stroke));
-    clearLive(pe);
-    pushHistory([{ page: active.page, before, after: page.strokes.slice() }]);
-    saveNote();
-  }
-  active = null;
+  // Bricht iOS einen Stift-Strich ab, wird er trotzdem behalten – bisher verschwand er dann.
+  // Nur Finger-Striche werden bei einem Abbruch verworfen (dann war es meist eine Geste).
+  if (e.type === 'pointercancel' && active.pointerType !== 'pen') cancelActive();
+  else finishActive();
 }
 
-const pagesBox = $('#pages');
 pagesBox.addEventListener('pointerdown', onDown);
 pagesBox.addEventListener('pointermove', onMove);
 pagesBox.addEventListener('pointerup', onUp);
 pagesBox.addEventListener('pointercancel', onUp);
+pagesBox.addEventListener('lostpointercapture', (e) => {
+  if (active && e.pointerId === active.id) finishActive();
+});
 // Apple Pencil soll nie scrollen – nur der Finger (wenn "Finger zeichnet" aus ist)
 const blockScroll = (e) => {
+  if (!e.target.closest || !e.target.closest('.page-live')) return;
   if (fingerDraw || [...e.touches].some((t) => t.touchType === 'stylus')) e.preventDefault();
 };
 pagesBox.addEventListener('touchstart', blockScroll, { passive: false });
 pagesBox.addEventListener('touchmove', blockScroll, { passive: false });
+
+// ---------- Zoomen ----------
+// Weil alles Vektorgrafik ist, bleibt die Schrift bei jeder Zoomstufe scharf.
+const ZOOM_MIN = 0.5, ZOOM_MAX = 4;
+let zoom = 1;
+
+function setZoom(z, cx, cy) {
+  z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+  if (Math.abs(z - zoom) < 0.001) return;
+  // Punkt unter den Fingern (cx, cy) soll beim Zoomen an derselben Stelle bleiben
+  if (cx == null) { cx = pagesBox.clientWidth / 2; cy = pagesBox.clientHeight / 2; }
+  const ratio = z / zoom;
+  const left = (pagesBox.scrollLeft + cx) * ratio - cx;
+  const top = (pagesBox.scrollTop + cy) * ratio - cy;
+  zoom = z;
+  pagesInner.style.width = zoom * 100 + '%';
+  pagesBox.scrollLeft = left;
+  pagesBox.scrollTop = top;
+  $('#zoom-label').textContent = Math.round(zoom * 100) + '%';
+}
+
+// Pinch-Geste mit zwei Fingern (Safari auf dem iPad)
+let gestureStart = null;
+pagesBox.addEventListener('gesturestart', (e) => {
+  e.preventDefault();
+  gestureStart = zoom;
+  if (active && active.pointerType === 'touch') cancelActive();
+});
+pagesBox.addEventListener('gesturechange', (e) => {
+  e.preventDefault();
+  if (gestureStart == null) return;
+  const r = pagesBox.getBoundingClientRect();
+  setZoom(gestureStart * e.scale, e.clientX - r.left, e.clientY - r.top);
+});
+pagesBox.addEventListener('gestureend', (e) => { e.preventDefault(); gestureStart = null; });
+
+// Trackpad / Strg + Mausrad (am Computer)
+pagesBox.addEventListener('wheel', (e) => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  const r = pagesBox.getBoundingClientRect();
+  setZoom(zoom * Math.exp(-e.deltaY * 0.01), e.clientX - r.left, e.clientY - r.top);
+}, { passive: false });
+
+$('#zoom-in').addEventListener('click', () => setZoom(zoom * 1.25));
+$('#zoom-out').addEventListener('click', () => setZoom(zoom / 1.25));
+$('#zoom-label').addEventListener('click', () => setZoom(1));
 
 // ---------- Werkzeugleiste ----------
 function renderColors() {
@@ -664,7 +733,8 @@ async function openNote(n) {
   updateUndoButtons();
   $('#note-title').value = n.title;
   buildPages();
-  $('.content').scrollTop = 0;
+  $('#pages').scrollTop = 0;
+  $('#pages').scrollLeft = 0;
 }
 
 async function createNote() {

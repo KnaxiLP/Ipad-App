@@ -105,14 +105,21 @@
             <button class="tool" id="undo" aria-label="Rückgängig">↩️</button>
             <button class="tool" id="redo" aria-label="Wiederholen">↪️</button>
           </div>
+          <div class="tool-group zoom-group">
+            <button class="tool" id="zoom-out" aria-label="Verkleinern">−</button>
+            <button class="tool zoom-label" id="zoom-label" aria-label="Zoom zurücksetzen">100%</button>
+            <button class="tool" id="zoom-in" aria-label="Vergrößern">+</button>
+          </div>
           <div class="tool-group">
             <button class="tool" id="finger-toggle" aria-label="Mit Finger zeichnen">☝️</button>
             <button class="tool" id="note-more" aria-label="Mehr">⋯</button>
           </div>
         </div>
 
-        <div class="pages" id="pages"></div>
-        <button class="btn add-page" id="add-page">＋ Seite hinzufügen</button>
+        <div class="pages" id="pages">
+          <div class="pages-inner" id="pages-inner"></div>
+          <button class="btn add-page" id="add-page">＋ Seite hinzufügen</button>
+        </div>
       </section>
 
       <!-- Klammern -->
@@ -209,7 +216,7 @@
       <section class="view" id="view-info">
         <header class="view-header"><h2>Info</h2></header>
         <div class="list-group">
-          <div class="row"><span>Version</span><span class="muted">2.5</span></div>
+          <div class="row"><span>Version</span><span class="muted">2.6</span></div>
           <div class="row"><span>Als App gestartet</span><span class="muted" id="info-standalone">–</span></div>
           <div class="row"><span>Offline-Modus</span><span class="muted" id="info-sw">–</span></div>
           <div class="row"><span>Bildschirm</span><span class="muted" id="info-screen">–</span></div>
