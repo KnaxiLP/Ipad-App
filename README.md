@@ -42,7 +42,8 @@ Jetzt startet die Seite vom Home-Bildschirm aus wie eine App.
   Sobald der Pencil benutzt wird, schaltet die App automatisch um: Dann schreibt nur
   noch der Stift und der Finger scrollt. So stört der Handballen nicht.
 - Mehrere Notizen (📒), Titel oben eingeben
-- Als Bild teilen oder speichern (⋯ → „Als Bild teilen“)
+- Alles ist **Vektorgrafik (SVG)**: Schrift bleibt in jeder Größe gestochen scharf
+- Export als **PDF (Vektor)**, ideal zum Import in Goodnotes, oder als Bild (⋯ → Teilen)
 - Alles wird nur auf dem Gerät gespeichert
 
 ## Klammern (für Goodnotes)

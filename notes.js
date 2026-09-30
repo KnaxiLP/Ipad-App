@@ -78,7 +78,11 @@ function saveNote() {
   if (!saveTimer) saveTimer = setTimeout(writeNow, 1000);
 }
 
-// ---------- Zeichnen ----------
+// ---------- Zeichnen (als Vektorgrafik) ----------
+// Jeder Strich wird einmal als Pfad aus Befehlen berechnet (M, L, Q, C, Z). Daraus entsteht
+// SVG für den Bildschirm (immer gestochen scharf), Canvas für den Bild-Export und PDF für den
+// Vektor-Export – alle drei sehen dadurch exakt gleich aus.
+const SVG_NS = 'http://www.w3.org/2000/svg';
 const strokeWidth = (s) => s.size * BASE_WIDTH[s.tool];
 // Radius je Punkt: Füller reagiert auf Druck, Kugelschreiber bleibt fast gleich dick
 function pointRadius(s, p) {
@@ -134,93 +138,162 @@ function strokeOutline(s) {
   return { pts, r, left, right, angles, corners };
 }
 
-function smoothThrough(ctx, arr, reverse) {
-  const list = reverse ? arr.slice().reverse() : arr;
-  if (list.length < 3) { list.forEach((q) => ctx.lineTo(q[0], q[1])); return; }
-  ctx.lineTo(list[0][0], list[0][1]);
+// Kreisbogen als kubische Bézierkurven – so funktioniert er in SVG, Canvas und PDF gleich
+function arcTo(cmds, cx, cy, r, a0, a1) {
+  const segs = Math.max(1, Math.ceil(Math.abs(a1 - a0) / (Math.PI / 2) - 1e-9));
+  const d = (a1 - a0) / segs;
+  const k = (4 / 3) * Math.tan(d / 4);
+  for (let i = 0; i < segs; i++) {
+    const t1 = a0 + i * d, t2 = t1 + d;
+    const c1 = Math.cos(t1), s1 = Math.sin(t1), c2 = Math.cos(t2), s2 = Math.sin(t2);
+    cmds.push(['C', cx + r * (c1 - k * s1), cy + r * (s1 + k * c1), cx + r * (c2 + k * s2), cy + r * (s2 - k * c2), cx + r * c2, cy + r * s2]);
+  }
+}
+
+function circleCmds(cmds, cx, cy, r) {
+  cmds.push(['M', cx + r, cy]);
+  arcTo(cmds, cx, cy, r, 0, Math.PI * 2);
+  cmds.push(['Z']);
+}
+
+function smoothCmds(cmds, list) {
+  if (list.length < 3) { list.forEach((q) => cmds.push(['L', q[0], q[1]])); return; }
+  cmds.push(['L', list[0][0], list[0][1]]);
   for (let i = 1; i < list.length - 1; i++) {
-    ctx.quadraticCurveTo(list[i][0], list[i][1], (list[i][0] + list[i + 1][0]) / 2, (list[i][1] + list[i + 1][1]) / 2);
+    cmds.push(['Q', list[i][0], list[i][1], (list[i][0] + list[i + 1][0]) / 2, (list[i][1] + list[i + 1][1]) / 2]);
   }
   const last = list[list.length - 1];
-  ctx.lineTo(last[0], last[1]);
+  cmds.push(['L', last[0], last[1]]);
 }
 
-function fillPenStroke(ctx, s) {
-  const o = strokeOutline(s);
-  ctx.fillStyle = s.color;
-  const k = o.pts.length;
-  if (k === 1) {
-    ctx.beginPath();
-    ctx.arc(o.pts[0][0], o.pts[0][1], o.r[0], 0, Math.PI * 2);
-    ctx.fill();
-    return;
-  }
+// Stift: gefüllter Umriss mit runden Kappen
+function penCmds(s) {
+  const o = strokeOutline(s), cmds = [], k = o.pts.length;
+  if (k === 1) { circleCmds(cmds, o.pts[0][0], o.pts[0][1], o.r[0]); return cmds; }
   const e = k - 1;
-  ctx.beginPath();
-  ctx.moveTo(o.left[0][0], o.left[0][1]);
-  smoothThrough(ctx, o.left, false);
-  // runde Kappe am Ende
-  ctx.arc(o.pts[e][0], o.pts[e][1], o.r[e], o.angles[e], o.angles[e] - Math.PI, true);
-  smoothThrough(ctx, o.right, true);
-  // runde Kappe am Anfang
-  ctx.arc(o.pts[0][0], o.pts[0][1], o.r[0], o.angles[0] + Math.PI, o.angles[0], true);
-  ctx.closePath();
-  ctx.fill();
-  o.corners.forEach((i) => {
-    ctx.beginPath();
-    ctx.arc(o.pts[i][0], o.pts[i][1], o.r[i], 0, Math.PI * 2);
-    ctx.fill();
-  });
+  cmds.push(['M', o.left[0][0], o.left[0][1]]);
+  smoothCmds(cmds, o.left);
+  arcTo(cmds, o.pts[e][0], o.pts[e][1], o.r[e], o.angles[e], o.angles[e] - Math.PI);   // Ende
+  smoothCmds(cmds, o.right.slice().reverse());
+  arcTo(cmds, o.pts[0][0], o.pts[0][1], o.r[0], o.angles[0] + Math.PI, o.angles[0]);   // Anfang
+  cmds.push(['Z']);
+  o.corners.forEach((i) => circleCmds(cmds, o.pts[i][0], o.pts[i][1], o.r[i]));
+  return cmds;
 }
 
+// Textmarker: Mittellinie, die mit fester Breite nachgezogen wird
+function markerCmds(s) {
+  const p = s.pts, n = p.length / 3, cmds = [['M', p[0], p[1]]];
+  if (n === 1) cmds.push(['L', p[0] + 0.01, p[1]]);
+  for (let i = 1; i < n - 1; i++) {
+    cmds.push(['Q', p[i * 3], p[i * 3 + 1], (p[i * 3] + p[i * 3 + 3]) / 2, (p[i * 3 + 1] + p[i * 3 + 4]) / 2]);
+  }
+  if (n > 1) cmds.push(['L', p[(n - 1) * 3], p[(n - 1) * 3 + 1]]);
+  return cmds;
+}
+
+const num = (v) => String(Math.round(v * 100) / 100);
+
+function cmdsToSvg(cmds) {
+  let d = '';
+  for (const c of cmds) {
+    d += c[0];
+    for (let i = 1; i < c.length; i++) d += (i > 1 ? ' ' : '') + num(c[i]);
+  }
+  return d;
+}
+
+function cmdsToCanvas(ctx, cmds) {
+  ctx.beginPath();
+  for (const c of cmds) {
+    if (c[0] === 'M') ctx.moveTo(c[1], c[2]);
+    else if (c[0] === 'L') ctx.lineTo(c[1], c[2]);
+    else if (c[0] === 'Q') ctx.quadraticCurveTo(c[1], c[2], c[3], c[4]);
+    else if (c[0] === 'C') ctx.bezierCurveTo(c[1], c[2], c[3], c[4], c[5], c[6]);
+    else ctx.closePath();
+  }
+}
+
+// SVG-Code eines Strichs – wird pro Strich gemerkt, damit Neuzeichnen schnell geht
+const svgCache = new WeakMap();
+function markerAttrs(color, width) {
+  return `fill="none" stroke="${color}" stroke-width="${num(width)}" stroke-linecap="round" stroke-linejoin="round" style="mix-blend-mode:multiply"`;
+}
+function strokeSvg(s) {
+  let out = svgCache.get(s);
+  if (!out) {
+    out = s.tool === 'marker'
+      ? `<path ${markerAttrs(s.color, strokeWidth(s))} d="${cmdsToSvg(markerCmds(s))}"/>`
+      : `<path fill="${s.color}" d="${cmdsToSvg(penCmds(s))}"/>`;
+    svgCache.set(s, out);
+  }
+  return out;
+}
+
+// Canvas-Version (für den Bild-Export)
 function drawStroke(ctx, s) {
-  const p = s.pts, n = p.length / 3, w = strokeWidth(s);
   ctx.save();
   if (s.tool === 'marker') {
-    // Textmarker: ein durchgehender Pfad, "multiply" lässt die Schrift darunter sichtbar
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = strokeWidth(s);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = s.color;
-    if (!ctx.canvas.classList || !ctx.canvas.classList.contains('page-live')) ctx.globalCompositeOperation = 'multiply';
-    ctx.lineWidth = w;
-    ctx.beginPath();
-    ctx.moveTo(p[0], p[1]);
-    if (n === 1) ctx.lineTo(p[0] + 0.01, p[1]);
-    for (let i = 1; i < n - 1; i++) {
-      ctx.quadraticCurveTo(p[i * 3], p[i * 3 + 1], (p[i * 3] + p[i * 3 + 3]) / 2, (p[i * 3 + 1] + p[i * 3 + 4]) / 2);
-    }
-    if (n > 1) ctx.lineTo(p[(n - 1) * 3], p[(n - 1) * 3 + 1]);
+    cmdsToCanvas(ctx, markerCmds(s));
     ctx.stroke();
   } else {
-    fillPenStroke(ctx, s);
+    ctx.fillStyle = s.color;
+    cmdsToCanvas(ctx, penCmds(s));
+    ctx.fill();
   }
   ctx.restore();
+}
+
+// ---------- Papier ----------
+const GRID_STEP = 23.8; // ≈ 5 mm auf A4
+
+function paperLines(paper) {
+  // Liefert die Linien des Papiers als Liste [Farbe, Breite, Pfad-Befehle]
+  const out = [];
+  if (paper === 'lines') {
+    const cmds = [];
+    for (let y = 130; y < PAGE_H - 40; y += 42) cmds.push(['M', 0, y], ['L', PAGE_W, y]);
+    out.push(['#c7d2fe', 1.2, cmds], ['#fca5a5', 1.2, [['M', 90, 0], ['L', 90, PAGE_H]]]);
+  } else if (paper === 'grid') {
+    const cmds = [];
+    for (let x = GRID_STEP; x < PAGE_W; x += GRID_STEP) cmds.push(['M', x, 0], ['L', x, PAGE_H]);
+    for (let y = GRID_STEP; y < PAGE_H; y += GRID_STEP) cmds.push(['M', 0, y], ['L', PAGE_W, y]);
+    out.push(['#dcdce1', 0.9, cmds]);
+  }
+  return out;
+}
+
+function forEachDot(fn) {
+  for (let x = 30; x < PAGE_W; x += 30) for (let y = 30; y < PAGE_H; y += 30) fn(x, y);
+}
+
+function paperSvg(paper) {
+  let s = `<rect width="${PAGE_W}" height="${PAGE_H}" fill="#fff"/>`;
+  paperLines(paper).forEach(([color, w, cmds]) => {
+    s += `<path fill="none" stroke="${color}" stroke-width="${w}" d="${cmdsToSvg(cmds)}"/>`;
+  });
+  if (paper === 'dots') s += `<rect width="${PAGE_W}" height="${PAGE_H}" fill="url(#paper-dots)"/>`;
+  return s;
 }
 
 function drawPaper(ctx, paper) {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, PAGE_W, PAGE_H);
-  ctx.save();
-  if (paper === 'lines') {
-    ctx.strokeStyle = '#c7d2fe';
-    ctx.lineWidth = 1.2;
-    for (let y = 130; y < PAGE_H - 40; y += 42) {
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(PAGE_W, y); ctx.stroke();
-    }
-    ctx.strokeStyle = '#fca5a5';
-    ctx.beginPath(); ctx.moveTo(90, 0); ctx.lineTo(90, PAGE_H); ctx.stroke();
-  } else if (paper === 'grid') {
-    ctx.strokeStyle = '#dcdce1';
-    ctx.lineWidth = 0.9;
-    const step = 23.8; // ≈ 5 mm auf A4
-    for (let x = step; x < PAGE_W; x += step) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, PAGE_H); ctx.stroke(); }
-    for (let y = step; y < PAGE_H; y += step) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(PAGE_W, y); ctx.stroke(); }
-  } else if (paper === 'dots') {
+  paperLines(paper).forEach(([color, w, cmds]) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = w;
+    cmdsToCanvas(ctx, cmds);
+    ctx.stroke();
+  });
+  if (paper === 'dots') {
     ctx.fillStyle = '#b4b4bb';
-    for (let x = 30; x < PAGE_W; x += 30)
-      for (let y = 30; y < PAGE_H; y += 30) { ctx.beginPath(); ctx.arc(x, y, 1.4, 0, Math.PI * 2); ctx.fill(); }
+    forEachDot((x, y) => { ctx.beginPath(); ctx.arc(x, y, 1.4, 0, Math.PI * 2); ctx.fill(); });
   }
-  ctx.restore();
 }
 
 function renderPageTo(ctx, page, scale) {
@@ -229,76 +302,63 @@ function renderPageTo(ctx, page, scale) {
   page.strokes.forEach((s) => drawStroke(ctx, s));
 }
 
-function drawPage(i) {
-  const pe = pageEls[i];
-  if (!pe || !pe.scale) return;
-  renderPageTo(pe.base.getContext('2d'), note.pages[i], pe.scale);
-}
-
-// Live-Vorschau: nur den Bereich um den aktuellen Strich löschen und neu zeichnen.
-// Das ist schnell und sieht exakt so aus wie der fertige Strich.
-function drawActiveStroke() {
-  const st = active.stroke, p = st.pts, ctx = active.liveCtx;
-  const n = p.length / 3;
-  const x = p[(n - 1) * 3], y = p[(n - 1) * 3 + 1];
-  const b = active.bbox;
-  b.x0 = Math.min(b.x0, x); b.y0 = Math.min(b.y0, y);
-  b.x1 = Math.max(b.x1, x); b.y1 = Math.max(b.y1, y);
-  const m = strokeWidth(st) * 1.5 + 4;
-  ctx.clearRect(b.x0 - m, b.y0 - m, b.x1 - b.x0 + 2 * m, b.y1 - b.y0 + 2 * m);
-  drawStroke(ctx, st);
-}
-
-function clearLive(pe) {
-  const ctx = pe.live.getContext('2d');
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, pe.live.width, pe.live.height);
-  ctx.setTransform(pe.scale, 0, 0, pe.scale, 0, 0);
-  return ctx;
-}
+// Punkt-Muster einmal für alle Seiten anlegen
+(() => {
+  const defs = document.createElementNS(SVG_NS, 'svg');
+  defs.setAttribute('width', '0');
+  defs.setAttribute('height', '0');
+  defs.style.position = 'absolute';
+  defs.innerHTML = '<defs><pattern id="paper-dots" x="15" y="15" width="30" height="30" patternUnits="userSpaceOnUse"><circle cx="15" cy="15" r="1.4" fill="#b4b4bb"/></pattern></defs>';
+  document.body.append(defs);
+})();
 
 // ---------- Seiten aufbauen ----------
+function svgEl(name, attrs = {}) {
+  const el = document.createElementNS(SVG_NS, name);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
 function buildPages() {
   const box = $('#pages');
   box.innerHTML = '';
   pageEls = note.pages.map((_, i) => {
     const wrap = document.createElement('div');
     wrap.className = 'page';
-    const base = document.createElement('canvas');
-    const live = document.createElement('canvas');
-    live.className = 'page-live';
-    // "desynchronized" = weniger Verzögerung zwischen Stift und Bildschirm (wo unterstützt)
-    try { live.getContext('2d', { desynchronized: true }); } catch {}
-    live.dataset.page = i;
-    const num = document.createElement('span');
-    num.className = 'page-num';
-    num.textContent = i + 1;
-    wrap.append(base, live, num);
+    const svg = svgEl('svg', { viewBox: `0 0 ${PAGE_W} ${PAGE_H}`, class: 'page-live', 'data-page': i });
+    const paper = svgEl('g');
+    const ink = svgEl('g');
+    const live = svgEl('path');                 // der Strich, der gerade geschrieben wird
+    const eraser = svgEl('circle', { fill: 'none', stroke: '#8e8e93', 'stroke-width': 1.5, r: 0 });
+    svg.append(paper, ink, live, eraser);
+    const numEl = document.createElement('span');
+    numEl.className = 'page-num';
+    numEl.textContent = i + 1;
+    wrap.append(svg, numEl);
     box.append(wrap);
-    return { wrap, base, live, scale: 0 };
+    return { wrap, svg, paper, ink, live, eraser };
   });
+  pageEls.forEach((_, i) => drawPage(i));
   $('#add-page').hidden = note.pages.length >= MAX_PAGES;
-  layoutPages();
 }
 
-function layoutPages() {
-  if (!note || document.body.dataset.view !== 'notes') return;
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  pageEls.forEach((pe, i) => {
-    const w = pe.wrap.clientWidth;
-    if (!w) return;
-    const pw = Math.round(w * dpr), ph = Math.round((w * PAGE_H / PAGE_W) * dpr);
-    if (pe.base.width !== pw || pe.base.height !== ph || !pe.scale) {
-      pe.base.width = pe.live.width = pw;
-      pe.base.height = pe.live.height = ph;
-      pe.scale = pw / PAGE_W;
-      drawPage(i);
-    }
-  });
+function drawPage(i) {
+  const pe = pageEls[i];
+  if (!pe) return;
+  pe.paper.innerHTML = paperSvg(note.paper);
+  pe.ink.innerHTML = note.pages[i].strokes.map(strokeSvg).join('');
 }
 
-window.addEventListener('resize', layoutPages);
-window.addEventListener('viewchange', (e) => e.detail === 'notes' && requestAnimationFrame(layoutPages));
+// Live-Vorschau: nur der Pfad des aktuellen Strichs wird neu berechnet
+function drawActiveStroke() {
+  const s = active.stroke;
+  active.live.setAttribute('d', cmdsToSvg(s.tool === 'marker' ? markerCmds(s) : penCmds(s)));
+}
+
+function clearLive(pe) {
+  pe.live.removeAttribute('d');
+  pe.eraser.setAttribute('r', 0);
+}
 
 // ---------- Rückgängig / Wiederholen ----------
 function pushHistory(changes) {
@@ -362,13 +422,10 @@ function eraseAt(x, y) {
   active.ly = y;
   if (changed) drawPage(active.page);
 
-  const pe = pageEls[active.page];
-  const ctx = clearLive(pe);
-  ctx.strokeStyle = '#8e8e93';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.stroke();
+  const c = pageEls[active.page].eraser;
+  c.setAttribute('cx', num(x));
+  c.setAttribute('cy', num(y));
+  c.setAttribute('r', r);
 }
 
 // ---------- Stift-Eingabe ----------
@@ -396,7 +453,7 @@ function cancelActive() {
 }
 
 function onDown(e) {
-  const canvas = e.target.closest('.page-live');
+  const canvas = e.target.closest && e.target.closest('.page-live');
   if (!canvas) return;
 
   if (e.pointerType === 'pen' && fingerDraw) setFingerDraw(false, true);
@@ -435,11 +492,20 @@ function onDown(e) {
     active.stroke = { tool: isMarker ? 'marker' : 'pen', color: colors[colorSel[isMarker ? 'marker' : 'pen']], size, pts: [x, y, p] };
     if (tool === 'ball') active.stroke.style = 'ball';
     active.pressure = p;
-    active.bbox = { x0: x, y0: y, x1: x, y1: y };
-    const pe = pageEls[i];
-    // Mischmodus nur für den Textmarker – für den Stift kostet er nur Leistung
-    pe.live.classList.toggle('blend', tool === 'marker');
-    active.liveCtx = clearLive(pe);
+    const live = pageEls[i].live;
+    active.live = live;
+    // Aussehen des Live-Pfads passend zum Werkzeug
+    for (const a of ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'style']) live.removeAttribute(a);
+    if (isMarker) {
+      live.setAttribute('fill', 'none');
+      live.setAttribute('stroke', active.stroke.color);
+      live.setAttribute('stroke-width', strokeWidth(active.stroke));
+      live.setAttribute('stroke-linecap', 'round');
+      live.setAttribute('stroke-linejoin', 'round');
+      live.setAttribute('style', 'mix-blend-mode:multiply');
+    } else {
+      live.setAttribute('fill', active.stroke.color);
+    }
     drawActiveStroke(); // sofort einen Punkt zeigen
   }
 }
@@ -496,10 +562,8 @@ function onUp(e) {
   } else {
     const before = page.strokes.slice();
     page.strokes.push(active.stroke);
+    pe.ink.insertAdjacentHTML('beforeend', strokeSvg(active.stroke));
     clearLive(pe);
-    const ctx = pe.base.getContext('2d');
-    ctx.setTransform(pe.scale, 0, 0, pe.scale, 0, 0);
-    drawStroke(ctx, active.stroke);
     pushHistory([{ page: active.page, before, after: page.strokes.slice() }]);
     saveNote();
   }
@@ -724,8 +788,80 @@ $('#note-export').addEventListener('click', () => {
     return dataUrlToFile(c.toDataURL('image/png'), `${base}${pages.length > 1 ? ' ' + (i + 1) : ''}.png`);
   });
 
+  shareFiles(files, base);
+});
+
+// Export als PDF: echte Vektorgrafik – bleibt z. B. in Goodnotes auch beim Zoomen scharf
+function cmdsToPdf(cmds) {
+  let out = '', cx = 0, cy = 0, sx = 0, sy = 0;
+  for (const c of cmds) {
+    if (c[0] === 'M') { out += `${num(c[1])} ${num(c[2])} m\n`; cx = sx = c[1]; cy = sy = c[2]; }
+    else if (c[0] === 'L') { out += `${num(c[1])} ${num(c[2])} l\n`; cx = c[1]; cy = c[2]; }
+    else if (c[0] === 'Q') {
+      // PDF kennt nur kubische Kurven: quadratische umrechnen
+      const [, qx, qy, x, y] = c;
+      out += `${num(cx + (2 / 3) * (qx - cx))} ${num(cy + (2 / 3) * (qy - cy))} ${num(x + (2 / 3) * (qx - x))} ${num(y + (2 / 3) * (qy - y))} ${num(x)} ${num(y)} c\n`;
+      cx = x; cy = y;
+    } else if (c[0] === 'C') {
+      out += `${num(c[1])} ${num(c[2])} ${num(c[3])} ${num(c[4])} ${num(c[5])} ${num(c[6])} c\n`;
+      cx = c[5]; cy = c[6];
+    } else { out += 'h\n'; cx = sx; cy = sy; }
+  }
+  return out;
+}
+
+const pdfColor = (hex) => [1, 3, 5].map((i) => num(parseInt(hex.slice(i, i + 2), 16) / 255)).join(' ');
+
+function buildPdf(pages, paper) {
+  const S = 595.28 / PAGE_W;              // A4-Breite in PDF-Punkten
+  const H = num(PAGE_H * S);
+  const objs = [];                        // Index 0 = Objekt 1
+  const add = (body) => { objs.push(body); return objs.length; };
+  const catalog = add(null);
+  const pagesObj = add(null);
+  const gs = add('<< /Type /ExtGState /BM /Multiply >>');
+  const kids = [];
+
+  pages.forEach((page) => {
+    let c = `q\n${S.toFixed(6)} 0 0 ${(-S).toFixed(6)} 0 ${H} cm\n1 J 1 j\n`;
+    paperLines(paper).forEach(([color, w, cmds]) => {
+      c += `${pdfColor(color)} RG ${w} w\n${cmdsToPdf(cmds)}S\n`;
+    });
+    if (paper === 'dots') {
+      c += `${pdfColor('#b4b4bb')} rg\n`;
+      forEachDot((x, y) => { const d = []; circleCmds(d, x, y, 1.4); c += cmdsToPdf(d); });
+      c += 'f\n';
+    }
+    page.strokes.forEach((s) => {
+      if (s.tool === 'marker') {
+        c += `q /GS1 gs ${pdfColor(s.color)} RG ${num(strokeWidth(s))} w\n${cmdsToPdf(markerCmds(s))}S Q\n`;
+      } else {
+        c += `${pdfColor(s.color)} rg\n${cmdsToPdf(penCmds(s))}f\n`;
+      }
+    });
+    c += 'Q\n';
+    const content = add(`<< /Length ${c.length} >>\nstream\n${c}endstream`);
+    kids.push(add(`<< /Type /Page /Parent ${pagesObj} 0 R /MediaBox [0 0 595.28 ${H}] /Resources << /ExtGState << /GS1 ${gs} 0 R >> >> /Contents ${content} 0 R >>`));
+  });
+  objs[catalog - 1] = `<< /Type /Catalog /Pages ${pagesObj} 0 R >>`;
+  objs[pagesObj - 1] = `<< /Type /Pages /Kids [${kids.map((k) => k + ' 0 R').join(' ')}] /Count ${kids.length} >>`;
+
+  let pdf = '%PDF-1.4\n';
+  const offsets = [];
+  objs.forEach((body, i) => {
+    offsets.push(pdf.length);
+    pdf += `${i + 1} 0 obj\n${body}\nendobj\n`;
+  });
+  const xref = pdf.length;
+  pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
+  offsets.forEach((o) => { pdf += String(o).padStart(10, '0') + ' 00000 n \n'; });
+  pdf += `trailer\n<< /Size ${objs.length + 1} /Root ${catalog} 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return pdf;
+}
+
+function shareFiles(files, title) {
   if (navigator.canShare && navigator.canShare({ files })) {
-    navigator.share({ files, title: base }).catch(() => {});
+    navigator.share({ files, title }).catch(() => {});
   } else {
     files.forEach((f) => {
       const a = document.createElement('a');
@@ -735,6 +871,14 @@ $('#note-export').addEventListener('click', () => {
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     });
   }
+}
+
+$('#note-export-pdf').addEventListener('click', () => {
+  const base = (note.title || 'Notiz').replace(/[^\wäöüÄÖÜß -]/g, '').trim() || 'Notiz';
+  let pages = note.pages.filter((p) => p.strokes.length);
+  if (!pages.length) pages = note.pages.slice(0, 1);
+  const file = new File([buildPdf(pages, note.paper)], base + '.pdf', { type: 'application/pdf' });
+  shareFiles([file], base);
 });
 
 // Beim Wechseln/Schließen der App sofort speichern
