@@ -45,7 +45,7 @@ Programme, die sich nicht schließen lassen, werden nach 5 Sekunden hart beendet
 
 Oben in `fokus.py`:
 
-- `ALLOWED` – weitere erlaubte Programme (Dateiname der .exe, z. B. `"onenote.exe"`)
+- `ALLOWED` – weitere erlaubte Programme (Dateiname der .exe, z. B. `"onenote.exe"`; Groß-/Kleinschreibung egal)
 - `START_URLS` – was beim Start in Chrome geöffnet wird
 - `CLOSE_FILE_EXPLORER` – Datei-Explorer erlauben (`False`)
 - `KILL_AFTER_SECONDS` – `0` = nie hart beenden

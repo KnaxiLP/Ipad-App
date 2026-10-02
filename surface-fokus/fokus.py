@@ -39,6 +39,7 @@ ALLOWED = {
     "python.exe",          # dieses Programm selbst
     "pythonw.exe",
     "py.exe",
+    "cornelsenofflinelernen.exe",  # Cornelsen Lernen (offline)
 }
 
 # Teile von Windows, die nie angefasst werden (sonst lässt sich das Gerät nicht bedienen)
@@ -91,7 +92,7 @@ def should_close(exe_name, window_class):
     exe = (exe_name or "").lower()
     if not exe:
         return False                      # unbekannt (z. B. geschützter Systemprozess) → nicht anfassen
-    if exe in ALLOWED:
+    if exe in {a.lower() for a in ALLOWED}:   # Groß-/Kleinschreibung egal
         return False
     if exe == "explorer.exe":
         # Taskleiste/Desktop bleiben, nur echte Datei-Explorer-Fenster werden geschlossen
