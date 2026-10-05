@@ -115,6 +115,19 @@ function strokeOutline(s) {
     raw.push([p[i * 3], p[i * 3 + 1], pr]);
   }
 
+  // Wendepunkte im Rohstrich finden (Richtung ändert sich stark). Die bleiben beim Verteilen
+  // exakt erhalten – sonst liegt die Spitze erst genau auf dem Wendepunkt und wird beim nächsten
+  // Punkt abgeschnitten: der Strich "zuckt" bei schnellen Richtungswechseln zurück.
+  const sharp = new Uint8Array(raw.length);
+  for (let i = 1, j = 0, k = 1; i < raw.length - 1; i++) {
+    while (j < i - 1 && Math.hypot(raw[i][0] - raw[j + 1][0], raw[i][1] - raw[j + 1][1]) >= 2) j++;
+    if (k <= i) k = i + 1;
+    while (k < raw.length - 1 && Math.hypot(raw[k][0] - raw[i][0], raw[k][1] - raw[i][1]) < 2) k++;
+    const ax = raw[i][0] - raw[j][0], ay = raw[i][1] - raw[j][1];
+    const bx = raw[k][0] - raw[i][0], by = raw[k][1] - raw[i][1];
+    if ((ax * bx + ay * by) / ((Math.hypot(ax, ay) * Math.hypot(bx, by)) || 1) < 0.3) sharp[i] = 1;
+  }
+
   // 2. Gleichmäßig verteilen – ZUERST, damit die Glättung danach unabhängig von der
   //    Schreibgeschwindigkeit ist (schnell = wenige, weit entfernte Punkte, langsam = viele dichte).
   const pts = [raw[0].slice()];
@@ -130,6 +143,7 @@ function strokeOutline(s) {
       t += RESAMPLE_STEP;
     }
     carry = seg - (t - RESAMPLE_STEP);
+    if (sharp[i] && carry > RESAMPLE_STEP * 0.2) { pts.push(b.slice()); carry = 0; }
   }
   const end = raw[raw.length - 1], lastP = pts[pts.length - 1];
   if (Math.hypot(end[0] - lastP[0], end[1] - lastP[1]) > RESAMPLE_STEP * 0.3) pts.push(end.slice());
