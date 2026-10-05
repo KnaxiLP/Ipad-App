@@ -109,3 +109,11 @@ python3 -m http.server 8000
 - Liegt eine neue Version bereit, erscheint unten **„Jetzt aktualisieren“**.
 - Notizen, Noten, Aufgaben und Python-Programme bleiben bei Updates erhalten, weil sie getrennt von den App-Dateien gespeichert sind.
 - **„Sicherung speichern“** erzeugt eine JSON-Datei mit allen Daten. **„Sicherung laden“** spielt diese Datei wieder ein. Mach das, bevor du die App vom Home-Bildschirm löschst.
+
+## Bilder einfügen
+
+- **Als Element** über den Bild-Knopf in der Werkzeugleiste, mit **Strg+V** oder per Ziehen auf die Seite: Das Bild liegt frei auf der aktuellen Seite.
+  - Ziehen verschiebt das Bild, die Ecken ändern seine Größe, „Löschen“ entfernt es.
+  - Mit dem **Auswahl-Werkzeug** (Pfeil) lässt es sich später wieder auswählen.
+  - Der Radierer lässt Bilder stehen.
+- **Als neue Seite** über **⋯ → „PDF oder Bild als neue Seite importieren“**.

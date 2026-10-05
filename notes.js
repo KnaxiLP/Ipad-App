@@ -292,6 +292,28 @@ const svgCache = new WeakMap();
 function markerAttrs(color, width) {
   return `fill="none" stroke="${color}" stroke-width="${num(width)}" stroke-linecap="round" stroke-linejoin="round" style="mix-blend-mode:multiply"`;
 }
+// ---------- Bilder als Elemente ----------
+// Ein eingefügtes Bild liegt wie ein Strich in page.strokes:
+// { tool: 'image', x, y, w, h, data (JPEG-Bytes), pw, ph (Pixelgröße) }
+const elUrls = new WeakMap();
+const elImgs = new WeakMap();
+
+function imageUrl(data) {
+  let u = elUrls.get(data);
+  if (!u) {
+    u = URL.createObjectURL(new Blob([data], { type: 'image/jpeg' }));
+    elUrls.set(data, u);
+    const img = new Image();       // für den Bild-Export schon mal laden
+    img.src = u;
+    elImgs.set(data, img);
+  }
+  return u;
+}
+
+function imageSvg(s) {
+  return `<image href="${imageUrl(s.data)}" x="${num(s.x)}" y="${num(s.y)}" width="${num(s.w)}" height="${num(s.h)}" preserveAspectRatio="none"/>`;
+}
+
 // ---------- Textfelder ----------
 // Ein Textfeld liegt wie ein Strich in page.strokes: { tool: 'text', x, y, w, size, color, text }
 // (x/y = linke obere Ecke, w = Breite, alles in Seiten-Einheiten). Die Zeilenumbrüche werden
@@ -345,6 +367,7 @@ function strokeSvg(s) {
   let out = svgCache.get(s);
   if (!out) {
     out = s.tool === 'text' ? textSvg(s)
+      : s.tool === 'image' ? imageSvg(s)
       : s.tool === 'marker'
       ? `<path ${markerAttrs(s.color, strokeWidth(s))} d="${cmdsToSvg(markerCmds(s))}"/>`
       : penSvg(s);
@@ -363,7 +386,11 @@ function penSvg(s) {
 // Canvas-Version (für den Bild-Export)
 function drawStroke(ctx, s) {
   ctx.save();
-  if (s.tool === 'text') {
+  if (s.tool === 'image') {
+    imageUrl(s.data);
+    const img = elImgs.get(s.data);
+    if (img.complete && img.naturalWidth) ctx.drawImage(img, s.x, s.y, s.w, s.h);
+  } else if (s.tool === 'text') {
     ctx.font = `${s.size}px ${TEXT_FONT}`;
     ctx.fillStyle = s.color;
     textLines(s).forEach((l, i) => ctx.fillText(l, s.x, s.y + s.size + i * s.size * TEXT_LH));
@@ -461,6 +488,7 @@ function svgEl(name, attrs = {}) {
 }
 
 function buildPages() {
+  if (sel) deselectImage();
   const box = $('#pages-inner');
   box.innerHTML = '';
   pageEls = note.pages.map((_, i) => {
@@ -511,6 +539,10 @@ function drawPage(i) {
   if (!pe) return;
   pe.paper.innerHTML = paperSvg(note.paper) + bgSvg(note.pages[i].bg);
   pe.ink.innerHTML = note.pages[i].strokes.map(strokeSvg).join('');
+  if (sel && sel.page === i) {
+    if (note.pages[i].strokes.includes(sel.s)) placeSelection();
+    else deselectImage();      // z. B. nach Rückgängig
+  }
 }
 
 // Live-Vorschau: nur der Pfad des aktuellen Strichs wird neu berechnet
@@ -627,6 +659,7 @@ function textHit(t, x, y, pad = 0) {
 }
 
 function strokeHit(s, x, y, r) {
+  if (s.tool === 'image') return false;   // Bilder radiert man nicht weg, man löscht sie (Auswählen)
   if (s.tool === 'text') return textHit(s, x, y, r);
   const p = s.pts, reach = strokeWidth(s) / 2 + r;
   if (p.length === 3) return Math.hypot(p[0] - x, p[1] - y) <= reach;
@@ -1092,6 +1125,18 @@ function finishActive(abnormal = false) {
 function onDown(e) {
   const canvas = e.target.closest && e.target.closest('.page-live');
   if (!canvas) return;
+  // Tippen neben ein ausgewähltes Bild hebt die Auswahl auf
+  if (sel && !(e.pointerType === 'touch' && penNear())) deselectImage();
+  if (window.noteTool === 'select' && !active && !(e.pointerType === 'touch' && (penNear() || isPalm(e)))) {
+    const r = canvas.getBoundingClientRect(), i = Number(canvas.dataset.page);
+    const k = imageAt(i, ((e.clientX - r.left) / r.width) * PAGE_W, ((e.clientY - r.top) / r.height) * PAGE_H);
+    if (k >= 0) {
+      selectImage(i, note.pages[i].strokes[k]);
+      selDown(e);              // gleich weiterziehen können
+      return;
+    }
+    if (e.pointerType !== 'touch') return;   // Stift/Maus ins Leere: nichts tun
+  }
 
   if (e.pointerType === 'pen') {
     lastPenTime = performance.now();
@@ -1125,6 +1170,7 @@ function onDown(e) {
   const penEraser = e.pointerType === 'pen' && ((e.buttons & 32) || (e.buttons & 2));
   const tool = penEraser ? 'eraser' : window.noteTool;
   if (tool === 'text') return textDown(e, canvas);
+  if (tool === 'select') return;
 
   e.preventDefault();
   try { canvas.setPointerCapture(e.pointerId); } catch {}
@@ -1602,13 +1648,17 @@ function buildPdf(pages, paper) {
 
   pages.forEach((page) => {
     let c = '';
-    let res = '';
+    const xobjs = [];
+    const addImage = (data, w, h) => {
+      const id = add({ head: `<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${data.length} >>`, data });
+      xobjs.push(`/Im${xobjs.length + 1} ${id} 0 R`);
+      return `/Im${xobjs.length}`;
+    };
     if (page.bg) {
       const bg = page.bg;
-      const img = add({ head: `<< /Type /XObject /Subtype /Image /Width ${bg.w} /Height ${bg.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bg.data.length} >>`, data: bg.data });
-      res = ` /XObject << /Im1 ${img} 0 R >>`;
+      const im = addImage(bg.data, bg.w, bg.h);
       // Bild in PDF-Koordinaten (Ursprung unten links)
-      c += `q ${num(bg.width * S)} 0 0 ${num(bg.height * S)} ${num(bg.x * S)} ${num(PAGE_H * S - (bg.y + bg.height) * S)} cm /Im1 Do Q\n`;
+      c += `q ${num(bg.width * S)} 0 0 ${num(bg.height * S)} ${num(bg.x * S)} ${num(PAGE_H * S - (bg.y + bg.height) * S)} cm ${im} Do Q\n`;
     }
     c += `q\n${S.toFixed(6)} 0 0 ${(-S).toFixed(6)} 0 ${H} cm\n1 J 1 j\n`;
     if (!page.bg) paperLines(paper).forEach(([color, w, cmds]) => {
@@ -1621,6 +1671,11 @@ function buildPdf(pages, paper) {
     }
     page.strokes.forEach((s) => {
       if (s.tool === 'text') return;   // Text kommt weiter unten
+      if (s.tool === 'image') {
+        // hier ist die y-Achse schon nach unten gedreht → Bild senkrecht spiegeln
+        c += `q ${num(s.w)} 0 0 ${num(-s.h)} ${num(s.x)} ${num(s.y + s.h)} cm ${addImage(s.data, s.pw, s.ph)} Do Q\n`;
+        return;
+      }
       if (s.tool === 'marker') {
         c += `q /GS1 gs ${pdfColor(s.color)} RG ${num(strokeWidth(s))} w\n${cmdsToPdf(markerCmds(s))}S Q\n`;
       } else {
@@ -1639,6 +1694,7 @@ function buildPdf(pages, paper) {
       c += 'ET\n';
     });
     const content = add(`<< /Length ${c.length} >>\nstream\n${c}endstream`);
+    const res = xobjs.length ? ` /XObject << ${xobjs.join(' ')} >>` : '';
     kids.push(add(`<< /Type /Page /Parent ${pagesObj} 0 R /MediaBox [0 0 595.28 ${H}] /Resources << /ExtGState << /GS1 ${gs} 0 R >> /Font << /F1 ${font} 0 R >>${res} >> /Contents ${content} 0 R >>`));
   });
   objs[catalog - 1] = `<< /Type /Catalog /Pages ${pagesObj} 0 R >>`;
@@ -1729,12 +1785,18 @@ async function canvasToBg(canvas) {
 }
 
 async function imageFileToBg(file) {
+  const c = await imageFileToCanvas(file, IMPORT_WIDTH, Infinity);
+  return canvasToBg(c);
+}
+
+// Bild-Datei auf eine Zeichenfläche bringen (verkleinert, durchsichtige Stellen weiß)
+async function imageFileToCanvas(file, maxW, maxH) {
   const url = URL.createObjectURL(file);
   try {
     const img = new Image();
     img.src = url;
     await img.decode();
-    const k = Math.min(1, IMPORT_WIDTH / img.naturalWidth);
+    const k = Math.min(1, maxW / img.naturalWidth, maxH / img.naturalHeight);
     const c = document.createElement('canvas');
     c.width = Math.round(img.naturalWidth * k);
     c.height = Math.round(img.naturalHeight * k);
@@ -1742,7 +1804,7 @@ async function imageFileToBg(file) {
     ctx.fillStyle = '#fff';                 // durchsichtige PNGs auf weißem Papier
     ctx.fillRect(0, 0, c.width, c.height);
     ctx.drawImage(img, 0, 0, c.width, c.height);
-    return await canvasToBg(c);
+    return c;
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -1812,6 +1874,210 @@ $('#import-file').addEventListener('change', async (e) => {
   } catch (err) {
     toast('Import fehlgeschlagen');
     console.error(err);
+  }
+});
+
+// ---------- Bild als Element einfügen, verschieben, skalieren ----------
+// Anders als "Importieren" (Bild wird eine eigene Seite) landet das Bild hier frei auf der
+// aktuellen Seite – wie in Goodnotes. Danach ist es ausgewählt: ziehen = verschieben,
+// Ecken = größer/kleiner. Später wieder auswählen mit dem Auswahl-Werkzeug.
+const ELEMENT_MAX_PX = 1600;
+let sel = null;        // { page, s, box }
+let selDrag = null;
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// Seite und Punkt in der Mitte des sichtbaren Bereichs
+function viewCenter() {
+  const r = pagesBox.getBoundingClientRect();
+  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  let best = 0, bestD = Infinity;
+  pageEls.forEach((pe, i) => {
+    const b = pe.svg.getBoundingClientRect();
+    const d = cy < b.top ? b.top - cy : cy > b.bottom ? cy - b.bottom : 0;
+    if (d < bestD) { bestD = d; best = i; }
+  });
+  const b = pageEls[best].svg.getBoundingClientRect();
+  return { page: best, x: clamp(((cx - b.left) / b.width) * PAGE_W, 0, PAGE_W), y: clamp(((cy - b.top) / b.height) * PAGE_H, 0, PAGE_H) };
+}
+
+async function insertImageElement(file, at) {
+  if (!note) return;
+  commitEditor();
+  const c = await imageFileToCanvas(file, ELEMENT_MAX_PX, ELEMENT_MAX_PX);
+  const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.9));
+  const data = new Uint8Array(await blob.arrayBuffer());
+  const pos = at || viewCenter();
+  let w = 500, h = (w * c.height) / c.width;
+  if (h > 600) { h = 600; w = (h * c.width) / c.height; }
+  const s = {
+    tool: 'image',
+    x: clamp(pos.x - w / 2, 0, PAGE_W - w),
+    y: clamp(pos.y - h / 2, 0, PAGE_H - h),
+    w, h, data, pw: c.width, ph: c.height
+  };
+  const page = note.pages[pos.page];
+  const before = page.strokes.slice();
+  page.strokes.push(s);
+  pushHistory([{ page: pos.page, before, after: page.strokes.slice() }]);
+  drawPage(pos.page);
+  saveNote();
+  selectImage(pos.page, s);
+}
+
+function imageAt(i, x, y) {
+  const list = note.pages[i].strokes;
+  for (let k = list.length - 1; k >= 0; k--) {
+    const s = list[k];
+    if (s.tool === 'image' && x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h) return k;
+  }
+  return -1;
+}
+
+function selectImage(i, s) {
+  deselectImage();
+  const box = document.createElement('div');
+  box.className = 'img-sel';
+  box.innerHTML = '<i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i>' +
+    '<div class="img-sel-menu"><button type="button" data-act="del">Löschen</button></div>';
+  pageEls[i].wrap.append(box);
+  sel = { page: i, s, box };
+  placeSelection();
+  box.addEventListener('pointerdown', selDown);
+  box.addEventListener('pointermove', selMove);
+  box.addEventListener('pointerup', selUp);
+  box.addEventListener('pointercancel', selUp);
+  box.querySelector('[data-act="del"]').addEventListener('click', deleteSelected);
+}
+
+function placeSelection() {
+  const { s, box } = sel;
+  Object.assign(box.style, {
+    left: (s.x / PAGE_W) * 100 + '%',
+    top: (s.y / PAGE_H) * 100 + '%',
+    width: (s.w / PAGE_W) * 100 + '%',
+    height: (s.h / PAGE_H) * 100 + '%'
+  });
+  box.classList.toggle('menu-below', s.y < 70);
+}
+
+function deselectImage() {
+  if (!sel) return;
+  sel.box.remove();
+  sel = null;
+  selDrag = null;
+}
+
+function deleteSelected() {
+  if (!sel) return;
+  const { page, s } = sel;
+  const before = note.pages[page].strokes.slice();
+  note.pages[page].strokes = before.filter((x) => x !== s);
+  deselectImage();
+  pushHistory([{ page, before, after: note.pages[page].strokes.slice() }]);
+  drawPage(page);
+  saveNote();
+}
+
+function selDown(e) {
+  if (!sel || (e.target.closest && e.target.closest('button'))) return;
+  if (e.pointerType === 'touch' && penNear()) return;     // Handballen
+  e.preventDefault();
+  e.stopPropagation();
+  try { sel.box.setPointerCapture(e.pointerId); } catch {}
+  const rect = pageEls[sel.page].svg.getBoundingClientRect();
+  selDrag = {
+    id: e.pointerId,
+    handle: (e.target.dataset && e.target.dataset.h) || null,
+    rect,
+    x0: ((e.clientX - rect.left) / rect.width) * PAGE_W,
+    y0: ((e.clientY - rect.top) / rect.height) * PAGE_H,
+    orig: sel.s,
+    before: note.pages[sel.page].strokes.slice(),
+    moved: false
+  };
+}
+
+function selMove(e) {
+  const d = selDrag;
+  if (!d || e.pointerId !== d.id) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const x = ((e.clientX - d.rect.left) / d.rect.width) * PAGE_W;
+  const y = ((e.clientY - d.rect.top) / d.rect.height) * PAGE_H;
+  if (!d.moved && Math.hypot(x - d.x0, y - d.y0) < 2) return;
+  d.moved = true;
+  const o = d.orig;
+  let n;
+  if (!d.handle) {
+    n = { ...o, x: clamp(o.x + x - d.x0, -o.w * 0.8, PAGE_W - o.w * 0.2), y: clamp(o.y + y - d.y0, -o.h * 0.8, PAGE_H - o.h * 0.2) };
+  } else {
+    // gegenüberliegende Ecke bleibt stehen, Seitenverhältnis bleibt gleich
+    const east = d.handle.includes('e'), south = d.handle.includes('s');
+    const ax = east ? o.x : o.x + o.w, ay = south ? o.y : o.y + o.h;
+    const ratio = o.h / o.w;
+    let w = Math.max(Math.abs(x - ax), Math.abs(y - ay) / ratio);
+    w = clamp(w, 40, 3 * PAGE_W);
+    const h = w * ratio;
+    n = { ...o, w, h, x: east ? ax : ax - w, y: south ? ay : ay - h };
+  }
+  const list = note.pages[sel.page].strokes;
+  const k = list.indexOf(sel.s);
+  if (k < 0) return deselectImage();
+  list[k] = n;
+  sel.s = n;
+  drawPage(sel.page);
+}
+
+function selUp(e) {
+  const d = selDrag;
+  if (!d || e.pointerId !== d.id) return;
+  e.stopPropagation();
+  selDrag = null;
+  if (d.moved) {
+    pushHistory([{ page: sel.page, before: d.before, after: note.pages[sel.page].strokes.slice() }]);
+    saveNote();
+  }
+}
+
+// Bild-Knopf in der Werkzeugleiste
+$('#image-insert').addEventListener('click', () => $('#image-file').click());
+$('#note-insert-image').addEventListener('click', () => { $('#more-dialog').close(); $('#image-file').click(); });
+$('#image-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try { await insertImageElement(file); } catch (err) { toast('Bild konnte nicht eingefügt werden'); console.error(err); }
+});
+
+// Einfügen aus der Zwischenablage (Strg+V / iPad: Einsetzen)
+document.addEventListener('paste', async (e) => {
+  if (document.body.dataset.view !== 'notes' || !note) return;
+  const files = [...(e.clipboardData ? e.clipboardData.files : [])].filter((f) => f.type.startsWith('image/'));
+  if (!files.length) return;          // Text normal einfügen lassen
+  e.preventDefault();
+  for (const f of files) {
+    try { await insertImageElement(f); } catch { toast('Bild konnte nicht eingefügt werden'); }
+  }
+});
+
+// Bild auf eine Seite ziehen (Surface/PC)
+pagesBox.addEventListener('dragover', (e) => {
+  if (e.dataTransfer && [...e.dataTransfer.items].some((it) => it.kind === 'file')) e.preventDefault();
+});
+pagesBox.addEventListener('drop', async (e) => {
+  const files = [...(e.dataTransfer ? e.dataTransfer.files : [])];
+  if (!files.length) return;
+  e.preventDefault();
+  const canvas = e.target.closest && e.target.closest('.page-live');
+  let at = null;
+  if (canvas) {
+    const r = canvas.getBoundingClientRect();
+    at = { page: Number(canvas.dataset.page), x: ((e.clientX - r.left) / r.width) * PAGE_W, y: ((e.clientY - r.top) / r.height) * PAGE_H };
+  }
+  for (const f of files) {
+    if (f.type.startsWith('image/')) await insertImageElement(f, at).catch(() => toast('Bild konnte nicht eingefügt werden'));
+    else if (f.type === 'application/pdf') await importPdf(f).catch(() => toast('Import fehlgeschlagen'));
   }
 });
 

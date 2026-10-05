@@ -348,6 +348,32 @@ body[data-view="notes"] .app { padding-top: 0; }
 /* Surface & Co.: App scrollt/zoomt selbst, der Browser darf mit dem Stift nicht scrollen */
 body.manual-touch .page-live { touch-action: none; }
 /* Schnelle Vorschau-Ebene (nicht iPad): liegt über den Seiten, fängt aber keine Eingaben ab */
+/* Ausgewähltes Bild: Rahmen, Ecken zum Skalieren, Menü */
+.img-sel {
+  position: absolute; z-index: 3; box-sizing: border-box; touch-action: none; cursor: move;
+  outline: 1.5px solid var(--accent); outline-offset: 0;
+}
+.img-sel i {
+  position: absolute; width: 16px; height: 16px; margin: -8px; border-radius: 50%;
+  background: #fff; border: 2px solid var(--accent); box-sizing: border-box; touch-action: none;
+}
+.img-sel i::after { content: ''; position: absolute; inset: -12px; }   /* größere Trefferfläche */
+.img-sel i[data-h="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+.img-sel i[data-h="ne"] { right: 0; top: 0; cursor: nesw-resize; }
+.img-sel i[data-h="sw"] { left: 0; bottom: 0; cursor: nesw-resize; }
+.img-sel i[data-h="se"] { right: 0; bottom: 0; cursor: nwse-resize; }
+.img-sel-menu { position: absolute; left: 50%; bottom: calc(100% + 12px); transform: translateX(-50%); }
+.img-sel.menu-below .img-sel-menu { bottom: auto; top: calc(100% + 12px); }
+.img-sel-menu button {
+  border: 0; border-radius: 8px; padding: 7px 14px; font: inherit; font-size: 14px; font-weight: 600;
+  background: #1c1c1e; color: #fff; box-shadow: 0 4px 14px rgba(0, 0, 0, .2); white-space: nowrap;
+}
+body[data-note-tool="select"] .pages .page-live { cursor: default; }
+
+/* Keine Scrollbalken (Windows/Surface zeigt sie sonst links und rechts) – Scrollen geht trotzdem */
+* { scrollbar-width: none; }
+*::-webkit-scrollbar { display: none; }
+
 /* Textfeld beim Bearbeiten */
 .text-editor {
   position: absolute; z-index: 3; margin: 0; padding: 0; border: 0; resize: none; overflow: hidden;
