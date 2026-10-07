@@ -116,4 +116,19 @@ python3 -m http.server 8000
   - Ziehen verschiebt das Bild, die Ecken ändern seine Größe, „Löschen“ entfernt es.
   - Mit dem **Auswahl-Werkzeug** (Pfeil) lässt es sich später wieder auswählen.
   - Der Radierer lässt Bilder stehen.
-- **Als neue Seite** über **⋯ → „PDF oder Bild als neue Seite importieren“**.
+- **Als Seiten** über **⋯ → „PDF oder Bild als Seiten einfügen“**. Die Seiten kommen hinter die Seite, die du gerade siehst.
+- **Als neue Notiz** über **⋯ → „PDF als neue Notiz importieren“**.
+
+## Lasso
+
+- Mit dem Lasso kreist du Handschrift, Text und Bilder ein.
+- Ziehen verschiebt die Auswahl, die Ecken ändern ihre Größe.
+- Im Menü: Löschen, Duplizieren und Farbe ändern.
+- Mit dem Auswahl-Pfeil wählst du ein einzelnes Element durch Antippen aus.
+
+## Ordner
+
+- In **Meine Notizen** legst du mit **„＋ Ordner“** einen Ordner an, zum Beispiel für ein Fach.
+- Über das Ordner-Symbol neben einer Notiz verschiebst du sie in einen Ordner.
+- Neue Notizen landen in dem Ordner, den du gerade offen hast.
+- Oben in der Liste kannst du nach Notizen suchen.

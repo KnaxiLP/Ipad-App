@@ -540,7 +540,7 @@ function drawPage(i) {
   pe.paper.innerHTML = paperSvg(note.paper) + bgSvg(note.pages[i].bg);
   pe.ink.innerHTML = note.pages[i].strokes.map(strokeSvg).join('');
   if (sel && sel.page === i) {
-    if (note.pages[i].strokes.includes(sel.s)) placeSelection();
+    if (sel.items.every((s) => note.pages[i].strokes.includes(s))) placeSelection();
     else deselectImage();      // z. B. nach Rückgängig
   }
 }
@@ -1129,7 +1129,7 @@ function onDown(e) {
   if (sel && !(e.pointerType === 'touch' && penNear())) deselectImage();
   if (window.noteTool === 'select' && !active && !(e.pointerType === 'touch' && (penNear() || isPalm(e)))) {
     const r = canvas.getBoundingClientRect(), i = Number(canvas.dataset.page);
-    const k = imageAt(i, ((e.clientX - r.left) / r.width) * PAGE_W, ((e.clientY - r.top) / r.height) * PAGE_H);
+    const k = itemAt(i, ((e.clientX - r.left) / r.width) * PAGE_W, ((e.clientY - r.top) / r.height) * PAGE_H);
     if (k >= 0) {
       selectImage(i, note.pages[i].strokes[k]);
       selDown(e);              // gleich weiterziehen können
@@ -1171,6 +1171,7 @@ function onDown(e) {
   const tool = penEraser ? 'eraser' : window.noteTool;
   if (tool === 'text') return textDown(e, canvas);
   if (tool === 'select') return;
+  if (tool === 'lasso') return lassoDown(e, canvas);
 
   e.preventDefault();
   try { canvas.setPointerCapture(e.pointerId); } catch {}
@@ -1212,7 +1213,7 @@ function onDown(e) {
     active.liveDots = pageEls[i].liveDots;
     active.liveDots.setAttribute('fill', active.stroke.color);
     // Aussehen des Live-Pfads passend zum Werkzeug
-    for (const a of ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'style']) live.removeAttribute(a);
+    for (const a of ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'style', 'stroke-dasharray']) live.removeAttribute(a);
     if (isMarker) {
       live.setAttribute('fill', 'none');
       live.setAttribute('stroke', active.stroke.color);
@@ -1249,6 +1250,7 @@ function onMove(e) {
     }
   }
   if (textAction && e.pointerId === textAction.id) return textMove(e);
+  if (lasso && e.pointerId === lasso.id) return lassoMove(e);
   if (!active || e.pointerId !== active.id) return;
   e.preventDefault();
   if (active.shaped) {
@@ -1294,6 +1296,7 @@ function onUp(e) {
     pan = touches.size && (touches.size >= 2 || (!fingerDraw && !IS_IOS)) ? { ...avgTouch(), vx: 0, vy: 0, t: performance.now() } : null;
   }
   if (textAction && e.pointerId === textAction.id) return textUp(e);
+  if (lasso && e.pointerId === lasso.id) return lassoUp(e);
   if (!active || e.pointerId !== active.id) return;
   // Bricht iOS einen Stift-Strich ab, wird er trotzdem behalten – bisher verschwand er dann.
   // Nur Finger-Striche werden bei einem Abbruch verworfen (dann war es meist eine Geste).
@@ -1461,8 +1464,9 @@ async function openNote(n) {
   $('#pages').scrollLeft = 0;
 }
 
-async function createNote() {
+async function createNote(folder) {
   const n = newNote();
+  if (folder) n.folder = folder;
   await noteDb.put(n).catch(() => {});
   await openNote(n);
 }
@@ -1478,43 +1482,171 @@ async function showNotesList() {
   all = all.filter((n) => n.id !== note.id);
   if (!isEmpty(note)) all.push(note);
   all.sort((a, b) => b.updated - a.updated);
+  notesCache = all;
+  if (folderFilter !== 'all' && !folders.some((f) => f.id === folderFilter)) folderFilter = 'all';
+  renderNotesList();
+  if (!$('#notes-dialog').open) $('#notes-dialog').showModal();
+}
 
+// ---------- Ordner ----------
+// Ordner stehen in localStorage (noteFolders: [{ id, name }]), jede Notiz merkt sich ihren Ordner (note.folder).
+let folders = store.get('noteFolders', []);
+let folderFilter = store.get('notesFolder', 'all');
+let notesCache = [];
+const saveFolders = () => store.set('noteFolders', folders);
+const folderName = (id) => (folders.find((f) => f.id === id) || {}).name;
+const FOLDER_ICON = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>';
+
+function renderNotesList() {
+  // Ordner-Leiste
+  const chips = $('#folder-chips');
+  chips.innerHTML = '';
+  const chip = (id, label, count) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip' + (folderFilter === id ? ' active' : '');
+    b.textContent = count == null ? label : `${label} ${count}`;
+    b.addEventListener('click', () => {
+      folderFilter = id;
+      store.set('notesFolder', id);
+      renderNotesList();
+    });
+    chips.append(b);
+  };
+  chip('all', 'Alle', notesCache.length);
+  folders.forEach((f) => chip(f.id, f.name, notesCache.filter((n) => n.folder === f.id).length));
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'chip add';
+  add.textContent = '＋ Ordner';
+  add.addEventListener('click', () => {
+    const f = newFolder();
+    if (f) { folderFilter = f.id; store.set('notesFolder', f.id); renderNotesList(); }
+  });
+  chips.append(add);
+  $('#folder-tools').hidden = folderFilter === 'all';
+
+  // Notizen (gefiltert nach Ordner und Suche)
+  const q = $('#notes-search').value.trim().toLowerCase();
+  const shown = notesCache.filter((n) => (folderFilter === 'all' || n.folder === folderFilter) && (!q || noteName(n).toLowerCase().includes(q)));
   const list = $('#notes-list');
   list.innerHTML = '';
-  if (!all.length) {
+  if (!shown.length) {
     const li = document.createElement('li');
     li.className = 'muted';
-    li.textContent = 'Noch keine Notizen';
+    li.textContent = q ? 'Nichts gefunden' : folderFilter === 'all' ? 'Noch keine Notizen' : 'Dieser Ordner ist leer';
     list.append(li);
   }
-  all.forEach((n) => {
+  shown.forEach((n) => {
     const li = document.createElement('li');
     li.className = 'note-item' + (n.id === note.id ? ' current' : '');
+    const text = document.createElement('div');
+    text.className = 'note-item-text';
     const title = document.createElement('span');
     title.className = 'todo-text';
     title.textContent = noteName(n);
     const meta = document.createElement('span');
     meta.className = 'muted small-text';
     const date = new Date(n.updated).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' });
-    meta.textContent = `${n.pages.length} S. · ${date}`;
-    li.append(title, meta);
+    const fname = folderName(n.folder);
+    meta.textContent = `${n.pages.length} S. · ${date}` + (fname && folderFilter === 'all' ? ` · ${fname}` : '');
+    text.append(title, meta);
+    const move = document.createElement('button');
+    move.type = 'button';
+    move.className = 'tool note-folder-btn';
+    move.setAttribute('aria-label', 'In Ordner verschieben');
+    move.innerHTML = FOLDER_ICON;
+    move.addEventListener('click', (e) => { e.stopPropagation(); pickFolder(n); });
+    li.append(text, move);
     li.addEventListener('click', () => {
       $('#notes-dialog').close();
       if (n.id !== note.id) openNote(n);
     });
     list.append(li);
   });
-  $('#notes-dialog').showModal();
 }
+
+function newFolder() {
+  const name = (prompt('Name des Ordners (z. B. Mathe):') || '').trim().slice(0, 30);
+  if (!name) return null;
+  const f = { id: 'f' + Date.now().toString(36), name };
+  folders.push(f);
+  saveFolders();
+  return f;
+}
+
+async function setNoteFolder(n, id) {
+  n.folder = id || undefined;
+  if (n.id === note.id) {
+    note.folder = n.folder;
+    saveNote();
+  } else {
+    await noteDb.put(n).catch(() => {});
+  }
+}
+
+// Kleiner Dialog: Ordner für eine Notiz wählen
+function pickFolder(n) {
+  const box = $('#folder-pick');
+  box.innerHTML = '';
+  const item = (id, label) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'menu-item' + ((n.folder || '') === id ? ' active' : '');
+    b.textContent = label;
+    b.addEventListener('click', async () => {
+      let target = id;
+      if (id === '+') {
+        const f = newFolder();
+        if (!f) return;
+        target = f.id;
+      }
+      await setNoteFolder(n, target);
+      $('#folder-dialog').close();
+      if ($('#notes-dialog').open) renderNotesList();
+      toast(target ? `In „${folderName(target)}“ verschoben` : 'Aus dem Ordner genommen');
+    });
+    box.append(b);
+  };
+  item('', 'Kein Ordner');
+  folders.forEach((f) => item(f.id, f.name));
+  item('+', '＋ Neuer Ordner …');
+  $('#folder-dialog-title').textContent = `„${noteName(n)}“ verschieben`;
+  $('#folder-dialog').showModal();
+}
+
+$('#notes-search').addEventListener('input', renderNotesList);
+$('#folder-rename').addEventListener('click', () => {
+  const f = folders.find((x) => x.id === folderFilter);
+  if (!f) return;
+  const name = (prompt('Neuer Name:', f.name) || '').trim().slice(0, 30);
+  if (!name) return;
+  f.name = name;
+  saveFolders();
+  renderNotesList();
+});
+$('#folder-delete').addEventListener('click', async () => {
+  const f = folders.find((x) => x.id === folderFilter);
+  if (!f || !confirm(`Ordner „${f.name}“ löschen? Die Notizen darin bleiben erhalten.`)) return;
+  folders = folders.filter((x) => x !== f);
+  saveFolders();
+  for (const n of notesCache.filter((x) => x.folder === f.id)) await setNoteFolder(n, null);
+  folderFilter = 'all';
+  store.set('notesFolder', 'all');
+  renderNotesList();
+});
+$('#note-move-folder').addEventListener('click', () => { $('#more-dialog').close(); pickFolder(note); });
 
 $('#note-list-btn').addEventListener('click', showNotesList);
 $('#note-new').addEventListener('click', () => {
   if (isEmpty(note)) return toast('Diese Notiz ist noch leer');
-  createNote();
+  createNote(note.folder);
 });
 $('#notes-dialog-new').addEventListener('click', () => {
   $('#notes-dialog').close();
-  if (!isEmpty(note)) createNote();
+  const folder = folderFilter !== 'all' ? folderFilter : undefined;
+  if (!isEmpty(note)) createNote(folder);
+  else if (folder) setNoteFolder(note, folder);
 });
 
 // ---------- Mehr-Menü ----------
@@ -1810,18 +1942,17 @@ async function imageFileToCanvas(file, maxW, maxH) {
   }
 }
 
-async function importPdf(file) {
+// PDF-Seiten als Bilder rendern (höchstens `max` Seiten)
+async function pdfPages(file, max) {
   toast('PDF wird geladen …');
   let lib;
   try { lib = await pdfLib(); } catch {
-    return toast('PDF-Import braucht beim ersten Mal Internet');
+    toast('PDF-Import braucht beim ersten Mal Internet');
+    return null;
   }
   const pdf = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
-  const count = Math.min(pdf.numPages, MAX_IMPORT_PAGES);
-  const n = newNote();
-  n.title = file.name.replace(/\.pdf$/i, '').slice(0, 40);
-  n.paper = 'blank';
-  n.pages = [];
+  const count = Math.min(pdf.numPages, max);
+  const pages = [];
   for (let i = 1; i <= count; i++) {
     toast(`Seite ${i} von ${count} …`);
     const page = await pdf.getPage(i);
@@ -1834,27 +1965,67 @@ async function importPdf(file) {
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, c.width, c.height);
     await page.render({ canvasContext: ctx, viewport }).promise;
-    n.pages.push({ strokes: [], bg: await canvasToBg(c) });
+    pages.push({ strokes: [], bg: await canvasToBg(c) });
   }
+  return { pages, total: pdf.numPages };
+}
+
+const pagesMsg = (n, total) => (total > n ? `Eingefügt (nur ${n} von ${total} Seiten – mehr passen nicht)` : `${n} ${n === 1 ? 'Seite' : 'Seiten'} eingefügt`);
+
+// PDF als neue Notiz
+async function importPdf(file) {
+  const r = await pdfPages(file, MAX_IMPORT_PAGES);
+  if (!r) return;
+  const n = newNote();
+  n.title = file.name.replace(/\.pdf$/i, '').slice(0, 40);
+  n.paper = 'blank';
+  n.folder = note && note.folder;
+  n.pages = r.pages;
   await noteDb.put(n);
   await openNote(n);
-  toast(pdf.numPages > count ? `Importiert (nur die ersten ${count} Seiten)` : `${count} ${count === 1 ? 'Seite' : 'Seiten'} importiert`);
+  toast(pagesMsg(r.pages.length, r.total));
+}
+
+// Seiten hinter der gerade sichtbaren Seite einfügen (eine leere Notiz wird ersetzt)
+function insertPages(pages, title) {
+  if (isEmpty(note)) {
+    note.pages = pages;
+    if (!note.title && title) { note.title = title.slice(0, 40); $('#note-title').value = note.title; }
+  } else {
+    const at = viewCenter().page + 1;
+    note.pages.splice(at, 0, ...pages);
+  }
+  // Seitennummern haben sich verschoben → alte Rückgängig-Schritte passen nicht mehr
+  undoStack = [];
+  redoStack = [];
+  lastEnd = null;
+  updateUndoButtons();
+  buildPages();
+  saveNote();
+  const first = note.pages.indexOf(pages[0]);
+  if (pageEls[first]) pageEls[first].wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function insertPdfPages(file) {
+  const room = MAX_PAGES - (isEmpty(note) ? 0 : note.pages.length);
+  if (room <= 0) return toast('Diese Notiz hat schon die maximale Seitenzahl');
+  const r = await pdfPages(file, room);
+  if (!r) return;
+  insertPages(r.pages, file.name.replace(/\.pdf$/i, ''));
+  toast(pagesMsg(r.pages.length, r.total));
 }
 
 async function importImage(file) {
-  if (note.pages.length >= MAX_PAGES) return toast('Diese Notiz hat schon die maximale Seitenzahl');
+  if (!isEmpty(note) && note.pages.length >= MAX_PAGES) return toast('Diese Notiz hat schon die maximale Seitenzahl');
   const bg = await imageFileToBg(file);
-  // leere letzte Seite wiederverwenden, sonst neue Seite anhängen
-  const last = note.pages[note.pages.length - 1];
-  if (last && !last.strokes.length && !last.bg) last.bg = bg;
-  else note.pages.push({ strokes: [], bg });
-  buildPages();
-  saveNote();
-  pageEls[pageEls.length - 1].wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  toast('Bild importiert');
+  insertPages([{ strokes: [], bg }]);
+  toast('Bild als Seite eingefügt');
 }
 
-$('#note-import').addEventListener('click', () => $('#import-file').click());
+// "Als Seiten einfügen" (in diese Notiz) oder "Als neue Notiz"
+let importAsNote = false;
+$('#note-import').addEventListener('click', () => { importAsNote = false; $('#import-file').click(); });
+$('#note-import-new').addEventListener('click', () => { importAsNote = true; $('#import-file').click(); });
 $('#import-file').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   e.target.value = '';
@@ -1865,7 +2036,7 @@ $('#import-file').addEventListener('change', async (e) => {
     if (name.endsWith('.goodnotes')) {
       alert('Goodnotes-Dateien haben ein eigenes, nicht offenes Format.\n\nSo geht es: In Goodnotes die Notiz öffnen → Teilen → Exportieren → PDF. Diese PDF dann hier importieren.');
     } else if (file.type === 'application/pdf' || name.endsWith('.pdf')) {
-      await importPdf(file);
+      await (importAsNote ? importPdf(file) : insertPdfPages(file));
     } else if (file.type.startsWith('image/') || /\.(png|jpe?g|heic|gif|webp)$/.test(name)) {
       await importImage(file);
     } else {
@@ -1882,7 +2053,7 @@ $('#import-file').addEventListener('change', async (e) => {
 // aktuellen Seite – wie in Goodnotes. Danach ist es ausgewählt: ziehen = verschieben,
 // Ecken = größer/kleiner. Später wieder auswählen mit dem Auswahl-Werkzeug.
 const ELEMENT_MAX_PX = 1600;
-let sel = null;        // { page, s, box }
+let sel = null;        // { page, items, box }
 let selDrag = null;
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -1925,40 +2096,87 @@ async function insertImageElement(file, at) {
   selectImage(pos.page, s);
 }
 
-function imageAt(i, x, y) {
+// ---------- Auswahl (Bilder, Striche, Text) ----------
+// Gemeinsam für das Auswahl-Werkzeug (antippen) und das Lasso (einkreisen):
+// ziehen = verschieben, Ecken = größer/kleiner, Menü: Löschen, Duplizieren, Farbe.
+function itemAt(i, x, y) {
   const list = note.pages[i].strokes;
   for (let k = list.length - 1; k >= 0; k--) {
     const s = list[k];
-    if (s.tool === 'image' && x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h) return k;
+    if (s.tool === 'image' ? x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h : strokeHit(s, x, y, 6)) return k;
   }
   return -1;
 }
 
-function selectImage(i, s) {
+function itemBounds(s) {
+  if (s.tool === 'image') return [s.x, s.y, s.x + s.w, s.y + s.h];
+  if (s.tool === 'text') return [s.x, s.y, s.x + s.w, s.y + textHeight(s)];
+  const p = s.pts, r = strokeWidth(s) / 2 + 2;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let i = 0; i < p.length; i += 3) {
+    x0 = Math.min(x0, p[i]); x1 = Math.max(x1, p[i]);
+    y0 = Math.min(y0, p[i + 1]); y1 = Math.max(y1, p[i + 1]);
+  }
+  return [x0 - r, y0 - r, x1 + r, y1 + r];
+}
+
+function selBounds(items) {
+  const b = [Infinity, Infinity, -Infinity, -Infinity];
+  items.forEach((s) => {
+    const q = itemBounds(s);
+    b[0] = Math.min(b[0], q[0]); b[1] = Math.min(b[1], q[1]);
+    b[2] = Math.max(b[2], q[2]); b[3] = Math.max(b[3], q[3]);
+  });
+  return { x: b[0], y: b[1], w: Math.max(1, b[2] - b[0]), h: Math.max(1, b[3] - b[1]) };
+}
+
+// Element verschieben/skalieren: Punkt p → n + (p - o) · k
+function transformItem(s, k, ox, oy, nx, ny) {
+  const tx = (x) => nx + (x - ox) * k, ty = (y) => ny + (y - oy) * k;
+  if (s.tool === 'image') return { ...s, x: tx(s.x), y: ty(s.y), w: s.w * k, h: s.h * k };
+  if (s.tool === 'text') return { ...s, x: tx(s.x), y: ty(s.y), w: s.w * k, size: s.size * k };
+  const p = s.pts.slice();
+  for (let i = 0; i < p.length; i += 3) {
+    p[i] = Math.round(tx(p[i]) * 10) / 10;
+    p[i + 1] = Math.round(ty(p[i + 1]) * 10) / 10;
+  }
+  return { ...s, pts: p, size: s.size * k };
+}
+
+function selectItems(i, items) {
   deselectImage();
+  if (!items.length) return;
   const box = document.createElement('div');
   box.className = 'img-sel';
+  const colors = items.some((s) => s.tool === 'pen' || s.tool === 'text')
+    ? '<span class="sel-colors">' + PEN_COLORS.map((c) => `<button type="button" data-color="${c}" style="--c:${c}" aria-label="Farbe"></button>`).join('') + '</span>'
+    : '';
   box.innerHTML = '<i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i>' +
-    '<div class="img-sel-menu"><button type="button" data-act="del">Löschen</button></div>';
+    '<div class="img-sel-menu"><button type="button" data-act="del">Löschen</button>' +
+    '<button type="button" data-act="dup">Duplizieren</button>' + colors + '</div>';
   pageEls[i].wrap.append(box);
-  sel = { page: i, s, box };
+  sel = { page: i, items, box };
   placeSelection();
   box.addEventListener('pointerdown', selDown);
   box.addEventListener('pointermove', selMove);
   box.addEventListener('pointerup', selUp);
   box.addEventListener('pointercancel', selUp);
   box.querySelector('[data-act="del"]').addEventListener('click', deleteSelected);
+  box.querySelector('[data-act="dup"]').addEventListener('click', duplicateSelected);
+  box.querySelectorAll('[data-color]').forEach((b) => b.addEventListener('click', () => recolorSelected(b.dataset.color)));
 }
+const selectImage = (i, s) => selectItems(i, [s]);
 
 function placeSelection() {
-  const { s, box } = sel;
+  const { items, box } = sel;
+  const b = selBounds(items);
   Object.assign(box.style, {
-    left: (s.x / PAGE_W) * 100 + '%',
-    top: (s.y / PAGE_H) * 100 + '%',
-    width: (s.w / PAGE_W) * 100 + '%',
-    height: (s.h / PAGE_H) * 100 + '%'
+    left: (b.x / PAGE_W) * 100 + '%',
+    top: (b.y / PAGE_H) * 100 + '%',
+    width: (b.w / PAGE_W) * 100 + '%',
+    height: (b.h / PAGE_H) * 100 + '%'
   });
-  box.classList.toggle('menu-below', s.y < 70);
+  box.classList.toggle('menu-below', b.y < 70);
 }
 
 function deselectImage() {
@@ -1968,15 +2186,34 @@ function deselectImage() {
   selDrag = null;
 }
 
-function deleteSelected() {
-  if (!sel) return;
-  const { page, s } = sel;
+// Änderung an der Auswahl als ein Schritt für "Rückgängig"
+function changeSelection(fn) {
+  const page = sel.page;
   const before = note.pages[page].strokes.slice();
-  note.pages[page].strokes = before.filter((x) => x !== s);
-  deselectImage();
+  const items = fn(note.pages[page]);
   pushHistory([{ page, before, after: note.pages[page].strokes.slice() }]);
   drawPage(page);
   saveNote();
+  if (items) selectItems(page, items);
+  else deselectImage();
+}
+
+function deleteSelected() {
+  if (!sel) return;
+  const gone = new Set(sel.items);
+  changeSelection((pg) => { pg.strokes = pg.strokes.filter((s) => !gone.has(s)); return null; });
+}
+
+function duplicateSelected() {
+  if (!sel) return;
+  const copies = sel.items.map((s) => transformItem(s, 1, 0, 0, 20, 20));
+  changeSelection((pg) => { pg.strokes.push(...copies); return copies; });
+}
+
+function recolorSelected(color) {
+  if (!sel) return;
+  const map = new Map(sel.items.map((s) => [s, s.tool === 'pen' || s.tool === 'text' ? { ...s, color } : s]));
+  changeSelection((pg) => { pg.strokes = pg.strokes.map((s) => map.get(s) || s); return [...map.values()]; });
 }
 
 function selDown(e) {
@@ -1986,14 +2223,17 @@ function selDown(e) {
   e.stopPropagation();
   try { sel.box.setPointerCapture(e.pointerId); } catch {}
   const rect = pageEls[sel.page].svg.getBoundingClientRect();
+  const list = note.pages[sel.page].strokes;
   selDrag = {
     id: e.pointerId,
     handle: (e.target.dataset && e.target.dataset.h) || null,
     rect,
     x0: ((e.clientX - rect.left) / rect.width) * PAGE_W,
     y0: ((e.clientY - rect.top) / rect.height) * PAGE_H,
-    orig: sel.s,
-    before: note.pages[sel.page].strokes.slice(),
+    orig: sel.items.slice(),
+    idx: sel.items.map((s) => list.indexOf(s)),
+    b: selBounds(sel.items),
+    before: list.slice(),
     moved: false
   };
 }
@@ -2007,25 +2247,24 @@ function selMove(e) {
   const y = ((e.clientY - d.rect.top) / d.rect.height) * PAGE_H;
   if (!d.moved && Math.hypot(x - d.x0, y - d.y0) < 2) return;
   d.moved = true;
-  const o = d.orig;
-  let n;
+  const B = d.b;
+  let k = 1, nx, ny;
   if (!d.handle) {
-    n = { ...o, x: clamp(o.x + x - d.x0, -o.w * 0.8, PAGE_W - o.w * 0.2), y: clamp(o.y + y - d.y0, -o.h * 0.8, PAGE_H - o.h * 0.2) };
+    nx = clamp(B.x + x - d.x0, -B.w * 0.8, PAGE_W - B.w * 0.2);
+    ny = clamp(B.y + y - d.y0, -B.h * 0.8, PAGE_H - B.h * 0.2);
   } else {
     // gegenüberliegende Ecke bleibt stehen, Seitenverhältnis bleibt gleich
     const east = d.handle.includes('e'), south = d.handle.includes('s');
-    const ax = east ? o.x : o.x + o.w, ay = south ? o.y : o.y + o.h;
-    const ratio = o.h / o.w;
-    let w = Math.max(Math.abs(x - ax), Math.abs(y - ay) / ratio);
-    w = clamp(w, 40, 3 * PAGE_W);
-    const h = w * ratio;
-    n = { ...o, w, h, x: east ? ax : ax - w, y: south ? ay : ay - h };
+    const ax = east ? B.x : B.x + B.w, ay = south ? B.y : B.y + B.h;
+    const ratio = B.h / B.w;
+    const w = clamp(Math.max(Math.abs(x - ax), Math.abs(y - ay) / ratio), 20, 3 * PAGE_W);
+    k = w / B.w;
+    nx = east ? ax : ax - w;
+    ny = south ? ay : ay - B.h * k;
   }
   const list = note.pages[sel.page].strokes;
-  const k = list.indexOf(sel.s);
-  if (k < 0) return deselectImage();
-  list[k] = n;
-  sel.s = n;
+  if (d.idx.some((j, n) => list[j] !== sel.items[n])) return deselectImage();
+  sel.items = d.orig.map((s, n) => (list[d.idx[n]] = transformItem(s, k, B.x, B.y, nx, ny)));
   drawPage(sel.page);
 }
 
@@ -2038,6 +2277,69 @@ function selUp(e) {
     pushHistory([{ page: sel.page, before: d.before, after: note.pages[sel.page].strokes.slice() }]);
     saveNote();
   }
+}
+
+// ---------- Lasso ----------
+let lasso = null;     // { id, page, rect, pts: [x, y, …] }
+
+function lassoPoint(e) {
+  return [((e.clientX - lasso.rect.left) / lasso.rect.width) * PAGE_W, ((e.clientY - lasso.rect.top) / lasso.rect.height) * PAGE_H];
+}
+
+function lassoDown(e, canvas) {
+  e.preventDefault();
+  try { canvas.setPointerCapture(e.pointerId); } catch {}
+  const i = Number(canvas.dataset.page);
+  lasso = { id: e.pointerId, page: i, rect: canvas.getBoundingClientRect(), pts: [] };
+  lasso.pts.push(...lassoPoint(e));
+  const live = pageEls[i].live;
+  for (const a of ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'style']) live.removeAttribute(a);
+  live.setAttribute('fill', 'rgba(37, 99, 235, .06)');
+  live.setAttribute('stroke', '#2563eb');
+  live.setAttribute('stroke-width', '1.5');
+  live.setAttribute('stroke-dasharray', '6 5');
+}
+
+function lassoMove(e) {
+  e.preventDefault();
+  const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+  for (const ev of events.length ? events : [e]) {
+    const [x, y] = lassoPoint(ev), p = lasso.pts, n = p.length;
+    if (Math.hypot(x - p[n - 2], y - p[n - 1]) >= 3) p.push(x, y);
+  }
+  let d = '';
+  for (let i = 0; i < lasso.pts.length; i += 2) d += (i ? 'L' : 'M') + num(lasso.pts[i]) + ' ' + num(lasso.pts[i + 1]);
+  pageEls[lasso.page].live.setAttribute('d', d + 'Z');
+}
+
+function inPoly(poly, x, y) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 2; i < poly.length; j = i, i += 2) {
+    const xi = poly[i], yi = poly[i + 1], xj = poly[j], yj = poly[j + 1];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+function lassoUp(e) {
+  const l = lasso;
+  lasso = null;
+  const live = pageEls[l.page].live;
+  live.removeAttribute('d');
+  live.removeAttribute('stroke-dasharray');
+  if (e.type === 'pointercancel' || l.pts.length < 6) return;
+  // Strich gehört dazu, wenn mindestens die Hälfte seiner Punkte im Lasso liegt;
+  // Text und Bilder, wenn ihre Mitte drin liegt
+  const items = note.pages[l.page].strokes.filter((s) => {
+    if (s.tool === 'image' || s.tool === 'text') {
+      const b = itemBounds(s);
+      return inPoly(l.pts, (b[0] + b[2]) / 2, (b[1] + b[3]) / 2);
+    }
+    let hit = 0;
+    for (let i = 0; i < s.pts.length; i += 3) if (inPoly(l.pts, s.pts[i], s.pts[i + 1])) hit++;
+    return hit * 3 >= s.pts.length / 2;
+  });
+  if (items.length) selectItems(l.page, items);
 }
 
 // Bild-Knopf in der Werkzeugleiste
@@ -2077,7 +2379,7 @@ pagesBox.addEventListener('drop', async (e) => {
   }
   for (const f of files) {
     if (f.type.startsWith('image/')) await insertImageElement(f, at).catch(() => toast('Bild konnte nicht eingefügt werden'));
-    else if (f.type === 'application/pdf') await importPdf(f).catch(() => toast('Import fehlgeschlagen'));
+    else if (f.type === 'application/pdf') await insertPdfPages(f).catch(() => toast('Import fehlgeschlagen'));
   }
 });
 
