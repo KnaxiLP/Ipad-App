@@ -1172,6 +1172,7 @@ function onDown(e) {
   if (tool === 'text') return textDown(e, canvas);
   if (tool === 'select') return;
   if (tool === 'lasso') return lassoDown(e, canvas);
+  if (tool === 'coord') return coordDown(e, canvas);
 
   e.preventDefault();
   try { canvas.setPointerCapture(e.pointerId); } catch {}
@@ -1183,7 +1184,8 @@ function onDown(e) {
     tool,
     rect: (sizeFastInk(), canvas.getBoundingClientRect())
   };
-  const [x, y, p] = toPage(e);
+  if (tool !== 'eraser') active.edge = rulerEdge(e.clientX, e.clientY);
+  const [x, y, p] = pagePoint(e);
   if (tool === 'eraser') {
     active.before = note.pages[i].strokes.slice();
     active.lx = x;
@@ -1195,7 +1197,7 @@ function onDown(e) {
     active.color = colors[colorSel[isMarker ? 'marker' : 'pen']];
     active.strokeTool = isMarker ? 'marker' : 'pen';
     active.style = tool === 'ball' ? 'ball' : 'pen';
-    const joined = tryJoin(i, x, y);
+    const joined = active.edge ? null : tryJoin(i, x, y);
     if (joined) {
       // am alten Strich weiterschreiben; die Lücke wird gerade verbunden
       active.stroke = joined.stroke;
@@ -1205,6 +1207,7 @@ function onDown(e) {
     } else {
       active.stroke = { tool: active.strokeTool, color: active.color, size, pts: [x, y, p] };
       if (tool === 'ball') active.stroke.style = 'ball';
+      if (active.edge) active.stroke.shape = true;     // am Lineal: exakt gerade, nicht glätten
       active.pressure = p;
     }
     lastEnd = null;
@@ -1251,6 +1254,7 @@ function onMove(e) {
   }
   if (textAction && e.pointerId === textAction.id) return textMove(e);
   if (lasso && e.pointerId === lasso.id) return lassoMove(e);
+  if (coordAction && e.pointerId === coordAction.id) return coordMove(e);
   if (!active || e.pointerId !== active.id) return;
   e.preventDefault();
   if (active.shaped) {
@@ -1262,7 +1266,7 @@ function onMove(e) {
 
   const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
   for (const ev of events.length ? events : [e]) {
-    const [x, y, p] = toPage(ev);
+    const [x, y, p] = pagePoint(ev);
     if (active.tool === 'eraser') {
       eraseAt(x, y);
     } else {
@@ -1297,6 +1301,7 @@ function onUp(e) {
   }
   if (textAction && e.pointerId === textAction.id) return textUp(e);
   if (lasso && e.pointerId === lasso.id) return lassoUp(e);
+  if (coordAction && e.pointerId === coordAction.id) return coordUp(e);
   if (!active || e.pointerId !== active.id) return;
   // Bricht iOS einen Stift-Strich ab, wird er trotzdem behalten – bisher verschwand er dann.
   // Nur Finger-Striche werden bei einem Abbruch verworfen (dann war es meist eine Geste).
@@ -1346,6 +1351,7 @@ function setZoom(z, cx, cy) {
   pagesBox.scrollLeft = left;
   pagesBox.scrollTop = top;
   $('#zoom-label').textContent = Math.round(zoom * 100) + '%';
+  if (typeof ruler !== 'undefined' && ruler) requestAnimationFrame(renderRuler);
 }
 
 // Pinch-Geste mit zwei Fingern (Safari auf dem iPad)
@@ -2143,19 +2149,19 @@ function transformItem(s, k, ox, oy, nx, ny) {
   return { ...s, pts: p, size: s.size * k };
 }
 
-function selectItems(i, items) {
+function selectItems(i, items, coord) {
   deselectImage();
   if (!items.length) return;
   const box = document.createElement('div');
-  box.className = 'img-sel';
+  box.className = 'img-sel' + (coord ? ' coord' : '');
   const colors = items.some((s) => s.tool === 'pen' || s.tool === 'text')
     ? '<span class="sel-colors">' + PEN_COLORS.map((c) => `<button type="button" data-color="${c}" style="--c:${c}" aria-label="Farbe"></button>`).join('') + '</span>'
     : '';
   box.innerHTML = '<i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i>' +
     '<div class="img-sel-menu"><button type="button" data-act="del">Löschen</button>' +
-    '<button type="button" data-act="dup">Duplizieren</button>' + colors + '</div>';
+    '<button type="button" data-act="dup">Duplizieren</button>' + colors + (coord ? coordMenu() : '') + '</div>';
   pageEls[i].wrap.append(box);
-  sel = { page: i, items, box };
+  sel = { page: i, items, box, coord };
   placeSelection();
   box.addEventListener('pointerdown', selDown);
   box.addEventListener('pointermove', selMove);
@@ -2164,6 +2170,8 @@ function selectItems(i, items) {
   box.querySelector('[data-act="del"]').addEventListener('click', deleteSelected);
   box.querySelector('[data-act="dup"]').addEventListener('click', duplicateSelected);
   box.querySelectorAll('[data-color]').forEach((b) => b.addEventListener('click', () => recolorSelected(b.dataset.color)));
+  box.querySelectorAll('[data-quad]').forEach((b) => b.addEventListener('click', () => coordOption('quad', Number(b.dataset.quad))));
+  box.querySelectorAll('[data-unit]').forEach((b) => b.addEventListener('click', () => coordOption('unit', Number(b.dataset.unit))));
 }
 const selectImage = (i, s) => selectItems(i, [s]);
 
@@ -2252,6 +2260,11 @@ function selMove(e) {
   if (!d.handle) {
     nx = clamp(B.x + x - d.x0, -B.w * 0.8, PAGE_W - B.w * 0.2);
     ny = clamp(B.y + y - d.y0, -B.h * 0.8, PAGE_H - B.h * 0.2);
+    if (sel.coord) {
+      nx = B.x + snapGrid(nx - B.x);
+      ny = B.y + snapGrid(ny - B.y);
+      d.shift = [nx - B.x, ny - B.y];
+    }
   } else {
     // gegenüberliegende Ecke bleibt stehen, Seitenverhältnis bleibt gleich
     const east = d.handle.includes('e'), south = d.handle.includes('s');
@@ -2276,6 +2289,10 @@ function selUp(e) {
   if (d.moved) {
     pushHistory([{ page: sel.page, before: d.before, after: note.pages[sel.page].strokes.slice() }]);
     saveNote();
+    if (sel.coord && d.shift) {
+      const r = sel.coord.rect, [sx, sy] = d.shift;
+      sel.coord = { rect: { x0: r.x0 + sx, y0: r.y0 + sy, x1: r.x1 + sx, y1: r.y1 + sy } };
+    }
   }
 }
 
@@ -2382,6 +2399,257 @@ pagesBox.addEventListener('drop', async (e) => {
     else if (f.type === 'application/pdf') await insertPdfPages(f).catch(() => toast('Import fehlgeschlagen'));
   }
 });
+
+// ---------- Lineal ----------
+// Liegt fest über dem Bildschirm (nicht auf der Seite). Finger/Maus: ziehen = verschieben,
+// zwei Finger = drehen, runder Knopf = drehen (auch mit Stift/Maus). Ein Strich, der nah an
+// einer Kante beginnt, läuft exakt an dieser Kante entlang.
+const RULER_LEN = 2400, RULER_W = 76, RULER_SNAP = 26;
+let ruler = null;                 // { cx, cy, a } – Mitte in px im Lineal-Layer, Winkel in rad
+const rulerLayer = document.createElement('div');
+rulerLayer.className = 'ruler-layer';
+rulerLayer.hidden = true;
+const rulerEl = document.createElement('div');
+rulerEl.className = 'ruler';
+rulerEl.innerHTML = '<div class="ruler-ticks"></div><span class="ruler-angle"></span><i class="ruler-rot" title="Drehen"></i>';
+rulerLayer.append(rulerEl);
+document.body.append(rulerLayer);
+let rulerMm = 0;
+
+function sizeRulerLayer() {
+  const r = pagesBox.getBoundingClientRect();
+  Object.assign(rulerLayer.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+}
+
+function renderRuler() {
+  if (!ruler) return;
+  rulerEl.style.transform = `translate(${ruler.cx - RULER_LEN / 2}px, ${ruler.cy - RULER_W / 2}px) rotate(${ruler.a}rad)`;
+  let deg = Math.round((-ruler.a * 180) / Math.PI) % 180;
+  if (deg < 0) deg += 180;
+  rulerEl.querySelector('.ruler-angle').textContent = deg + '°';
+  // Skala in echten Millimetern der Seite (A4 = 210 mm breit) – passt sich dem Zoom an
+  const pe = pageEls[0];
+  const mm = pe ? pe.svg.getBoundingClientRect().width / 210 : 4;
+  if (Math.abs(mm - rulerMm) < 0.01) return;
+  rulerMm = mm;
+  let d = '', labels = '';
+  for (let i = 0, x = 0; x <= RULER_LEN; i++, x = i * mm) {
+    const len = i % 10 === 0 ? 18 : i % 5 === 0 ? 12 : 7;
+    if (mm >= 2.5 || i % 5 === 0) d += `M${x.toFixed(1)} 0V${len}M${x.toFixed(1)} ${RULER_W}V${RULER_W - len}`;
+    if (i % 10 === 0 && i) labels += `<text x="${x.toFixed(1)}" y="31">${i / 10}</text>`;
+  }
+  rulerEl.querySelector('.ruler-ticks').innerHTML =
+    `<svg width="${RULER_LEN}" height="${RULER_W}"><path d="${d}" stroke="#555" stroke-width="1" fill="none"/><g font-size="10" fill="#555" text-anchor="middle">${labels}</g></svg>`;
+}
+
+function setRuler(on) {
+  if (on) {
+    sizeRulerLayer();
+    const r = pagesBox.getBoundingClientRect();
+    ruler = { cx: r.width / 2, cy: r.height / 2, a: 0 };
+    rulerMm = 0;
+    renderRuler();
+  } else {
+    ruler = null;
+  }
+  rulerLayer.hidden = !on;
+  $('#ruler-toggle').classList.toggle('active', on);
+}
+$('#ruler-toggle').addEventListener('click', () => setRuler(!ruler));
+window.addEventListener('resize', () => { if (ruler) { sizeRulerLayer(); renderRuler(); } });
+window.addEventListener('viewchange', () => { if (ruler) requestAnimationFrame(() => { sizeRulerLayer(); renderRuler(); }); });
+
+// Kante, an der ein Strich entlanglaufen soll (oder null, wenn zu weit weg)
+function rulerEdge(clientX, clientY) {
+  if (!ruler || rulerLayer.hidden) return null;
+  const L = rulerLayer.getBoundingClientRect();
+  const cx = L.left + ruler.cx, cy = L.top + ruler.cy;
+  const dx = Math.cos(ruler.a), dy = Math.sin(ruler.a), nx = -dy, ny = dx;
+  if (Math.abs((clientX - cx) * dx + (clientY - cy) * dy) > RULER_LEN / 2) return null;
+  const off = (clientX - cx) * nx + (clientY - cy) * ny;
+  if (Math.abs(off) - RULER_W / 2 > RULER_SNAP) return null;
+  const e = (RULER_W / 2 + 1) * (off >= 0 ? 1 : -1);
+  return { px: cx + nx * e, py: cy + ny * e, dx, dy };
+}
+
+// Seitenpunkt eines Stift-Ereignisses – am Lineal auf die Kante gezogen
+function pagePoint(ev) {
+  const g = active.edge;
+  if (!g) return toPage(ev);
+  const t = (ev.clientX - g.px) * g.dx + (ev.clientY - g.py) * g.dy;
+  return toPage({ clientX: g.px + g.dx * t, clientY: g.py + g.dy * t, pressure: ev.pressure });
+}
+
+// Lineal bewegen und drehen
+const rulerPtrs = new Map();
+let rulerG = null;
+
+function rulerStart(rot) {
+  const pts = [...rulerPtrs.values()];
+  rulerG = { cx: ruler.cx, cy: ruler.cy, a: ruler.a, rot, pts: pts.map((p) => ({ ...p })) };
+}
+
+rulerEl.addEventListener('pointerdown', (e) => {
+  const rot = !!e.target.closest('.ruler-rot');
+  if (e.pointerType === 'pen' && !rot) {
+    // Stift auf dem Lineal: an die Seite darunter weitergeben (schreiben, radieren …)
+    rulerEl.style.pointerEvents = 'none';
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    rulerEl.style.pointerEvents = '';
+    const canvas = under && under.closest('.page-live');
+    if (canvas) onDown(new Proxy(e, { get: (t, k) => (k === 'target' ? canvas : typeof t[k] === 'function' ? t[k].bind(t) : t[k]) }));
+    return;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+  try { rulerEl.setPointerCapture(e.pointerId); } catch {}
+  rulerPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  rulerStart(rot);
+});
+
+rulerEl.addEventListener('pointermove', (e) => {
+  if (!rulerPtrs.has(e.pointerId) || !rulerG) return;
+  e.preventDefault();
+  rulerPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const now = [...rulerPtrs.values()], g = rulerG;
+  const L = rulerLayer.getBoundingClientRect();
+  let a = g.a, cx = g.cx, cy = g.cy;
+  if (g.rot) {
+    const c = { x: L.left + g.cx, y: L.top + g.cy };
+    a += Math.atan2(now[0].y - c.y, now[0].x - c.x) - Math.atan2(g.pts[0].y - c.y, g.pts[0].x - c.x);
+  } else if (now.length >= 2 && g.pts.length >= 2) {
+    a += Math.atan2(now[1].y - now[0].y, now[1].x - now[0].x) - Math.atan2(g.pts[1].y - g.pts[0].y, g.pts[1].x - g.pts[0].x);
+    cx += (now[0].x + now[1].x - g.pts[0].x - g.pts[1].x) / 2;
+    cy += (now[0].y + now[1].y - g.pts[0].y - g.pts[1].y) / 2;
+  } else {
+    cx += now[0].x - g.pts[0].x;
+    cy += now[0].y - g.pts[0].y;
+  }
+  // bei 0°, 45°, 90° … leicht einrasten
+  const step = Math.PI / 4, near = Math.round(a / step) * step;
+  if (Math.abs(a - near) < (2.5 * Math.PI) / 180) a = near;
+  ruler.a = a;
+  ruler.cx = clamp(cx, 0, L.width);
+  ruler.cy = clamp(cy, 0, L.height);
+  renderRuler();
+});
+
+function rulerEnd(e) {
+  if (!rulerPtrs.delete(e.pointerId)) return;
+  if (rulerPtrs.size) rulerStart(false);
+  else rulerG = null;
+}
+rulerEl.addEventListener('pointerup', rulerEnd);
+rulerEl.addEventListener('pointercancel', rulerEnd);
+rulerEl.addEventListener('wheel', (e) => {     // Mausrad über dem Lineal = drehen
+  e.preventDefault();
+  ruler.a += (Math.sign(e.deltaY) * Math.PI) / 180;
+  renderRuler();
+}, { passive: false });
+
+// ---------- Koordinatensystem ----------
+// Rechteck aufziehen → Achsen mit Pfeilen, Skala und Zahlen, alles genau auf den Kästchen
+// (5 mm). Danach im Menü: 4 Quadranten / nur 1. Quadrant, 1 Einheit = 1 oder 2 Kästchen.
+let coordAction = null;
+const coordOpt = store.get('coordOpt', { quad: 4, unit: 2 });
+const snapGrid = (v) => Math.round(v / GRID_STEP) * GRID_STEP;
+
+function coordPoint(e, rect) {
+  return [snapGrid(((e.clientX - rect.left) / rect.width) * PAGE_W), snapGrid(((e.clientY - rect.top) / rect.height) * PAGE_H)];
+}
+
+function coordDown(e, canvas) {
+  e.preventDefault();
+  try { canvas.setPointerCapture(e.pointerId); } catch {}
+  const rect = canvas.getBoundingClientRect();
+  const [x, y] = coordPoint(e, rect);
+  coordAction = { id: e.pointerId, page: Number(canvas.dataset.page), rect, x0: x, y0: y, x1: x, y1: y };
+  const live = pageEls[coordAction.page].live;
+  for (const a of ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'style']) live.removeAttribute(a);
+  live.setAttribute('fill', 'rgba(37, 99, 235, .06)');
+  live.setAttribute('stroke', '#2563eb');
+  live.setAttribute('stroke-width', '1.5');
+  live.setAttribute('stroke-dasharray', '6 5');
+}
+
+function coordMove(e) {
+  e.preventDefault();
+  const c = coordAction;
+  [c.x1, c.y1] = coordPoint(e, c.rect);
+  pageEls[c.page].live.setAttribute('d', `M${num(c.x0)} ${num(c.y0)}H${num(c.x1)}V${num(c.y1)}H${num(c.x0)}Z`);
+}
+
+function coordUp(e) {
+  const c = coordAction;
+  coordAction = null;
+  const live = pageEls[c.page].live;
+  live.removeAttribute('d');
+  live.removeAttribute('stroke-dasharray');
+  if (e.type === 'pointercancel') return;
+  let r = { x0: Math.min(c.x0, c.x1), y0: Math.min(c.y0, c.y1), x1: Math.max(c.x0, c.x1), y1: Math.max(c.y0, c.y1) };
+  if (r.x1 - r.x0 < GRID_STEP * 4 || r.y1 - r.y0 < GRID_STEP * 4) {
+    // nur getippt: Standardgröße (16 × 16 Kästchen) um den Punkt
+    const h = GRID_STEP * 8;
+    r = { x0: c.x0 - h, y0: c.y0 - h, x1: c.x0 + h, y1: c.y0 + h };
+  }
+  // auf der Seite halten (an den Kästchen ausgerichtet)
+  const fit = (a, b, max) => { const s = Math.max(0, -a) - Math.max(0, b - max); return [a + s, b + s]; };
+  [r.x0, r.x1] = fit(r.x0, r.x1, snapGrid(PAGE_W - 10));
+  [r.y0, r.y1] = fit(r.y0, r.y1, snapGrid(PAGE_H - 10));
+  placeCoord(c.page, r, null);
+}
+
+function coordItems(r, opt) {
+  const G = GRID_STEP, U = G * opt.unit, color = PEN_COLORS[colorSel.pen], FS = 14;
+  let ox, oy;
+  if (opt.quad === 1) { ox = r.x0 + G; oy = r.y1 - G; }
+  else { ox = r.x0 + Math.round((r.x1 - r.x0) / 2 / U) * U; oy = r.y0 + Math.round((r.y1 - r.y0) / 2 / U) * U; }
+  const line = (pts) => ({ tool: 'pen', style: 'ball', shape: true, color, size: 1, pts: pts.flatMap(([x, y]) => [x, y, 0.5]) });
+  measureCtx.font = `${FS}px ${TEXT_FONT}`;
+  const label = (text, x, y, align) => {
+    const w = measureCtx.measureText(text).width + 2;
+    return { tool: 'text', x: align === 'center' ? x - w / 2 : align === 'right' ? x - w : x, y, w, size: FS, color, text };
+  };
+  const items = [
+    line([[r.x0, oy], [r.x1, oy]]), line([[r.x1 - 10, oy - 5], [r.x1, oy], [r.x1 - 10, oy + 5]]),
+    line([[ox, r.y1], [ox, r.y0]]), line([[ox - 5, r.y0 + 10], [ox, r.y0], [ox + 5, r.y0 + 10]]),
+    label('x', r.x1 - 4, oy + 6, 'left'), label('y', ox + 7, r.y0 - 4, 'left'), label('0', ox - 4, oy + 5, 'right')
+  ];
+  for (let x = ox + U, n = 1; x <= r.x1 - G; x += U, n++) items.push(line([[x, oy - 5], [x, oy + 5]]), label(String(n), x, oy + 7, 'center'));
+  for (let x = ox - U, n = -1; x >= r.x0 + G * 0.5; x -= U, n--) items.push(line([[x, oy - 5], [x, oy + 5]]), label(String(n), x, oy + 7, 'center'));
+  for (let y = oy - U, n = 1; y >= r.y0 + G; y -= U, n++) items.push(line([[ox - 5, y], [ox + 5, y]]), label(String(n), ox - 8, y - FS * 0.6, 'right'));
+  for (let y = oy + U, n = -1; y <= r.y1 - G * 0.5; y += U, n--) items.push(line([[ox - 5, y], [ox + 5, y]]), label(String(n), ox - 8, y - FS * 0.6, 'right'));
+  return items;
+}
+
+// Koordinatensystem auf die Seite setzen (oder ein ausgewähltes ersetzen) und auswählen
+function placeCoord(i, r, old) {
+  const page = note.pages[i];
+  const before = page.strokes.slice();
+  const items = coordItems(r, coordOpt);
+  if (old) {
+    const gone = new Set(old);
+    page.strokes = page.strokes.filter((s) => !gone.has(s));
+  }
+  page.strokes.push(...items);
+  pushHistory([{ page: i, before, after: page.strokes.slice() }]);
+  drawPage(i);
+  saveNote();
+  selectItems(i, items, { rect: r });
+}
+
+function coordMenu() {
+  const b = (k, v, label) => `<button type="button" data-${k}="${v}" class="${coordOpt[k] === v ? 'on' : ''}">${label}</button>`;
+  return '<span class="sel-coord">' + b('quad', 4, '4 Quadranten') + b('quad', 1, '1. Quadrant') +
+    '</span><span class="sel-coord">' + b('unit', 2, '1 cm') + b('unit', 1, '1 Kästchen') + '</span>';
+}
+
+function coordOption(k, v) {
+  if (!sel || !sel.coord) return;
+  coordOpt[k] = v;
+  store.set('coordOpt', coordOpt);
+  placeCoord(sel.page, sel.coord.rect, sel.items);
+}
 
 // Beim Wechseln/Schließen der App sofort speichern
 function flushNoteSave() {

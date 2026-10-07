@@ -369,11 +369,39 @@ body.manual-touch .page-live { touch-action: none; }
   background: #1c1c1e; color: #fff; box-shadow: 0 4px 14px rgba(0, 0, 0, .2); white-space: nowrap;
 }
 body[data-note-tool="select"] .pages .page-live { cursor: default; }
-.img-sel-menu { display: flex; align-items: center; gap: 6px; background: #1c1c1e; border-radius: 10px; padding: 4px; box-shadow: 0 4px 14px rgba(0, 0, 0, .2); }
+.img-sel-menu { display: flex; flex-wrap: wrap; justify-content: center; width: max-content; max-width: 330px; align-items: center; gap: 6px; background: #1c1c1e; border-radius: 10px; padding: 4px; box-shadow: 0 4px 14px rgba(0, 0, 0, .2); }
 .img-sel-menu button { box-shadow: none; padding: 6px 10px; }
 .sel-colors { display: flex; gap: 6px; padding: 0 4px 0 6px; border-left: 1px solid rgba(255, 255, 255, .2); }
 .sel-colors button { width: 20px; height: 20px; padding: 0; border-radius: 50%; background: var(--c); border: 2px solid rgba(255, 255, 255, .85); }
 body[data-note-tool="lasso"] .pages .page-live { cursor: crosshair; }
+
+/* Lineal */
+.ruler-layer { position: fixed; z-index: 5; overflow: hidden; pointer-events: none; }
+.ruler-layer[hidden], body:not([data-view="notes"]) .ruler-layer { display: none; }
+.ruler {
+  position: absolute; left: 0; top: 0; width: 2400px; height: 76px; transform-origin: center;
+  background: rgba(244, 244, 247, .78); border: 1px solid rgba(0, 0, 0, .18); border-radius: 6px; box-sizing: border-box;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .15); pointer-events: auto; touch-action: none; cursor: grab;
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+}
+.ruler-ticks { position: absolute; inset: 0; overflow: hidden; }
+.ruler-ticks svg { display: block; }
+.ruler-angle {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  font-size: 13px; font-weight: 600; color: #3a3a3c; font-variant-numeric: tabular-nums; pointer-events: none;
+}
+.ruler-rot {
+  position: absolute; left: calc(50% + 70px); top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px;
+  border-radius: 50%; background: #fff; border: 2px solid var(--accent); box-sizing: border-box; cursor: alias;
+}
+.ruler-rot::after { content: '⟳'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 15px; font-style: normal; color: var(--accent); }
+
+/* Koordinatensystem: Optionen im Auswahl-Menü, keine Skalier-Ecken */
+.img-sel.coord i { display: none; }
+.sel-coord { display: flex; gap: 2px; padding-left: 6px; border-left: 1px solid rgba(255, 255, 255, .2); }
+.sel-coord button { opacity: .6; }
+.sel-coord button.on { opacity: 1; background: rgba(255, 255, 255, .16) !important; }
+body[data-note-tool="coord"] .pages .page-live { cursor: crosshair; }
 
 /* Ordner in der Notizliste */
 .folder-chips { display: flex; gap: 8px; overflow-x: auto; padding: 10px 0 2px; }

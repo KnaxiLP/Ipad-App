@@ -132,3 +132,17 @@ python3 -m http.server 8000
 - Über das Ordner-Symbol neben einer Notiz verschiebst du sie in einen Ordner.
 - Neue Notizen landen in dem Ordner, den du gerade offen hast.
 - Oben in der Liste kannst du nach Notizen suchen.
+
+## Lineal
+
+- Das Lineal schaltest du über das Lineal-Symbol ein und aus.
+- Mit Finger oder Maus verschiebst du es. Drehen geht mit zwei Fingern, mit dem runden Knopf oder mit dem Mausrad.
+- Bei 0°, 45°, 90° und so weiter rastet es ein.
+- Ein Strich, der nah an einer Kante beginnt, läuft exakt gerade an der Kante entlang.
+
+## Koordinatensystem
+
+- Wähle das Achsen-Symbol und zieh ein Rechteck auf. Die Achsen bekommen Pfeile, Skala und Zahlen und liegen genau auf den Kästchen.
+- Nur antippen ergibt ein System mit 16 × 16 Kästchen.
+- Im Menü wählst du **4 Quadranten** oder **1. Quadrant** und als Einheit **1 cm** oder **1 Kästchen**.
+- Beim Verschieben rastet das System auf den Kästchen ein.
