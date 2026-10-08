@@ -229,3 +229,18 @@ Erreichbar über **Einstellungen** in der Seitenleiste oder in einer Notiz über
 | Text | Rechtschreibprüfung, Schnell-Ersetzen |
 | Side Notes | Anzeigen, Spalte, Verbindungslinien, Export |
 | Werkzeugleiste | Knöpfe ein- und ausblenden |
+
+## Seitenübersicht
+
+Das Vier-Kästchen-Symbol oben neben dem Titel öffnet alle Seiten als Vorschaubilder.
+- **Antippen** springt zur Seite, **Ziehen** verschiebt sie.
+- **⧉** doppelt die Seite, **＋** fügt danach eine leere Seite ein, **🗑** löscht sie.
+
+## Stift-Favoriten
+
+- **☆** in der Werkzeugleiste merkt sich den aktuellen Stift (Werkzeug, Farbe, Dicke). Es gibt bis zu 4 Favoriten.
+- Antippen schaltet auf den Favoriten um. Lange drücken oder Rechtsklick entfernt ihn.
+
+## Rückgängig
+
+Rückgängig und Wiederholen gelten auch für Seiten-Aktionen (einfügen, verschieben, doppeln, löschen, PDF-Seiten) und für Side Notes. Eine Bearbeitung im Panel ist ein Schritt.

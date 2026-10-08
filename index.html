@@ -86,6 +86,7 @@
         <div class="gn-top">
           <button class="gn-btn" id="note-back" aria-label="Zurück"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
           <button class="gn-btn" id="note-list-btn" aria-label="Alle Notizen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg></button>
+          <button class="gn-btn" id="page-overview-btn" aria-label="Seitenübersicht"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7.5" height="9" rx="1"/><rect x="13.5" y="3" width="7.5" height="9" rx="1"/><rect x="3" y="14.5" width="7.5" height="6.5" rx="1"/><rect x="13.5" y="14.5" width="7.5" height="6.5" rx="1"/></svg></button>
           <input class="note-title" id="note-title" maxlength="40" placeholder="Unbenannte Notiz" enterkeyhint="done">
           <button class="gn-btn" id="note-new" aria-label="Neue Notiz"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
           <button class="gn-btn" id="note-more" aria-label="Mehr"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></button>
@@ -111,6 +112,7 @@
             <button class="tool" id="ruler-toggle" aria-label="Lineal ein/aus"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="8" width="19" height="8" rx="1" transform="rotate(-30 12 12)"/><path d="M7.3 12.3l1 1.7M10 10.8l1.5 2.6M12.6 9.3l1 1.7M15.3 7.8l1.5 2.6" /></svg></button>
             <button class="tool" id="shape-toggle" aria-label="Formen erkennen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8.5" cy="8.5" r="4.5"/><rect x="11" y="11" width="9" height="9" rx="1"/></svg></button>
           </div>
+          <div class="tool-group" id="fav-group"></div>
           <div class="tool-group" id="color-group"></div>
           <div class="tool-group" id="size-group">
             <button class="tool size" data-size="1" aria-label="Dünn"><i style="width:4px;height:4px"></i></button>
@@ -127,6 +129,16 @@
           </div>
         </div>
 
+        <div class="page-overview" id="page-overview" hidden>
+          <div class="po-head">
+            <strong>Seiten</strong><span class="muted small-text" id="po-count"></span>
+            <span class="spacer"></span>
+            <span class="muted small-text po-hint">Antippen = hinspringen · ziehen = verschieben</span>
+            <button type="button" class="btn small" id="po-add">＋ Seite</button>
+            <button type="button" class="btn small primary" id="po-close">Fertig</button>
+          </div>
+          <div class="po-grid" id="po-grid"></div>
+        </div>
         <div class="pages" id="pages">
           <div class="pages-inner" id="pages-inner"></div>
           <button class="btn add-page" id="add-page">＋ Seite hinzufügen</button>
@@ -237,7 +249,7 @@
       <section class="view" id="view-info">
         <header class="view-header"><h2>Info</h2></header>
         <div class="list-group">
-          <div class="row"><span>Version</span><span class="muted">5.2</span></div>
+          <div class="row"><span>Version</span><span class="muted">5.3</span></div>
           <div class="row"><span>Als App gestartet</span><span class="muted" id="info-standalone">–</span></div>
           <div class="row"><span>Offline-Modus</span><span class="muted" id="info-sw">–</span></div>
           <div class="row"><span>Bildschirm</span><span class="muted" id="info-screen">–</span></div>

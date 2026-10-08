@@ -1,7 +1,7 @@
 // ---------- Einstellungen ----------
 // Alles an einer Stelle. Wird nach notes.js geladen und greift direkt auf deren Werte zu.
 const TOOLBAR_OPTIONAL = [
-  ['[data-tool="ball"]', 'ball', 'Kugelschreiber'], ['[data-tool="marker"]', 'marker', 'Textmarker'],
+  ['#fav-group', 'favs', 'Stift-Favoriten'], ['[data-tool="ball"]', 'ball', 'Kugelschreiber'], ['[data-tool="marker"]', 'marker', 'Textmarker'],
   ['[data-tool="text"]', 'text', 'Text'], ['[data-tool="lasso"]', 'lasso', 'Lasso'], ['[data-tool="select"]', 'select', 'Auswahl-Pfeil'],
   ['#image-insert', 'image', 'Bild einfügen'], ['[data-tool="snote"]', 'snote', 'Side Notes'], ['[data-tool="math"]', 'math', 'Formel'],
   ['[data-tool="coord"]', 'coord', 'Koordinatensystem'], ['#ruler-toggle', 'ruler', 'Lineal'], ['#shape-toggle', 'shape', 'Formerkennung-Knopf'],
