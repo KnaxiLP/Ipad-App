@@ -590,17 +590,24 @@ function buildPages() {
     const svg = svgEl('svg', { viewBox: `0 0 ${PAGE_W} ${PAGE_H}`, class: 'page-live', 'data-page': i });
     const paper = svgEl('g');
     const ink = svgEl('g');
+    const notes = svgEl('g');                   // Side-Notes-Markierungen
     const live = svgEl('path');                 // der Strich, der gerade geschrieben wird
     const liveDots = svgEl('path');             // seine runden Punkte an Kehren
     const eraser = svgEl('circle', { fill: 'none', stroke: '#8e8e93', 'stroke-width': 1.5, r: 0 });
-    svg.append(paper, ink, live, liveDots, eraser);
+    svg.append(paper, ink, notes, live, liveDots, eraser);
     const numEl = document.createElement('span');
     numEl.className = 'page-num';
     numEl.textContent = i + 1;
     wrap.append(svg, numEl);
-    box.append(wrap);
-    return { wrap, svg, paper, ink, live, liveDots, eraser };
+    const row = document.createElement('div');
+    row.className = 'page-row';
+    const col = document.createElement('div');
+    col.className = 'sn-col';
+    row.append(wrap, col);
+    box.append(row);
+    return { wrap, svg, paper, ink, notes, col, live, liveDots, eraser };
   });
+  snClosePop();
   pageEls.forEach((_, i) => drawPage(i));
   $('#add-page').hidden = note.pages.length >= MAX_PAGES;
 }
@@ -627,11 +634,15 @@ function bgSvg(bg) {
   return bg ? `<image href="${bgUrl(bg)}" x="${num(bg.x)}" y="${num(bg.y)}" width="${num(bg.width)}" height="${num(bg.height)}" preserveAspectRatio="none"/>` : '';
 }
 
+let snColTimer = 0;
 function drawPage(i) {
   const pe = pageEls[i];
   if (!pe) return;
   pe.paper.innerHTML = paperSvg(note.paper) + bgSvg(note.pages[i].bg);
   pe.ink.innerHTML = note.pages[i].strokes.map(strokeSvg).join('');
+  pe.notes.innerHTML = snMarksSvg(i);
+  clearTimeout(snColTimer);
+  snColTimer = setTimeout(snRenderColumns, 30);
   if (sel && sel.page === i) {
     if (sel.items.every((s) => note.pages[i].strokes.includes(s))) placeSelection();
     else deselectImage();      // z. B. nach Rückgängig
@@ -1650,6 +1661,8 @@ function finishActive(abnormal = false) {
 function onDown(e) {
   const canvas = e.target.closest && e.target.closest('.page-live');
   if (!canvas) return;
+  snClosePop();
+  if (!active && !(e.pointerType === 'touch' && penNear()) && snBadgeDown(e)) return;   // Side-Note-Marke angetippt
   // Tippen neben ein ausgewähltes Bild hebt die Auswahl auf
   if (sel && !(e.pointerType === 'touch' && penNear())) deselectImage();
   if (window.noteTool === 'select' && !active && !(e.pointerType === 'touch' && (penNear() || isPalm(e)))) {
@@ -1683,6 +1696,7 @@ function onDown(e) {
     }
     if (window.noteTool === 'text' && touches.size === 1 && !active) return textDown(e, canvas);
     if (window.noteTool === 'math' && touches.size === 1 && !active) return mathDown(e, canvas);
+    if (window.noteTool === 'snote' && touches.size === 1 && !active && fingerDraw) return snDown(e, canvas);
     if (!fingerDraw) {
       // Finger scrollt: auf dem iPad macht das der Browser, sonst die App selbst
       if (!IS_IOS) pan = { ...avgTouch(), vx: 0, vy: 0, t: performance.now() };
@@ -1700,6 +1714,7 @@ function onDown(e) {
   if (tool === 'lasso') return lassoDown(e, canvas);
   if (tool === 'coord') return coordDown(e, canvas);
   if (tool === 'math') return mathDown(e, canvas);
+  if (tool === 'snote') return snDown(e, canvas);
 
   e.preventDefault();
   try { canvas.setPointerCapture(e.pointerId); } catch {}
@@ -1782,6 +1797,7 @@ function onMove(e) {
   if (textAction && e.pointerId === textAction.id) return textMove(e);
   if (lasso && e.pointerId === lasso.id) return lassoMove(e);
   if (coordAction && e.pointerId === coordAction.id) return coordMove(e);
+  if (snAction && e.pointerId === snAction.id) return snMove(e);
   if (!active || e.pointerId !== active.id) return;
   e.preventDefault();
   if (active.shaped) {
@@ -1830,6 +1846,8 @@ function onUp(e) {
   if (lasso && e.pointerId === lasso.id) return lassoUp(e);
   if (coordAction && e.pointerId === coordAction.id) return coordUp(e);
   if (mathTap && e.pointerId === mathTap.id) return mathUp(e);
+  if (snAction && e.pointerId === snAction.id) return snUp(e);
+  if (snBadgeTap && e.pointerId === snBadgeTap.id) { const b = snBadgeTap; snBadgeTap = null; return snShowPop(b.page, b.sn); }
   if (!active || e.pointerId !== active.id) return;
   // Bricht iOS einen Stift-Strich ab, wird er trotzdem behalten – bisher verschwand er dann.
   // Nur Finger-Striche werden bei einem Abbruch verworfen (dann war es meist eine Geste).
@@ -1880,6 +1898,7 @@ function setZoom(z, cx, cy) {
   pagesBox.scrollTop = top;
   $('#zoom-label').textContent = Math.round(zoom * 100) + '%';
   if (typeof ruler !== 'undefined' && ruler) requestAnimationFrame(renderRuler);
+  requestAnimationFrame(snRenderColumns);
 }
 
 // Pinch-Geste mit zwei Fingern (Safari auf dem iPad)
@@ -1915,6 +1934,7 @@ function renderColors() {
   g.innerHTML = '';
   // Beim Radierer nur unsichtbar machen – sonst ändert sich die Höhe der Leiste und die Seite springt
   g.classList.remove('invisible');
+  if (tool === 'snote') return renderSnBar(g);
   if (tool === 'eraser') {
     // Beim Radierer: Auswahl ganzer Strich / Teil (gleiche Höhe wie die Farben)
     [['stroke', 'Ganzer Strich'], ['part', 'Teil']].forEach(([m, label]) => {
@@ -2282,6 +2302,7 @@ $('#note-export').addEventListener('click', () => {
   const base = (note.title || 'Notiz').replace(/[^\wäöüÄÖÜß -]/g, '').trim() || 'Notiz';
   let pages = note.pages.filter((p) => p.strokes.length);
   if (!pages.length) pages = note.pages.slice(0, 1);
+  if (snPdf !== 'off') pages = snExportPages(pages, false);
   const files = pages.map((page, i) => {
     const c = document.createElement('canvas');
     c.width = PAGE_W * scale;
@@ -2383,10 +2404,10 @@ function buildPdf(pages, paper) {
       c += `q ${num(bg.width * S)} 0 0 ${num(bg.height * S)} ${num(bg.x * S)} ${num(PAGE_H * S - (bg.y + bg.height) * S)} cm ${im} Do Q\n`;
     }
     c += `q\n${S.toFixed(6)} 0 0 ${(-S).toFixed(6)} 0 ${H} cm\n1 J 1 j\n`;
-    if (!page.bg) paperLines(paper).forEach(([color, w, cmds]) => {
+    if (!page.bg && !page.plain) paperLines(paper).forEach(([color, w, cmds]) => {
       c += `${pdfColor(color)} RG ${w} w\n${cmdsToPdf(cmds)}S\n`;
     });
-    if (paper === 'dots' && !page.bg) {
+    if (paper === 'dots' && !page.bg && !page.plain) {
       c += `${pdfColor('#b4b4bb')} rg\n`;
       forEachDot((x, y) => { const d = []; circleCmds(d, x, y, 1.4); c += cmdsToPdf(d); });
       c += 'f\n';
@@ -2501,8 +2522,9 @@ function shareFiles(files, title) {
 
 $('#note-export-pdf').addEventListener('click', () => {
   const base = (note.title || 'Notiz').replace(/[^\wäöüÄÖÜß -]/g, '').trim() || 'Notiz';
-  let pages = note.pages.filter((p) => p.strokes.length || p.bg);
+  let pages = note.pages.filter((p) => p.strokes.length || p.bg || (p.notes && p.notes.length));
   if (!pages.length) pages = note.pages.slice(0, 1);
+  if (snPdf !== 'off') pages = snExportPages(pages, snPdf !== 'marks');
   const file = new File([buildPdf(pages, note.paper)], base + '.pdf', { type: 'application/pdf' });
   shareFiles([file], base);
 });
@@ -2783,7 +2805,7 @@ function selectItems(i, items, coord) {
     : '';
   box.innerHTML = '<i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i>' +
     '<div class="img-sel-menu"><button type="button" data-act="del">Löschen</button>' +
-    '<button type="button" data-act="dup">Duplizieren</button>' + colors + (coord ? coordMenu() : '') + '</div>';
+    '<button type="button" data-act="dup">Duplizieren</button><button type="button" data-act="sn">Side Note</button>' + colors + (coord ? coordMenu() : '') + '</div>';
   pageEls[i].wrap.append(box);
   sel = { page: i, items, box, coord };
   placeSelection();
@@ -2793,6 +2815,7 @@ function selectItems(i, items, coord) {
   box.addEventListener('pointercancel', selUp);
   box.querySelector('[data-act="del"]').addEventListener('click', deleteSelected);
   box.querySelector('[data-act="dup"]').addEventListener('click', duplicateSelected);
+  box.querySelector('[data-act="sn"]').addEventListener('click', snFromSelection);
   box.querySelectorAll('[data-color]').forEach((b) => b.addEventListener('click', () => recolorSelected(b.dataset.color)));
   box.querySelectorAll('[data-quad]').forEach((b) => b.addEventListener('click', () => coordOption('quad', Number(b.dataset.quad))));
   box.querySelectorAll('[data-unit]').forEach((b) => b.addEventListener('click', () => coordOption('unit', Number(b.dataset.unit))));
@@ -2838,7 +2861,7 @@ function deleteSelected() {
 
 function duplicateSelected() {
   if (!sel) return;
-  const copies = sel.items.map((s) => transformItem(s, 1, 0, 0, 20, 20));
+  const copies = sel.items.map((s) => { const { sn, ...c } = transformItem(s, 1, 0, 0, 20, 20); return c; });
   changeSelection((pg) => { pg.strokes.push(...copies); return copies; });
 }
 
@@ -3625,6 +3648,467 @@ $('#math-delete').addEventListener('click', () => {
   saveNote();
 });
 
+// ---------- Side Notes ----------
+// Anmerkungen an Stellen der Seite: an Unterstreichungen, an Bereichen oder an Handschrift/Text
+// (per Lasso). Jede Notiz gehört zu einem Schlüssel (Ebene) mit Farbe – global für alle Notizen
+// oder nur für diese Notiz – und lässt sich ein-/ausblenden.
+// page.notes = [{ id, key, anchor, text, ink }]
+//   anchor: { type: 'line', x0, y0, x1, y1 } | { type: 'rect', x, y, w, h } | { type: 'items', x, y, w, h }
+//   (bei 'items' tragen die Elemente selbst s.sn = [Notiz-IDs], damit die Notiz mitwandert)
+const SN_COLORS = ['#ea580c', '#2563eb', '#16a34a', '#dc2626', '#9333ea', '#0891b2', '#ca8a04', '#db2777'];
+const SN_DEFAULT = [
+  { id: 'g-stil', name: 'Stilmittel', color: '#ea580c' }, { id: 'g-uebers', name: 'Übersetzung', color: '#2563eb' },
+  { id: 'g-gram', name: 'Grammatik', color: '#16a34a' }, { id: 'g-wichtig', name: 'Wichtig', color: '#dc2626' }
+];
+let snGlobal = store.get('snKeys', SN_DEFAULT);
+let snHidden = new Set(store.get('snHidden', []));
+let snAllHidden = store.get('snAllHidden', false);
+let snKey = store.get('snKey', 'g-stil');
+let snColumn = store.get('snColumn', true);
+let snPdf = store.get('snPdf', 'list');     // 'off' | 'marks' | 'list'
+let snAction = null;     // Ziehen mit dem Side-Notes-Werkzeug
+let snEdit = null;       // offener Dialog: { page, id | null, anchor, items }
+let snPop = null;        // offene Karte
+
+const snKeys = () => snGlobal.map((k) => ({ ...k, global: true })).concat(((note && note.keys) || []).map((k) => ({ ...k, global: false })));
+const snKeyOf = (id) => snKeys().find((k) => k.id === id) || { id, name: 'Ohne Schlüssel', color: '#8e8e93' };
+const snVisible = (n) => !snAllHidden && !snHidden.has(n.key);
+const snSaveKeys = () => { store.set('snKeys', snGlobal); store.set('snHidden', [...snHidden]); store.set('snAllHidden', snAllHidden); };
+const snId = () => 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+
+function snBounds(page, n) {
+  const a = n.anchor;
+  if (a.type === 'line') return [Math.min(a.x0, a.x1), Math.min(a.y0, a.y1) - 4, Math.max(a.x0, a.x1), Math.max(a.y0, a.y1) + 4];
+  if (a.type === 'items') {
+    const items = page.strokes.filter((s) => s.sn && s.sn.includes(n.id));
+    if (items.length) { const b = selBounds(items); return [b.x - 4, b.y - 4, b.x + b.w + 4, b.y + b.h + 4]; }
+  }
+  return [a.x, a.y, a.x + a.w, a.y + a.h];
+}
+
+// Nummer-Marke an der Notiz: rechts oben (bei Unterstreichung am Ende der Linie)
+function snBadgePos(page, n) {
+  const b = snBounds(page, n), a = n.anchor;
+  if (a.type === 'line') { const r = a.x1 >= a.x0; return [clamp((r ? a.x1 : a.x0) + 13, 12, PAGE_W - 12), clamp((r ? a.y1 : a.y0) + 5, 12, PAGE_H - 12)]; }
+  return [clamp(b[2] + 2, 12, PAGE_W - 12), clamp(b[1] - 2, 12, PAGE_H - 12)];
+}
+
+const snNumbered = (page) => (page.notes || []).map((n, j) => ({ n, no: j + 1 })).filter(({ n }) => snVisible(n));
+
+// Markierungen als SVG (über der Tinte)
+function snMarksSvg(i) {
+  const page = note.pages[i];
+  let out = '';
+  for (const { n, no } of snNumbered(page)) {
+    const col = snKeyOf(n.key).color, a = n.anchor;
+    if (a.type === 'line') out += `<path d="M${num(a.x0)} ${num(a.y0)}L${num(a.x1)} ${num(a.y1)}" stroke="${col}" stroke-width="3.2" stroke-linecap="round" opacity=".9"/>`;
+    else {
+      const b = snBounds(page, n);
+      out += `<rect x="${num(b[0])}" y="${num(b[1])}" width="${num(b[2] - b[0])}" height="${num(b[3] - b[1])}" rx="5" fill="${col}" fill-opacity=".07" stroke="${col}" stroke-opacity=".55" stroke-width="1.3" stroke-dasharray="6 4"/>`;
+    }
+    const [bx, by] = snBadgePos(page, n);
+    out += `<g data-sn="${n.id}" class="sn-badge"><circle cx="${num(bx)}" cy="${num(by)}" r="10" fill="${col}"/><circle cx="${num(bx)}" cy="${num(by)}" r="18" fill="transparent"/><text x="${num(bx)}" y="${num(by + 4.3)}" font-size="12" font-weight="bold" font-family="${TEXT_FONT}" fill="#fff" text-anchor="middle">${no}</text></g>`;
+  }
+  return out;
+}
+
+// Inhalt einer Notiz (Text + Handschrift) als HTML
+const SN_INK_W = 600, SN_INK_H = 260;
+function snInkSvg(ink, cls = '') {
+  if (!ink || !ink.length) return '';
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  ink.forEach((s) => { const b = itemBounds(s); x0 = Math.min(x0, b[0]); y0 = Math.min(y0, b[1]); x1 = Math.max(x1, b[2]); y1 = Math.max(y1, b[3]); });
+  return `<svg class="${cls}" viewBox="${num(x0 - 4)} ${num(y0 - 4)} ${num(x1 - x0 + 8)} ${num(y1 - y0 + 8)}">${ink.map(penSvg).join('')}</svg>`;
+}
+function snContentHtml(n) {
+  const k = snKeyOf(n.key);
+  return `<div class="sn-key" style="--c:${k.color}">${escXml(k.name)}</div>` +
+    (n.text ? `<div class="sn-text">${escXml(n.text)}</div>` : '') + snInkSvg(n.ink, 'sn-ink-view') +
+    (!n.text && !(n.ink && n.ink.length) ? '<div class="muted small-text">(leer)</div>' : '');
+}
+
+// Spalte neben der Seite (nur wenn genug Platz ist)
+function snColumnOn() {
+  return snColumn && !snAllHidden && pagesBox.clientWidth >= 1000 && note.pages.some((p) => snNumbered(p).length);
+}
+function snRenderColumns() {
+  if (!note) return;
+  const on = snColumnOn();
+  pagesInner.classList.toggle('sn-cols', on);
+  pagesInner.style.maxWidth = 900 * zoom + (on ? 300 : 0) + 'px';
+  pageEls.forEach((pe, i) => {
+    pe.col.innerHTML = '';
+    if (!on) return;
+    const page = note.pages[i];
+    const items = snNumbered(page).map(({ n, no }) => ({ n, no, top: snBounds(page, n)[1] / PAGE_H }));
+    items.sort((a, b) => a.top - b.top);
+    let bottom = 0;
+    const h = pe.wrap.clientHeight;
+    for (const { n, no, top } of items) {
+      const card = document.createElement('div');
+      card.className = 'sn-card';
+      card.style.setProperty('--c', snKeyOf(n.key).color);
+      card.innerHTML = `<span class="sn-no">${no}</span>` + snContentHtml(n);
+      card.addEventListener('click', () => openSnDialog(i, n.id));
+      pe.col.append(card);
+      const y = Math.max(top * h - 10, bottom);
+      card.style.top = y + 'px';
+      bottom = y + card.offsetHeight + 8;
+    }
+  });
+}
+window.addEventListener('resize', () => requestAnimationFrame(snRenderColumns));
+
+// Karte beim Antippen einer Marke
+function snShowPop(i, id) {
+  snClosePop();
+  const page = note.pages[i], n = (page.notes || []).find((x) => x.id === id);
+  if (!n) return;
+  const [bx, by] = snBadgePos(page, n);
+  const pop = document.createElement('div');
+  pop.className = 'sn-pop';
+  pop.style.setProperty('--c', snKeyOf(n.key).color);
+  pop.innerHTML = snContentHtml(n) + '<div class="sn-pop-actions"><button type="button" data-a="edit">Bearbeiten</button><button type="button" data-a="close">Schließen</button></div>';
+  const left = bx / PAGE_W, top = by / PAGE_H;
+  Object.assign(pop.style, { top: top * 100 + 2 + '%' });
+  if (left > 0.55) pop.style.right = (1 - left) * 100 + '%'; else pop.style.left = left * 100 + '%';
+  pageEls[i].wrap.append(pop);
+  pop.addEventListener('pointerdown', (e) => e.stopPropagation());
+  pop.querySelector('[data-a="edit"]').addEventListener('click', () => { snClosePop(); openSnDialog(i, id); });
+  pop.querySelector('[data-a="close"]').addEventListener('click', snClosePop);
+  snPop = pop;
+}
+function snClosePop() { if (snPop) { snPop.remove(); snPop = null; } }
+
+// Antippen einer Marke (mit jedem Werkzeug) – wird am Anfang von onDown geprüft
+function snBadgeDown(e) {
+  const g = e.target.closest && e.target.closest('[data-sn]');
+  if (!g) return false;
+  e.preventDefault();
+  const canvas = g.closest('.page-live');
+  snBadgeTap = { id: e.pointerId, page: Number(canvas.dataset.page), sn: g.dataset.sn };
+  return true;
+}
+let snBadgeTap = null;
+
+// Werkzeug: Linie unter Wörter ziehen = Unterstreichung, sonst Rechteck = Bereich
+function snDown(e, canvas) {
+  e.preventDefault();
+  try { canvas.setPointerCapture(e.pointerId); } catch {}
+  const r = canvas.getBoundingClientRect();
+  const p = [((e.clientX - r.left) / r.width) * PAGE_W, ((e.clientY - r.top) / r.height) * PAGE_H];
+  snAction = { id: e.pointerId, page: Number(canvas.dataset.page), rect: r, x0: p[0], y0: p[1], x1: p[0], y1: p[1] };
+  const live = pageEls[snAction.page].live;
+  for (const a of ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'style', 'stroke-dasharray']) live.removeAttribute(a);
+  const col = snKeyOf(snKey).color;
+  live.setAttribute('stroke', col);
+  live.setAttribute('fill', 'none');
+  live.setAttribute('stroke-linecap', 'round');
+}
+function snShape(a) {
+  const dx = a.x1 - a.x0, dy = a.y1 - a.y0;
+  return Math.abs(dy) < 28 && Math.abs(dx) > 20 && Math.abs(dy) < Math.abs(dx) * 0.35 ? 'line' : 'rect';
+}
+function snMove(e) {
+  e.preventDefault();
+  const a = snAction;
+  a.x1 = ((e.clientX - a.rect.left) / a.rect.width) * PAGE_W;
+  a.y1 = ((e.clientY - a.rect.top) / a.rect.height) * PAGE_H;
+  const live = pageEls[a.page].live;
+  if (snShape(a) === 'line') {
+    live.setAttribute('stroke-width', '3.2');
+    live.removeAttribute('stroke-dasharray');
+    live.setAttribute('d', `M${num(a.x0)} ${num(a.y0)}L${num(a.x1)} ${num(a.y1)}`);
+  } else {
+    live.setAttribute('stroke-width', '1.5');
+    live.setAttribute('stroke-dasharray', '6 5');
+    live.setAttribute('d', `M${num(a.x0)} ${num(a.y0)}H${num(a.x1)}V${num(a.y1)}H${num(a.x0)}Z`);
+  }
+}
+function snUp(e) {
+  const a = snAction;
+  snAction = null;
+  const live = pageEls[a.page].live;
+  live.removeAttribute('d');
+  live.removeAttribute('stroke-dasharray');
+  if (Math.hypot(a.x1 - a.x0, a.y1 - a.y0) < 12) return;   // nur getippt
+  const anchor = snShape(a) === 'line'
+    ? { type: 'line', x0: a.x0, y0: a.y0, x1: a.x1, y1: a.y1 }
+    : { type: 'rect', x: Math.min(a.x0, a.x1), y: Math.min(a.y0, a.y1), w: Math.abs(a.x1 - a.x0), h: Math.abs(a.y1 - a.y0) };
+  openSnDialog(a.page, null, anchor);
+}
+
+// Side Note an die Lasso-Auswahl hängen
+function snFromSelection() {
+  if (!sel) return;
+  const b = selBounds(sel.items);
+  const page = sel.page, items = sel.items;
+  deselectImage();
+  openSnDialog(page, null, { type: 'items', x: b.x - 4, y: b.y - 4, w: b.w + 8, h: b.h + 8 }, items);
+}
+
+// ---------- Dialog: Side Note schreiben / bearbeiten ----------
+let snInk = [], snInkActive = null, snDlgKey = null;
+
+function openSnDialog(page, id, anchor, items) {
+  snClosePop();
+  const n = id ? (note.pages[page].notes || []).find((x) => x.id === id) : null;
+  snEdit = { page, id, anchor, items };
+  snDlgKey = n ? n.key : snKey;
+  $('#sn-text').value = n ? n.text || '' : '';
+  snInk = n && n.ink ? n.ink.slice() : [];
+  $('#sn-delete').hidden = !n;
+  $('#sn-dialog-title').textContent = n ? 'Side Note bearbeiten' : 'Neue Side Note';
+  snRenderDlgKeys();
+  snRenderInk();
+  snSetMode(n && !n.text && snInk.length ? 'ink' : 'text');
+  $('#sn-dialog').showModal();
+  if (!snInk.length) $('#sn-text').focus();
+}
+
+function snRenderDlgKeys() {
+  const box = $('#sn-dlg-keys');
+  box.innerHTML = '';
+  snKeys().forEach((k) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sn-chip' + (k.id === snDlgKey ? ' active' : '');
+    b.style.setProperty('--c', k.color);
+    b.textContent = k.name;
+    b.title = k.global ? 'Global' : 'Nur diese Notiz';
+    b.addEventListener('click', () => { snDlgKey = k.id; snRenderDlgKeys(); });
+    box.append(b);
+  });
+}
+
+function snSetMode(m) {
+  document.querySelectorAll('#sn-mode [data-mode]').forEach((b) => b.classList.toggle('active', b.dataset.mode === m));
+  $('#sn-text').hidden = m !== 'text';
+  $('#sn-ink').hidden = m !== 'ink';
+}
+document.querySelectorAll('#sn-mode [data-mode]').forEach((b) => b.addEventListener('click', () => snSetMode(b.dataset.mode)));
+
+function snRenderInk() {
+  const svg = $('#sn-ink svg');
+  svg.innerHTML = snInk.map(penSvg).join('') + (snInkActive ? penSvg(snInkActive) : '');
+}
+(() => {
+  const svg = $('#sn-ink svg');
+  const pt = (e) => {
+    const r = svg.getBoundingClientRect();
+    return [((e.clientX - r.left) / r.width) * SN_INK_W, ((e.clientY - r.top) / r.height) * SN_INK_H, Math.round((e.pressure || 0.5) * 100) / 100];
+  };
+  svg.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'touch' && penNear()) return;
+    e.preventDefault();
+    try { svg.setPointerCapture(e.pointerId); } catch {}
+    snInkActive = { tool: 'pen', color: '#1c1c1e', size: 1.6, pts: pt(e), id: e.pointerId };
+    snRenderInk();
+  });
+  svg.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'pen') lastPenTime = performance.now();
+    if (!snInkActive || e.pointerId !== snInkActive.id) return;
+    e.preventDefault();
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+    for (const ev of evs.length ? evs : [e]) {
+      const [x, y, p] = pt(ev), q = snInkActive.pts, k = q.length;
+      if (Math.hypot(x - q[k - 3], y - q[k - 2]) >= 0.8) q.push(Math.round(x * 10) / 10, Math.round(y * 10) / 10, p);
+    }
+    snRenderInk();
+  });
+  const end = (e) => {
+    if (!snInkActive || e.pointerId !== snInkActive.id) return;
+    const { id, ...s } = snInkActive;
+    snInk.push(s);
+    snInkActive = null;
+    snRenderInk();
+  };
+  svg.addEventListener('pointerup', end);
+  svg.addEventListener('pointercancel', end);
+})();
+$('#sn-ink-undo').addEventListener('click', () => { snInk.pop(); snRenderInk(); });
+$('#sn-ink-clear').addEventListener('click', () => { snInk = []; snRenderInk(); });
+
+$('#sn-ok').addEventListener('click', () => {
+  const { page, id, anchor, items } = snEdit;
+  const pg = note.pages[page];
+  const text = $('#sn-text').value.trim();
+  $('#sn-dialog').close();
+  if (!text && !snInk.length && !id) return;            // neue, leere Notiz: nichts anlegen
+  pg.notes = pg.notes || [];
+  if (id) {
+    pg.notes = pg.notes.map((n) => (n.id === id ? { ...n, key: snDlgKey, text, ink: snInk } : n));
+  } else {
+    const n = { id: snId(), key: snDlgKey, anchor, text, ink: snInk };
+    pg.notes.push(n);
+    if (items) {
+      const set = new Set(items);
+      pg.strokes = pg.strokes.map((s) => (set.has(s) ? { ...s, sn: (s.sn || []).concat(n.id) } : s));
+    }
+    snKey = snDlgKey;
+    store.set('snKey', snKey);
+  }
+  drawPage(page);
+  saveNote();
+});
+
+$('#sn-delete').addEventListener('click', () => {
+  const { page, id } = snEdit;
+  if (!id || !confirm('Diese Side Note löschen?')) return;
+  const pg = note.pages[page];
+  pg.notes = (pg.notes || []).filter((n) => n.id !== id);
+  pg.strokes = pg.strokes.map((s) => (s.sn && s.sn.includes(id) ? { ...s, sn: s.sn.filter((x) => x !== id) } : s));
+  $('#sn-dialog').close();
+  drawPage(page);
+  saveNote();
+});
+
+// ---------- Schlüssel (Ebenen) in der Werkzeugleiste und im Ebenen-Dialog ----------
+function renderSnBar(g) {
+  snKeys().forEach((k) => {
+    const b = document.createElement('button');
+    b.className = 'tool sn-chip' + (k.id === snKey ? ' active' : '') + (snHidden.has(k.id) ? ' hidden-key' : '');
+    b.style.setProperty('--c', k.color);
+    b.textContent = k.name.length > 12 ? k.name.slice(0, 11) + '…' : k.name;
+    b.title = (k.global ? 'Global: ' : 'Diese Notiz: ') + k.name;
+    b.addEventListener('click', () => { snKey = k.id; store.set('snKey', snKey); renderColors(); });
+    g.append(b);
+  });
+  const layers = document.createElement('button');
+  layers.className = 'tool sn-layers-btn';
+  layers.setAttribute('aria-label', 'Ebenen');
+  layers.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>';
+  layers.addEventListener('click', openSnKeysDialog);
+  g.append(layers);
+}
+
+function openSnKeysDialog() {
+  renderSnKeysDialog();
+  $('#snkeys-dialog').showModal();
+}
+
+function renderSnKeysDialog() {
+  const list = $('#snkeys-list');
+  list.innerHTML = '';
+  snKeys().forEach((k) => {
+    const row = document.createElement('div');
+    row.className = 'snk-row';
+    const hidden = snHidden.has(k.id);
+    row.innerHTML = `<button type="button" class="snk-eye" aria-label="Ein-/ausblenden">${hidden ? '◌' : '●'}</button>` +
+      `<button type="button" class="snk-color" style="--c:${k.color}" aria-label="Farbe ändern"></button>` +
+      `<span class="snk-name">${escXml(k.name)}</span><span class="muted small-text">${k.global ? 'Global' : 'Diese Notiz'}</span>` +
+      `<button type="button" class="btn link snk-ren">Umbenennen</button><button type="button" class="btn link danger-text snk-del">Löschen</button>`;
+    row.style.opacity = hidden ? 0.5 : 1;
+    const update = (fn) => {
+      if (k.global) snGlobal = snGlobal.map((x) => (x.id === k.id ? fn({ ...x }) : x)).filter(Boolean);
+      else { note.keys = (note.keys || []).map((x) => (x.id === k.id ? fn({ ...x }) : x)).filter(Boolean); saveNote(); }
+      snSaveKeys();
+      renderSnKeysDialog();
+      refreshSn();
+    };
+    row.querySelector('.snk-eye').addEventListener('click', () => {
+      if (snHidden.has(k.id)) snHidden.delete(k.id); else snHidden.add(k.id);
+      snSaveKeys();
+      renderSnKeysDialog();
+      refreshSn();
+    });
+    row.querySelector('.snk-color').addEventListener('click', () => update((x) => ({ ...x, color: SN_COLORS[(SN_COLORS.indexOf(x.color) + 1) % SN_COLORS.length] })));
+    row.querySelector('.snk-ren').addEventListener('click', () => {
+      const name = (prompt('Neuer Name:', k.name) || '').trim().slice(0, 30);
+      if (name) update((x) => ({ ...x, name }));
+    });
+    row.querySelector('.snk-del').addEventListener('click', () => {
+      if (confirm(`Schlüssel „${k.name}“ löschen? Side Notes damit bleiben erhalten, werden aber grau.`)) update(() => null);
+    });
+    list.append(row);
+  });
+  $('#snk-all').checked = !snAllHidden;
+  $('#snk-col').checked = snColumn;
+}
+
+function snNewKey(global) {
+  const name = (prompt(global ? 'Name des Schlüssels (für alle Notizen):' : 'Name des Schlüssels (nur diese Notiz):') || '').trim().slice(0, 30);
+  if (!name) return;
+  const used = snKeys().map((k) => k.color);
+  const k = { id: (global ? 'g' : 'l') + Date.now().toString(36), name, color: SN_COLORS.find((c) => !used.includes(c)) || SN_COLORS[0] };
+  if (global) snGlobal.push(k);
+  else { note.keys = (note.keys || []).concat(k); saveNote(); }
+  snKey = k.id;
+  store.set('snKey', snKey);
+  snSaveKeys();
+  renderSnKeysDialog();
+  refreshSn();
+}
+$('#snk-add-global').addEventListener('click', () => snNewKey(true));
+$('#snk-add-local').addEventListener('click', () => snNewKey(false));
+$('#snk-all').addEventListener('change', (e) => { snAllHidden = !e.target.checked; snSaveKeys(); refreshSn(); });
+$('#snk-col').addEventListener('change', (e) => { snColumn = e.target.checked; store.set('snColumn', snColumn); refreshSn(); });
+
+function refreshSn() {
+  if (!note) return;
+  pageEls.forEach((_, i) => drawPage(i));
+  renderColors();
+}
+
+// ---------- Export: Markierungen als Striche, Notizen als eigene Seite ----------
+function snMarkItems(page) {
+  const out = [];
+  for (const { n, no } of snNumbered(page)) {
+    const col = snKeyOf(n.key).color, a = n.anchor;
+    const line = (pts, size) => ({ tool: 'pen', style: 'ball', shape: true, color: col, size, pts: pts.flatMap(([x, y]) => [x, y, 0.5]) });
+    if (a.type === 'line') out.push(line([[a.x0, a.y0], [a.x1, a.y1]], 2.6));
+    else { const b = snBounds(page, n); out.push(line([[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]], [b[0], b[1]]], 0.8)); }
+    const [bx, by] = snBadgePos(page, n);
+    out.push(line([[bx, by]], 16));
+    const w = measure(String(no), fontOf({ b: true }, 12)) + 2;
+    out.push({ tool: 'text', x: bx - w / 2, y: by - 7.7, w, size: 12, color: '#ffffff', text: String(no), paras: [{ spans: [{ t: String(no), b: true }] }] });
+  }
+  return out;
+}
+
+// Seiten für den Export: jede Seite mit Markierungen, danach eine Liste ihrer Side Notes
+function snExportPages(pages, withList) {
+  const out = [];
+  pages.forEach((page) => {
+    const notes = snNumbered(page);
+    if (!notes.length) { out.push(page); return; }
+    out.push({ ...page, strokes: page.strokes.concat(snMarkItems(page)) });
+    if (!withList) return;
+    const pageNo = note.pages.indexOf(page) + 1;
+    let list = { strokes: [], plain: true }, y = 70;
+    const head = () => list.strokes.push({ tool: 'text', x: 70, y: 50, w: 860, size: 26, color: '#1c1c1e', text: '', paras: [{ h: true, spans: [{ t: `Side Notes – Seite ${pageNo}` }] }] });
+    head();
+    y = 110;
+    for (const { n, no } of notes) {
+      const k = snKeyOf(n.key);
+      const paras = [{ spans: [{ t: `${no}  ${k.name}`, b: true, c: k.color }] }].concat((n.text || '').split('\n').map((l) => ({ spans: [{ t: l }] })));
+      let t = { tool: 'text', x: 70, y, w: 860, size: 20, color: '#1c1c1e', text: '', paras };
+      const h = layoutText(t).h;
+      let inkH = 0, inkItems = [];
+      if (n.ink && n.ink.length) {
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        n.ink.forEach((s) => { const b = itemBounds(s); x0 = Math.min(x0, b[0]); y0 = Math.min(y0, b[1]); x1 = Math.max(x1, b[2]); y1 = Math.max(y1, b[3]); });
+        const kk = Math.min(1, 520 / Math.max(1, x1 - x0));
+        inkH = (y1 - y0) * kk + 10;
+        inkItems = n.ink.map((s) => transformItem(s, kk, x0, y0, 90, 0));
+      }
+      if (y + h + inkH > PAGE_H - 60 && list.strokes.length > 1) {
+        out.push(list);
+        list = { strokes: [], plain: true };
+        head();
+        y = 110;
+        t = { ...t, y };
+      }
+      list.strokes.push(t);
+      y += h + 4;
+      inkItems.forEach((s) => list.strokes.push(transformItem(s, 1, 0, 0, 0, y)));
+      y += inkH + 18;
+    }
+    out.push(list);
+  });
+  return out;
+}
+
 // Beim Wechseln/Schließen der App sofort speichern
 function flushNoteSave() {
   if (window.appRestoring) return cancelSave();
@@ -3651,3 +4135,10 @@ setupFastInk();
   if (last) openNote(last);
   else createNote();
 })();
+
+// Side Notes im PDF: Auswahl im Mehr-Menü
+function renderSnPdf() {
+  document.querySelectorAll('[data-snpdf]').forEach((b) => b.classList.toggle('active', b.dataset.snpdf === snPdf));
+}
+document.querySelectorAll('[data-snpdf]').forEach((b) => b.addEventListener('click', () => { snPdf = b.dataset.snpdf; store.set('snPdf', snPdf); renderSnPdf(); }));
+renderSnPdf();

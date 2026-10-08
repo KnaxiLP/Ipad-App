@@ -301,8 +301,8 @@ body[data-view="notes"] .app { padding-top: 0; }
 
 .toolbar {
   position: relative; z-index: 5;
-  display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 2px;
-  padding: 4px 10px 8px;
+  display: flex; flex-wrap: nowrap; justify-content: flex-start; align-items: center; gap: 2px;
+  padding: 4px 10px 8px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
   background: var(--bar-bg);
   border-bottom: 1px solid var(--border);
 }
@@ -338,8 +338,9 @@ body[data-view="notes"] .app { padding-top: 0; }
   overscroll-behavior: contain; padding-bottom: env(safe-area-inset-bottom);
 }
 .pages-inner { width: 100%; max-width: 900px; margin: 0 auto; padding: 20px 20px 0; box-sizing: border-box; }
+.page-row { position: relative; margin-bottom: 20px; }
 .page {
-  position: relative; width: 100%; aspect-ratio: 1000 / 1414; margin-bottom: 20px;
+  position: relative; width: 100%; aspect-ratio: 1000 / 1414;
   background: #fff; border-radius: 2px; overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, .08), 0 8px 24px rgba(0, 0, 0, .08);
 }
@@ -680,3 +681,45 @@ dialog h3 { margin: 0 0 16px; font-size: 22px; }
 body[data-note-tool="math"] .pages .page-live { cursor: copy; }
 /* Radierer-Modus */
 .tool.erase-mode { width: auto; padding: 0 10px; font-size: 13px; font-weight: 600; }
+/* ---------- Side Notes ---------- */
+.sn-badge { cursor: pointer; }
+.pages-inner.sn-cols { padding-right: 300px; max-width: 1200px; }
+.sn-col { position: absolute; top: 0; left: calc(100% + 14px); width: 270px; height: 100%; }
+.sn-col:empty { display: none; }
+.sn-card, .sn-pop {
+  position: absolute; box-sizing: border-box; background: #fff; border-radius: 10px; padding: 8px 10px 8px 12px;
+  border-left: 4px solid var(--c); box-shadow: 0 2px 10px rgba(0, 0, 0, .1); font-size: 14px; color: #1c1c1e;
+}
+.sn-card { left: 0; right: 0; cursor: pointer; }
+.sn-no { float: right; font-weight: 700; color: var(--c); font-size: 13px; }
+.sn-key { font-size: 12px; font-weight: 700; color: var(--c); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 2px; }
+.sn-text { white-space: pre-wrap; word-break: break-word; line-height: 1.35; }
+.sn-ink-view { display: block; width: 100%; max-height: 120px; margin-top: 4px; }
+.sn-pop { z-index: 5; width: min(300px, 80%); margin-top: 8px; }
+.sn-pop-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+.sn-pop-actions button { border: 0; background: var(--bg); border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; color: inherit; }
+.sn-keys { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.sn-chip { border: 2px solid var(--c); background: none; color: var(--c); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.sn-chip.active { background: var(--c); color: #fff; }
+.tool.sn-chip { width: auto; height: 30px; margin: 0 2px; }
+.tool.sn-chip.hidden-key { opacity: .45; }
+.sn-text-input { width: 100%; box-sizing: border-box; resize: vertical; min-height: 90px; font: inherit; }
+.sn-ink { background: #fff; border-radius: 12px; border: 1px solid rgba(0, 0, 0, .1); padding: 4px; }
+.sn-ink svg { display: block; width: 100%; aspect-ratio: 600 / 260; touch-action: none; background: repeating-linear-gradient(transparent 0 42px, #e5e7f5 42px 43px); border-radius: 8px; }
+.sn-ink-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.snk-list { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; max-height: 45vh; overflow-y: auto; }
+.snk-row { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-bottom: 1px solid rgba(0, 0, 0, .06); }
+.snk-row .btn.link { padding: 4px 6px; font-size: 13px; }
+.snk-eye { border: 0; background: none; font-size: 18px; width: 30px; cursor: pointer; color: inherit; }
+.snk-color { width: 22px; height: 22px; border-radius: 50%; border: 0; background: var(--c); cursor: pointer; flex: none; }
+.snk-name { flex: 1; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.snk-add { display: flex; gap: 8px; margin: 8px 0; }
+.snk-toggle { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 15px; }
+.sn-pdf-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: default; }
+.segmented.small-seg { margin: 0; }
+.segmented.small-seg button { padding: 5px 9px; font-size: 13px; }
+body[data-note-tool="snote"] .pages .page-live { cursor: crosshair; }
+/* Leiste: mittig, solange sie passt – sonst seitlich wischbar (nie zweizeilig, damit nichts springt) */
+.toolbar > :first-child { margin-left: auto; }
+.toolbar > :last-child { margin-right: auto; }
+.toolbar .tool-group { flex: none; }

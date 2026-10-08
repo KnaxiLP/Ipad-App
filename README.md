@@ -190,3 +190,20 @@ Im PDF-Export bleiben Sonderzeichen erhalten.
 Bei aktivem Radierer wählst du in der Leiste aus:
 - **Ganzer Strich:** löscht den ganzen Strich.
 - **Teil:** löscht nur das Stück unter dem Radierer.
+
+## Side Notes
+
+Side Notes sind Anmerkungen an einer Stelle der Seite, zum Beispiel Stilmittel oder eine alternative Übersetzung.
+
+- **Unterstreichen:** Mit dem Side-Notes-Werkzeug (Sprechblasen-Symbol) unter Wörter ziehen.
+- **Bereich:** Ein Rechteck aufziehen.
+- **Handschrift, Text oder Bilder:** Mit dem Lasso auswählen und im Menü **„Side Note“** wählen. Die Notiz wandert dann mit, wenn du die Auswahl verschiebst.
+- **Inhalt:** getippt oder handschriftlich (Reiter „Schreiben“).
+- **Schlüssel (Ebenen):** Jede Notiz hat einen Schlüssel mit eigener Farbe, z. B. Stilmittel, Übersetzung, Grammatik oder Wichtig. Es gibt globale Schlüssel und solche nur für eine Notiz. Im Ebenen-Dialog blendest du sie ein und aus, benennst sie um oder färbst sie um.
+- **Anzeige:** Antippen der Nummer öffnet eine Karte. Bei genug Platz stehen alle Notizen in einer Spalte neben der Seite.
+- **Export** (⋯ → „Side Notes im Export“):
+  - **Aus:** keine Side Notes im Export
+  - **Markiert:** nur die Markierungen
+  - **Mit Liste:** dazu eine eigene Seite mit allen Notizen
+
+  Ausgeblendete Ebenen werden nicht exportiert.
