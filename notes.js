@@ -1019,22 +1019,28 @@ function textUp(e) {
     return;
   }
   if (a.noCreate && a.k < 0) return;
-  // Erst beim "click" öffnen: Safari auf dem iPad schickt nach dem Absetzen noch Maus-Ereignisse,
-  // die einem gerade geöffneten Feld den Fokus wieder wegnehmen (es schloss sich sofort wieder).
-  // Im click-Handler darf das iPad außerdem die Tastatur zeigen.
-  pendingOpen = [a.page, a.k, a.x0, a.y0];
-  clearTimeout(pendingTimer);
-  pendingTimer = setTimeout(runPendingOpen, 350);   // falls kein click kommt
+  openEditor(a.page, a.k, a.x0, a.y0);
 }
 
-let pendingOpen = null, pendingTimer = 0;
-function runPendingOpen() {
-  clearTimeout(pendingTimer);
-  const p = pendingOpen;
-  pendingOpen = null;
-  if (p && !editor) openEditor(...p);
+// Safari auf dem iPad schickt nach dem Absetzen noch Maus-Ereignisse und evtl. einen click.
+// Die können dem gerade geöffneten Feld den Fokus nehmen – kurz danach holen wir ihn zurück.
+// Im click selbst darf das iPad die Tastatur zeigen, deshalb dort noch einmal fokussieren.
+const EDITOR_GRACE = 900;
+function focusEditor() {
+  if (!editor) return;
+  const ed = editor.ed;
+  if (document.activeElement === ed) return;
+  ed.focus();
+  const r = document.createRange();
+  r.selectNodeContents(ed);
+  r.collapse(false);
+  const s = getSelection();
+  s.removeAllRanges();
+  s.addRange(r);
 }
-$('#pages').addEventListener('click', () => { if (pendingOpen) runPendingOpen(); }, true);
+$('#pages').addEventListener('click', () => {
+  if (editor && performance.now() - editor.openedAt < EDITOR_GRACE) focusEditor();
+}, true);
 
 // Editor: formatierbares Feld (contenteditable) + Format-Leiste oben über den Seiten
 const TEXT_STEPS = [14, 18, 24, 30, 36, 48, 60];
@@ -1154,13 +1160,15 @@ function openEditor(i, k, x, y) {
   handle.className = 'te-handle';
   handle.title = 'Breite ändern';
   wrap.append(ed, handle);
-  editor = { ed, handle, bar: null, page: i, t, before, existing: k >= 0, orig: JSON.stringify([t.paras || t.text, t.size, t.w, t.bg, t.border]) };
+  editor = { ed, handle, bar: null, page: i, t, before, existing: k >= 0, openedAt: performance.now(), orig: JSON.stringify([t.paras || t.text, t.size, t.w, t.bg, t.border]) };
   styleEditor();
   try { document.execCommand('defaultParagraphSeparator', false, 'div'); document.execCommand('styleWithCSS', false, false); } catch {}
   ed.addEventListener('blur', () => setTimeout(() => {
     if (!editor || editor.ed !== ed || document.activeElement === ed) return;
     const to = document.activeElement;
-    if (performance.now() - barTouch < 800 && (!to || to === document.body)) return ed.focus();   // Knopf in der Format-Leiste
+    const nowhere = !to || to === document.body;
+    if (nowhere && performance.now() - editor.openedAt < EDITOR_GRACE) return focusEditor();   // iPad: Fokus kurz nach dem Öffnen verloren
+    if (nowhere && performance.now() - barTouch < 800) return ed.focus();   // Knopf in der Format-Leiste
     commitEditor();
   }, 0));
   ed.addEventListener('keydown', editorKey);
