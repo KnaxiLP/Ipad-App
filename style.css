@@ -670,3 +670,4 @@ dialog h3 { margin: 0 0 16px; font-size: 22px; }
   .py-bar { flex-wrap: wrap; }
   .py-select { flex: 1 1 100%; }
 }
+.note-title[readonly] { cursor: pointer; -webkit-user-select: none; user-select: none; }

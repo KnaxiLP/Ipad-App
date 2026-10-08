@@ -1019,14 +1019,29 @@ function textUp(e) {
     return;
   }
   if (a.noCreate && a.k < 0) return;
-  openEditor(a.page, a.k, a.x0, a.y0);
+  // Erst beim "click" öffnen: Safari auf dem iPad schickt nach dem Absetzen noch Maus-Ereignisse,
+  // die einem gerade geöffneten Feld den Fokus wieder wegnehmen (es schloss sich sofort wieder).
+  // Im click-Handler darf das iPad außerdem die Tastatur zeigen.
+  pendingOpen = [a.page, a.k, a.x0, a.y0];
+  clearTimeout(pendingTimer);
+  pendingTimer = setTimeout(runPendingOpen, 350);   // falls kein click kommt
 }
+
+let pendingOpen = null, pendingTimer = 0;
+function runPendingOpen() {
+  clearTimeout(pendingTimer);
+  const p = pendingOpen;
+  pendingOpen = null;
+  if (p && !editor) openEditor(...p);
+}
+$('#pages').addEventListener('click', () => { if (pendingOpen) runPendingOpen(); }, true);
 
 // Editor: formatierbares Feld (contenteditable) + Format-Leiste oben über den Seiten
 const TEXT_STEPS = [14, 18, 24, 30, 36, 48, 60];
 const TEXT_COLORS = PEN_COLORS.concat(['#ea580c', '#8e8e93']);
 const ALIGNS = ['left', 'center', 'right'];
 let textSpell = store.get('textSpell', true);
+let barTouch = 0;
 
 // Schnell-Ersetzen beim Tippen
 const SUP = '⁰¹²³⁴⁵⁶⁷⁸⁹', SUB = '₀₁₂₃₄₅₆₇₈₉';
@@ -1142,7 +1157,12 @@ function openEditor(i, k, x, y) {
   editor = { ed, handle, bar: null, page: i, t, before, existing: k >= 0, orig: JSON.stringify([t.paras || t.text, t.size, t.w, t.bg, t.border]) };
   styleEditor();
   try { document.execCommand('defaultParagraphSeparator', false, 'div'); document.execCommand('styleWithCSS', false, false); } catch {}
-  ed.addEventListener('blur', () => setTimeout(() => { if (editor && editor.ed === ed && document.activeElement !== ed) commitEditor(); }, 0));
+  ed.addEventListener('blur', () => setTimeout(() => {
+    if (!editor || editor.ed !== ed || document.activeElement === ed) return;
+    const to = document.activeElement;
+    if (performance.now() - barTouch < 800 && (!to || to === document.body)) return ed.focus();   // Knopf in der Format-Leiste
+    commitEditor();
+  }, 0));
   ed.addEventListener('keydown', editorKey);
   ed.addEventListener('input', editorInput);
   ed.addEventListener('paste', (ev) => {
@@ -1306,7 +1326,7 @@ function buildTextBar() {
   const r = pagesBox.getBoundingClientRect();
   bar.style.top = r.top + 8 + 'px';
   // Knöpfe dürfen den Fokus nicht aus dem Textfeld nehmen
-  bar.addEventListener('pointerdown', (e) => e.preventDefault());
+  bar.addEventListener('pointerdown', (e) => { barTouch = performance.now(); e.preventDefault(); });
   bar.addEventListener('mousedown', (e) => e.preventDefault());
   bar.addEventListener('click', (e) => {
     const b = e.target.closest('button');
@@ -1859,6 +1879,20 @@ $('#add-page').addEventListener('click', () => {
   saveNote();
   pageEls[pageEls.length - 1].wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
+
+// Auf dem iPad wandelt "Scribble" Pencil-Schrift in Text für das nächste Eingabefeld um –
+// Tippen auf die Werkzeugleiste landete so im Titel. Der Titel ist deshalb nur bearbeitbar,
+// nachdem man ihn bewusst antippt.
+const titleEl = $('#note-title');
+titleEl.readOnly = true;
+titleEl.addEventListener('click', () => {
+  if (!titleEl.readOnly) return;
+  titleEl.readOnly = false;
+  titleEl.focus();
+  titleEl.select();
+});
+titleEl.addEventListener('blur', () => { titleEl.readOnly = true; });
+titleEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') titleEl.blur(); });
 
 $('#note-title').addEventListener('input', (e) => {
   note.title = e.target.value.trim();
