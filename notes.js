@@ -460,6 +460,7 @@ function strokeSvg(s) {
   if (!out) {
     out = s.tool === 'text' ? textSvg(s)
       : s.tool === 'image' ? imageSvg(s)
+      : s.tool === 'math' ? mathSvg(s)
       : s.tool === 'marker'
       ? `<path ${markerAttrs(s.color, strokeWidth(s))} d="${cmdsToSvg(markerCmds(s))}"/>`
       : penSvg(s);
@@ -484,6 +485,8 @@ function drawStroke(ctx, s) {
     if (img.complete && img.naturalWidth) ctx.drawImage(img, s.x, s.y, s.w, s.h);
   } else if (s.tool === 'text') {
     drawText(ctx, s);
+  } else if (s.tool === 'math') {
+    drawMath(ctx, s);
   } else if (s.tool === 'marker') {
     ctx.globalCompositeOperation = 'multiply';
     ctx.strokeStyle = s.color;
@@ -751,6 +754,7 @@ function textHit(t, x, y, pad = 0) {
 function strokeHit(s, x, y, r) {
   if (s.tool === 'image') return false;   // Bilder radiert man nicht weg, man löscht sie (Auswählen)
   if (s.tool === 'text') return textHit(s, x, y, r);
+  if (s.tool === 'math') { const b = mathBounds(s); return x >= b[0] - r && x <= b[2] + r && y >= b[1] - r && y <= b[3] + r; }
   const p = s.pts, reach = strokeWidth(s) / 2 + r;
   if (p.length === 3) return Math.hypot(p[0] - x, p[1] - y) <= reach;
   for (let i = 3; i < p.length; i += 3) {
@@ -768,6 +772,10 @@ function eraseAt(x, y) {
   for (let k = 1; k <= steps; k++) {
     const cx = active.lx + ((x - active.lx) * k) / steps;
     const cy = active.ly + ((y - active.ly) * k) / steps;
+    if (eraserMode === 'part') {
+      if (erasePart(page, cx, cy, r)) changed = true;
+      continue;
+    }
     const keep = page.strokes.filter((s) => !strokeHit(s, cx, cy, r));
     if (keep.length !== page.strokes.length) { page.strokes = keep; changed = true; }
   }
@@ -779,6 +787,57 @@ function eraseAt(x, y) {
   c.setAttribute('cx', num(x));
   c.setAttribute('cy', num(y));
   c.setAttribute('r', r);
+}
+
+// ---------- Teil-Radierer ----------
+// Löscht nur das Stück eines Strichs, das unter dem Radierer liegt – der Rest bleibt als
+// eigene Striche stehen. Textfelder, Bilder und Formeln lässt er in Ruhe.
+let eraserMode = store.get('eraserMode', 'stroke');   // 'stroke' = ganzer Strich, 'part' = Teil
+
+function splitStroke(s, cx, cy, r) {
+  const p = s.pts, pts = [];
+  for (let i = 0; i < p.length; i += 3) {
+    if (i) {
+      // Abschnitte nahe am Radierer fein unterteilen, damit der Schnitt sauber sitzt
+      const ax = p[i - 3], ay = p[i - 2], bx = p[i], by = p[i + 1];
+      if (distToSegment(cx, cy, ax, ay, bx, by) <= r * 1.5) {
+        const n = Math.floor(Math.hypot(bx - ax, by - ay) / (r / 4));
+        for (let k = 1; k < n; k++) {
+          const f = k / n;
+          pts.push([ax + (bx - ax) * f, ay + (by - ay) * f, p[i - 1] + (p[i + 2] - p[i - 1]) * f]);
+        }
+      }
+    }
+    pts.push([p[i], p[i + 1], p[i + 2]]);
+  }
+  const pieces = [];
+  let cur = [], cut = false;
+  for (const q of pts) {
+    if (Math.hypot(q[0] - cx, q[1] - cy) <= r) {
+      cut = true;
+      if (cur.length) pieces.push(cur);
+      cur = [];
+    } else cur.push(q);
+  }
+  if (cur.length) pieces.push(cur);
+  if (!cut) return null;
+  return pieces
+    .filter((pc) => pc.length >= 2 && Math.hypot(pc[0][0] - pc[pc.length - 1][0], pc[0][1] - pc[pc.length - 1][1]) + pc.length > 3)
+    .map((pc) => ({ ...s, pts: pc.flatMap((q) => [Math.round(q[0] * 10) / 10, Math.round(q[1] * 10) / 10, q[2]]) }));
+}
+
+function erasePart(page, cx, cy, r) {
+  let changed = false;
+  const next = [];
+  for (const s of page.strokes) {
+    if ((s.tool === 'pen' || s.tool === 'marker') && strokeHit(s, cx, cy, r)) {
+      const parts = splitStroke(s, cx, cy, r + strokeWidth(s) / 2);
+      if (parts) { next.push(...parts); changed = true; continue; }
+    }
+    next.push(s);
+  }
+  if (changed) page.strokes = next;
+  return changed;
 }
 
 // ---------- Formen erkennen (wie in Goodnotes: am Ende kurz stillhalten) ----------
@@ -1571,7 +1630,7 @@ function finishActive(abnormal = false) {
   const page = note.pages[active.page];
   if (active.tool === 'eraser') {
     clearLive(pe);
-    if (page.strokes.length !== active.before.length) {
+    if (page.strokes.length !== active.before.length || page.strokes.some((s, i) => s !== active.before[i])) {
       pushHistory([{ page: active.page, before: active.before, after: page.strokes.slice() }]);
       saveNote();
     }
@@ -1623,6 +1682,7 @@ function onDown(e) {
       return;
     }
     if (window.noteTool === 'text' && touches.size === 1 && !active) return textDown(e, canvas);
+    if (window.noteTool === 'math' && touches.size === 1 && !active) return mathDown(e, canvas);
     if (!fingerDraw) {
       // Finger scrollt: auf dem iPad macht das der Browser, sonst die App selbst
       if (!IS_IOS) pan = { ...avgTouch(), vx: 0, vy: 0, t: performance.now() };
@@ -1639,6 +1699,7 @@ function onDown(e) {
   if (tool === 'select') return;
   if (tool === 'lasso') return lassoDown(e, canvas);
   if (tool === 'coord') return coordDown(e, canvas);
+  if (tool === 'math') return mathDown(e, canvas);
 
   e.preventDefault();
   try { canvas.setPointerCapture(e.pointerId); } catch {}
@@ -1768,6 +1829,7 @@ function onUp(e) {
   if (textAction && e.pointerId === textAction.id) return textUp(e);
   if (lasso && e.pointerId === lasso.id) return lassoUp(e);
   if (coordAction && e.pointerId === coordAction.id) return coordUp(e);
+  if (mathTap && e.pointerId === mathTap.id) return mathUp(e);
   if (!active || e.pointerId !== active.id) return;
   // Bricht iOS einen Stift-Strich ab, wird er trotzdem behalten – bisher verschwand er dann.
   // Nur Finger-Striche werden bei einem Abbruch verworfen (dann war es meist eine Geste).
@@ -1852,7 +1914,22 @@ function renderColors() {
   const g = $('#color-group');
   g.innerHTML = '';
   // Beim Radierer nur unsichtbar machen – sonst ändert sich die Höhe der Leiste und die Seite springt
-  g.classList.toggle('invisible', tool === 'eraser');
+  g.classList.remove('invisible');
+  if (tool === 'eraser') {
+    // Beim Radierer: Auswahl ganzer Strich / Teil (gleiche Höhe wie die Farben)
+    [['stroke', 'Ganzer Strich'], ['part', 'Teil']].forEach(([m, label]) => {
+      const b = document.createElement('button');
+      b.className = 'tool erase-mode' + (eraserMode === m ? ' active' : '');
+      b.textContent = label;
+      b.addEventListener('click', () => {
+        eraserMode = m;
+        store.set('eraserMode', m);
+        renderColors();
+      });
+      g.append(b);
+    });
+    return;
+  }
   const key = tool === 'marker' ? 'marker' : 'pen';
   const list = key === 'marker' ? MARKER_COLORS : PEN_COLORS;
   list.forEach((c, i) => {
@@ -2315,7 +2392,7 @@ function buildPdf(pages, paper) {
       c += 'f\n';
     }
     page.strokes.forEach((s) => {
-      if (s.tool === 'text') return;   // Text kommt weiter unten
+      if (s.tool === 'text' || s.tool === 'math') return;   // Text und Formeln kommen weiter unten
       if (s.tool === 'image') {
         // hier ist die y-Achse schon nach unten gedreht → Bild senkrecht spiegeln
         c += `q ${num(s.w)} 0 0 ${num(-s.h)} ${num(s.x)} ${num(s.y + s.h)} cm ${addImage(s.data, s.pw, s.ph)} Do Q\n`;
@@ -2331,6 +2408,39 @@ function buildPdf(pages, paper) {
     });
     c += 'Q\n';
     const Y = (y) => num(PAGE_H * S - y * S);      // Seiten-Einheit → PDF (Ursprung unten)
+    // Ein Stück Text: normale Zeichen als PDF-Text, andere (→, π, ₂ …) als kleines Bild
+    const pdfRun = (r, text, x, y) => {
+      const font = '/F' + (1 + (r.b ? 1 : 0) + (r.i ? 2 : 0));
+      let buf = '';
+      const flush = () => {
+        if (!buf) return;
+        c += `BT ${font} ${num(r.fs * S)} Tf ${pdfColor(r.c)} rg 1 0 0 1 ${num(x * S)} ${Y(y)} Tm (${pdfText(buf)}) Tj ET\n`;
+        x += measure(buf, fontOf(r, r.fs));
+        buf = '';
+      };
+      for (const ch of text) {
+        if (pdfCode(ch) || ch === ' ') { buf += ch; continue; }
+        flush();
+        const g = glyphImage(ch, r);
+        const mask = add({ head: `<< /Type /XObject /Subtype /Image /Width ${g.w} /Height ${g.h} /ColorSpace /DeviceGray /BitsPerComponent 8 /Length ${g.alpha.length} >>`, data: g.alpha });
+        const id = add({ head: `<< /Type /XObject /Subtype /Image /Width ${g.w} /Height ${g.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /SMask ${mask} 0 R /Length ${g.rgb.length} >>`, data: g.rgb });
+        xobjs.push(`/Im${xobjs.length + 1} ${id} 0 R`);
+        c += `q ${num(g.uw * S)} 0 0 ${num(g.uh * S)} ${num((x - 1 / GLYPH_PX) * S)} ${Y(y - g.top + g.uh)} cm /Im${xobjs.length} Do Q\n`;
+        x += measure(ch, fontOf(r, r.fs));
+      }
+      flush();
+    };
+    page.strokes.filter((s) => s.tool === 'math').forEach((s) => {
+      const m = mathLayout(s), ox = s.x, by = s.y + m.a;
+      for (const o of m.ops) {
+        if (o.k === 't') pdfRun({ fs: o.fs, i: o.i, c: s.color }, o.s, ox + o.x, by + o.y);
+        else {
+          let d = '';
+          for (let j = 0; j < o.pts.length; j += 2) d += `${num((ox + o.pts[j]) * S)} ${Y(by + o.pts[j + 1])} ${j ? 'l' : 'm'} `;
+          c += `q ${pdfColor(s.color)} RG ${num(o.lw * S)} w 1 J 1 j ${d}S Q\n`;
+        }
+      }
+    });
     page.strokes.filter((t) => t.tool === 'text').forEach((t) => {
       if (t.bg || t.border) {
         const b = textBox(t);
@@ -2338,26 +2448,7 @@ function buildPdf(pages, paper) {
       }
       for (const line of layoutText(t).lines) {
         for (const r of line.runs) {
-          const font = '/F' + (1 + (r.b ? 1 : 0) + (r.i ? 2 : 0));
-          // Text in Stücke teilen: normale Zeichen als Text, andere als Bild
-          let x = r.x, buf = '';
-          const flush = () => {
-            if (!buf) return;
-            c += `BT ${font} ${num(r.fs * S)} Tf ${pdfColor(r.c)} rg 1 0 0 1 ${num(x * S)} ${Y(line.y)} Tm (${pdfText(buf)}) Tj ET\n`;
-            x += measure(buf, fontOf(r, r.fs));
-            buf = '';
-          };
-          for (const ch of r.text) {
-            if (pdfCode(ch) || ch === ' ') { buf += ch; continue; }
-            flush();
-            const g = glyphImage(ch, r);
-            const mask = add({ head: `<< /Type /XObject /Subtype /Image /Width ${g.w} /Height ${g.h} /ColorSpace /DeviceGray /BitsPerComponent 8 /Length ${g.alpha.length} >>`, data: g.alpha });
-            const id = add({ head: `<< /Type /XObject /Subtype /Image /Width ${g.w} /Height ${g.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /SMask ${mask} 0 R /Length ${g.rgb.length} >>`, data: g.rgb });
-            xobjs.push(`/Im${xobjs.length + 1} ${id} 0 R`);
-            c += `q ${num(g.uw * S)} 0 0 ${num(g.uh * S)} ${num((x - 1 / GLYPH_PX) * S)} ${Y(line.y - g.top + g.uh)} cm /Im${xobjs.length} Do Q\n`;
-            x += measure(ch, fontOf(r, r.fs));
-          }
-          flush();
+          pdfRun(r, r.text, r.x, line.y);
           if (r.u) c += `${pdfColor(r.c)} rg ${num(r.x * S)} ${Y(line.y + r.fs * 0.18)} ${num(r.w * S)} ${num(r.fs * 0.06 * S)} re f\n`;
         }
       }
@@ -2648,6 +2739,7 @@ function itemAt(i, x, y) {
 function itemBounds(s) {
   if (s.tool === 'image') return [s.x, s.y, s.x + s.w, s.y + s.h];
   if (s.tool === 'text') { const b = textBox(s); return [b.x, b.y, b.x + b.w, b.y + b.h]; }
+  if (s.tool === 'math') return mathBounds(s);
   const p = s.pts, r = strokeWidth(s) / 2 + 2;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (let i = 0; i < p.length; i += 3) {
@@ -2672,6 +2764,7 @@ function transformItem(s, k, ox, oy, nx, ny) {
   const tx = (x) => nx + (x - ox) * k, ty = (y) => ny + (y - oy) * k;
   if (s.tool === 'image') return { ...s, x: tx(s.x), y: ty(s.y), w: s.w * k, h: s.h * k };
   if (s.tool === 'text') return { ...s, x: tx(s.x), y: ty(s.y), w: s.w * k, size: s.size * k };
+  if (s.tool === 'math') return { ...s, x: tx(s.x), y: ty(s.y), size: s.size * k };
   const p = s.pts.slice();
   for (let i = 0; i < p.length; i += 3) {
     p[i] = Math.round(tx(p[i]) * 10) / 10;
@@ -2685,7 +2778,7 @@ function selectItems(i, items, coord) {
   if (!items.length) return;
   const box = document.createElement('div');
   box.className = 'img-sel' + (coord ? ' coord' : '');
-  const colors = items.some((s) => s.tool === 'pen' || s.tool === 'text')
+  const colors = items.some((s) => s.tool === 'pen' || s.tool === 'text' || s.tool === 'math')
     ? '<span class="sel-colors">' + PEN_COLORS.map((c) => `<button type="button" data-color="${c}" style="--c:${c}" aria-label="Farbe"></button>`).join('') + '</span>'
     : '';
   box.innerHTML = '<i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i>' +
@@ -2751,7 +2844,7 @@ function duplicateSelected() {
 
 function recolorSelected(color) {
   if (!sel) return;
-  const recolor = (s) => s.tool === 'pen' ? { ...s, color }
+  const recolor = (s) => s.tool === 'pen' || s.tool === 'math' ? { ...s, color }
     : s.tool === 'text' ? { ...s, color, paras: s.paras && s.paras.map((p) => ({ ...p, spans: p.spans.map(({ c, ...sp }) => sp) })) } : s;
   const map = new Map(sel.items.map((s) => [s, recolor(s)]));
   changeSelection((pg) => { pg.strokes = pg.strokes.map((s) => map.get(s) || s); return [...map.values()]; });
@@ -2881,7 +2974,7 @@ function lassoUp(e) {
   // Strich gehört dazu, wenn mindestens die Hälfte seiner Punkte im Lasso liegt;
   // Text und Bilder, wenn ihre Mitte drin liegt
   const items = note.pages[l.page].strokes.filter((s) => {
-    if (s.tool === 'image' || s.tool === 'text') {
+    if (s.tool === 'image' || s.tool === 'text' || s.tool === 'math') {
       const b = itemBounds(s);
       return inPoly(l.pts, (b[0] + b[2]) / 2, (b[1] + b[3]) / 2);
     }
@@ -3183,6 +3276,354 @@ function coordOption(k, v) {
   store.set('coordOpt', coordOpt);
   placeCoord(sel.page, sel.coord.rect, sel.items);
 }
+
+// ---------- Formeln ----------
+// Element { tool: 'math', x, y, size, color, src }. src ist einfach zu tippen:
+// a/b = Bruch, x^2 = hoch, x_1 = tief, sqrt(x) = Wurzel, pi/alpha/… = griechisch, <= ≤, -> → …
+// Ein eigener kleiner Formelsatz liefert Zeichen-Befehle, die SVG, Canvas und PDF gleich zeichnen.
+const MATH_SYMBOLS = {
+  alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', eta: 'η', theta: 'θ', lambda: 'λ', mu: 'μ', pi: 'π',
+  rho: 'ρ', sigma: 'σ', tau: 'τ', phi: 'φ', omega: 'ω', Delta: 'Δ', Sigma: 'Σ', Omega: 'Ω', Phi: 'Φ', Pi: 'Π',
+  cdot: '·', times: '×', div: '÷', pm: '±', le: '≤', ge: '≥', leq: '≤', geq: '≥', neq: '≠', ne: '≠', approx: '≈',
+  infty: '∞', inf: '∞', to: '→', Rightarrow: '⇒', Leftrightarrow: '⇔', in: '∈', int: '∫', sum: 'Σ', deg: '°',
+  degree: '°', angle: '∠', perp: '⊥', parallel: '∥', cap: '∩', cup: '∪', subset: '⊂', emptyset: '∅'
+};
+const MATH_FUNCS = ['sin', 'cos', 'tan', 'cot', 'log', 'ln', 'lg', 'lim', 'exp', 'max', 'min', 'det'];
+const MATH_OPS = '+−=<>≤≥≠≈±·×÷→⇒⇔∈∩∪⊂';
+const MATH_COMBOS = [['<=', '≤'], ['>=', '≥'], ['!=', '≠'], ['->', '→'], ['=>', '⇒'], ['+-', '±'], ['~=', '≈'], ['*', '·'], ['-', '−']];
+
+function mathTokens(src) {
+  const out = [], chars = [...src];
+  for (let i = 0; i < chars.length;) {
+    const c = chars[i];
+    if (c === '\\') {
+      let j = i + 1, name = '';
+      while (j < chars.length && /[a-zA-Z]/.test(chars[j])) name += chars[j++];
+      if (name) { out.push({ k: 'cmd', v: name }); i = j; } else { out.push({ k: 'ch', v: chars[i + 1] || '\\' }); i += 2; }
+      continue;
+    }
+    if (/[a-zA-Z]/.test(c)) {
+      let j = i, word = '';
+      while (j < chars.length && /[a-zA-Z]/.test(chars[j])) word += chars[j++];
+      if (word === 'sqrt' || word === 'frac' || word === 'root' || MATH_SYMBOLS[word]) out.push({ k: 'cmd', v: word });
+      else if (MATH_FUNCS.includes(word)) out.push({ k: 'fn', v: word });
+      else for (const ch of word) out.push({ k: 'ch', v: ch });
+      i = j;
+      continue;
+    }
+    const combo = MATH_COMBOS.find(([a]) => chars.slice(i, i + a.length).join('') === a);
+    if (combo) { out.push({ k: 'ch', v: combo[1], op: true }); i += combo[0].length; continue; }
+    if (/[0-9]/.test(c)) {
+      let j = i, n = '';
+      while (j < chars.length && (/[0-9]/.test(chars[j]) || (/[.,]/.test(chars[j]) && /[0-9]/.test(chars[j + 1] || '')))) n += chars[j++];
+      out.push({ k: 'num', v: n });
+      i = j;
+      continue;
+    }
+    if (c !== ' ') out.push({ k: 'ch', v: c });
+    i++;
+  }
+  return out;
+}
+
+function parseMath(src) {
+  const tk = mathTokens(src);
+  let i = 0;
+  const isCh = (t, v) => t && t.k === 'ch' && !t.op && v.includes(t.v);
+  const unwrap = (n) => (n.t === 'paren' && n.o === '(' ? n.b : n);
+  function row(stop) {
+    const items = [];
+    while (i < tk.length && !isCh(tk[i], stop)) items.push(atom());
+    // a/b → Bruch (Klammern um Zähler/Nenner fallen weg)
+    for (let j = 1; j < items.length - 1; j++) {
+      if (items[j].t === 'text' && items[j].s === '/') {
+        items.splice(j - 1, 3, { t: 'frac', n: unwrap(items[j - 1]), d: unwrap(items[j + 1]) });
+        j--;
+      }
+    }
+    return { t: 'row', items };
+  }
+  function group(close) {
+    const r = row(close);
+    if (i < tk.length) i++;
+    return r;
+  }
+  function arg() {
+    if (i >= tk.length) return { t: 'row', items: [] };
+    if (isCh(tk[i], '{')) { i++; return group('}'); }
+    return unwrap(atom(true));
+  }
+  function atom(noScript) {
+    const base = primary();
+    if (noScript) return base;
+    let sup = null, sub = null;
+    while (i < tk.length && isCh(tk[i], '^_')) {
+      const op = tk[i++].v;
+      const a = arg();
+      if (op === '^') sup = a; else sub = a;
+    }
+    return sup || sub ? { t: 'script', base, sup, sub } : base;
+  }
+  function primary() {
+    const t = tk[i++];
+    if (t.k === 'num') return { t: 'text', s: t.v };
+    if (t.k === 'fn') return { t: 'text', s: t.v, fn: true };
+    if (t.k === 'cmd') {
+      if (t.v === 'frac') { const n = arg(), d = arg(); return { t: 'frac', n, d }; }
+      if (t.v === 'sqrt') return { t: 'sqrt', b: arg() };
+      if (t.v === 'root') { const n = arg(), b = arg(); return { t: 'sqrt', b, idx: n }; }
+      return { t: 'text', s: MATH_SYMBOLS[t.v] || t.v };
+    }
+    if (isCh(t, '{')) return group('}');
+    if (isCh(t, '(')) return { t: 'paren', o: '(', c: ')', b: group(')') };
+    if (isCh(t, '[')) return { t: 'paren', o: '[', c: ']', b: group(']') };
+    return { t: 'text', s: t.v };
+  }
+  return row('');
+}
+
+// Satz: Kasten { w, a (über der Grundlinie), d (darunter), ops } – y nach unten, Grundlinie bei 0
+function mathBox(node, fs) {
+  const shift = (box, dx, dy) => box.ops.map((o) => (o.k === 't' ? { ...o, x: o.x + dx, y: o.y + dy } : { ...o, pts: o.pts.map((v, j) => v + (j % 2 ? dy : dx)) }));
+  if (node.t === 'text') {
+    const isOp = MATH_OPS.includes(node.s) && !node.unary;
+    const it = !node.fn && /^[a-zA-Zα-ωΑ-Ω]$/.test(node.s) && !/[ΔΣΩΦΠ]/.test(node.s);
+    const pad = isOp ? fs * 0.22 : 0;
+    const w = measure(node.s, fontOf({ i: it }, fs));
+    return { w: w + 2 * pad, a: fs * 0.72, d: fs * 0.22, ops: [{ k: 't', x: pad, y: 0, s: node.s, fs, i: it }] };
+  }
+  if (node.t === 'row') {
+    if (!node.items.length) return { w: fs * 0.45, a: fs * 0.6, d: 0, ops: [] };
+    let x = 0, a = 0, d = 0;
+    const ops = [];
+    node.items.forEach((it, j) => {
+      // Vorzeichen (am Anfang oder nach einem anderen Zeichen wie = oder ±) ohne Abstand
+      const prev = node.items[j - 1];
+      if (it.t === 'text' && (it.s === '−' || it.s === '+') && (!prev || (prev.t === 'text' && MATH_OPS.includes(prev.s)))) it = { ...it, unary: true };
+      const b = mathBox(it, fs);
+      ops.push(...shift(b, x, 0));
+      x += b.w;
+      a = Math.max(a, b.a);
+      d = Math.max(d, b.d);
+    });
+    return { w: x, a, d, ops };
+  }
+  if (node.t === 'frac') {
+    const f2 = Math.max(fs * 0.85, 8);
+    const n = mathBox(node.n, f2), dn = mathBox(node.d, f2);
+    const axis = fs * 0.3, gap = fs * 0.12, lw = Math.max(fs * 0.055, 0.8), m = fs * 0.12;
+    const w = Math.max(n.w, dn.w) + fs * 0.3;
+    const ny = -(axis + gap + lw / 2 + n.d), dy = -axis + gap + lw / 2 + dn.a;
+    return {
+      w: w + 2 * m, a: axis + gap + lw / 2 + n.d + n.a, d: dy + dn.d,
+      ops: [...shift(n, m + (w - n.w) / 2, ny), ...shift(dn, m + (w - dn.w) / 2, dy), { k: 'p', pts: [m, -axis, m + w, -axis], lw }]
+    };
+  }
+  if (node.t === 'sqrt') {
+    const b = mathBox(node.b, fs);
+    const gap = fs * 0.12, lw = Math.max(fs * 0.055, 0.8), sw = fs * 0.55;
+    const top = -(b.a + gap), bottom = b.d + fs * 0.02, mid = bottom - (bottom - top) * 0.42;
+    let ox = 0;
+    const ops = [];
+    if (node.idx) {
+      const ib = mathBox(node.idx, fs * 0.5);
+      ox = Math.max(0, ib.w - sw * 0.3);
+      ops.push(...shift(ib, 0, mid - fs * 0.12));
+    }
+    ops.push({ k: 'p', pts: [ox, mid + fs * 0.06, ox + sw * 0.25, mid - fs * 0.04, ox + sw * 0.55, bottom, ox + sw, top, ox + sw + b.w + fs * 0.12, top], lw });
+    ops.push(...shift(b, ox + sw + fs * 0.06, 0));
+    return { w: ox + sw + b.w + fs * 0.2, a: -top + lw, d: bottom + lw, ops };
+  }
+  if (node.t === 'script') {
+    const base = mathBox(node.base, fs), f2 = Math.max(fs * 0.68, 7);
+    const sup = node.sup && mathBox(node.sup, f2), sub = node.sub && mathBox(node.sub, f2);
+    const ops = [...base.ops];
+    let a = base.a, d = base.d, w = 0;
+    if (sup) {
+      const y = -Math.max(fs * 0.42, base.a - f2 * 0.45);
+      ops.push(...shift(sup, base.w + fs * 0.03, y));
+      a = Math.max(a, sup.a - y);
+      w = sup.w;
+    }
+    if (sub) {
+      const y = Math.max(fs * 0.24, base.d + f2 * 0.1);
+      ops.push(...shift(sub, base.w + fs * 0.03, y));
+      d = Math.max(d, sub.d + y);
+      w = Math.max(w, sub.w);
+    }
+    return { w: base.w + w + fs * 0.08, a, d, ops };
+  }
+  if (node.t === 'paren') {
+    const b = mathBox(node.b, fs);
+    if (b.a + b.d <= fs * 1.2) {
+      const l = mathBox({ t: 'text', s: node.o }, fs), r = mathBox({ t: 'text', s: node.c }, fs);
+      return { w: l.w + b.w + r.w, a: Math.max(b.a, l.a), d: Math.max(b.d, l.d), ops: [...l.ops, ...shift(b, l.w, 0), ...shift(r, l.w + b.w, 0)] };
+    }
+    // hohe Klammern zeichnen (z. B. um Brüche)
+    const pw = fs * 0.38, lw = Math.max(fs * 0.055, 0.8), top = -b.a - fs * 0.05, bot = b.d + fs * 0.05;
+    const side = (x0, dir) => {
+      if (node.o === '[') return [x0 + dir * pw * 0.6, top, x0 + dir * pw * 0.2, top, x0 + dir * pw * 0.2, bot, x0 + dir * pw * 0.6, bot];
+      const pts = [];
+      for (let j = 0; j <= 14; j++) {
+        const t = j / 14;
+        pts.push(x0 + dir * (pw * 0.75 - Math.sin(t * Math.PI) * pw * 0.5), top + (bot - top) * t);
+      }
+      return pts;
+    };
+    return {
+      w: b.w + 2 * pw, a: -top + lw, d: bot + lw,
+      ops: [{ k: 'p', pts: side(0, 1), lw }, ...shift(b, pw, 0), { k: 'p', pts: side(b.w + 2 * pw, -1), lw }]
+    };
+  }
+  return { w: 0, a: 0, d: 0, ops: [] };
+}
+
+const mathCache = new WeakMap();
+function mathLayout(s) {
+  let m = mathCache.get(s);
+  if (!m) {
+    m = mathBox(parseMath(s.src), s.size);
+    mathCache.set(s, m);
+  }
+  return m;
+}
+const mathBounds = (s) => { const m = mathLayout(s); return [s.x, s.y, s.x + m.w, s.y + m.a + m.d]; };
+
+function mathSvgInner(m, ox, by, color) {
+  let out = '';
+  for (const o of m.ops) {
+    if (o.k === 't') out += `<text x="${num(ox + o.x)}" y="${num(by + o.y)}" font-size="${num(o.fs)}" font-family="${TEXT_FONT}" fill="${color}"${o.i ? ' font-style="italic"' : ''}>${escXml(o.s)}</text>`;
+    else out += `<path fill="none" stroke="${color}" stroke-width="${num(o.lw)}" stroke-linecap="round" stroke-linejoin="round" d="${o.pts.map((v, j) => (j % 2 ? '' : j ? 'L' : 'M') + num(v + (j % 2 ? by : ox)) + (j % 2 ? '' : ' ')).join('')}"/>`;
+  }
+  return out;
+}
+const mathSvg = (s) => { const m = mathLayout(s); return mathSvgInner(m, s.x, s.y + m.a, s.color); };
+
+function drawMath(ctx, s) {
+  const m = mathLayout(s), ox = s.x, by = s.y + m.a;
+  ctx.fillStyle = ctx.strokeStyle = s.color;
+  ctx.lineCap = ctx.lineJoin = 'round';
+  for (const o of m.ops) {
+    if (o.k === 't') {
+      ctx.font = fontOf({ i: o.i }, o.fs);
+      ctx.fillText(o.s, ox + o.x, by + o.y);
+    } else {
+      ctx.lineWidth = o.lw;
+      ctx.beginPath();
+      for (let j = 0; j < o.pts.length; j += 2) ctx[j ? 'lineTo' : 'moveTo'](ox + o.pts[j], by + o.pts[j + 1]);
+      ctx.stroke();
+    }
+  }
+}
+
+// Formel-Werkzeug: Antippen öffnet den Formel-Dialog (neue Formel oder vorhandene bearbeiten)
+let mathTap = null;
+let mathEdit = null;    // { page, k, x, y }
+
+function mathAt(i, x, y) {
+  const list = note.pages[i].strokes;
+  for (let k = list.length - 1; k >= 0; k--) {
+    if (list[k].tool !== 'math') continue;
+    const b = mathBounds(list[k]);
+    if (x >= b[0] - 6 && x <= b[2] + 6 && y >= b[1] - 6 && y <= b[3] + 6) return k;
+  }
+  return -1;
+}
+
+function mathDown(e, canvas) {
+  if (e.pointerType !== 'touch') e.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  mathTap = { id: e.pointerId, page: Number(canvas.dataset.page), x: ((e.clientX - r.left) / r.width) * PAGE_W, y: ((e.clientY - r.top) / r.height) * PAGE_H, sx: e.clientX, sy: e.clientY, st: pagesBox.scrollTop };
+}
+
+function mathUp(e) {
+  const m = mathTap;
+  mathTap = null;
+  if (Math.hypot(e.clientX - m.sx, e.clientY - m.sy) > 14 || Math.abs(pagesBox.scrollTop - m.st) > 3) return;   // gescrollt
+  openMathDialog(m.page, mathAt(m.page, m.x, m.y), m.x, m.y);
+}
+
+function openMathDialog(page, k, x, y) {
+  mathEdit = { page, k, x, y };
+  const s = k >= 0 ? note.pages[page].strokes[k] : null;
+  $('#math-src').value = s ? s.src : '';
+  $('#math-delete').hidden = !s;
+  $('#math-ok').textContent = s ? 'Übernehmen' : 'Einfügen';
+  renderMathPreview();
+  $('#math-dialog').showModal();
+  $('#math-src').focus();
+}
+
+function renderMathPreview() {
+  const src = $('#math-src').value;
+  const box = $('#math-preview');
+  if (!src.trim()) { box.innerHTML = '<span class="muted">Vorschau</span>'; return; }
+  const m = mathBox(parseMath(src), 30), pad = 6;
+  box.innerHTML = `<svg width="${Math.ceil(m.w + 2 * pad)}" height="${Math.ceil(m.a + m.d + 2 * pad)}">${mathSvgInner(m, pad, pad + m.a, '#1c1c1e')}</svg>`;
+}
+
+const MATH_KEYS = [
+  ['a⁄b', '(|)/()', 'Bruch'], ['√', 'sqrt(|)', 'Wurzel'], ['ⁿ√', 'root(|)()', 'n-te Wurzel'], ['xⁿ', '^(|)', 'Hoch'], ['x₁', '_(|)', 'Tief'],
+  ['( )', '(|)', 'Klammer'], ['π', 'pi', ''], ['α', 'alpha', ''], ['β', 'beta', ''], ['Δ', 'Delta', ''], ['·', '*', 'mal'],
+  ['±', '+-', ''], ['≤', '<=', ''], ['≥', '>=', ''], ['≠', '!=', ''], ['≈', '~=', ''], ['∞', 'inf', ''], ['→', '->', ''],
+  ['∫', 'int', ''], ['Σ', 'sum', ''], ['°', 'deg', '']
+];
+(() => {
+  const keys = $('#math-keys');
+  MATH_KEYS.forEach(([label, ins, title]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    if (title) b.title = title;
+    b.addEventListener('click', () => {
+      const inp = $('#math-src'), a = inp.selectionStart ?? inp.value.length, z = inp.selectionEnd ?? a;
+      const tpl = ins.replace('|', inp.value.slice(a, z) + '|');   // markierter Text kommt in die Vorlage
+      let caret = tpl.indexOf('|');
+      let text = tpl.replace('|', '');
+      // Wörter wie "pi" von Buchstaben davor trennen
+      if (/^[a-zA-Z]/.test(text) && /[a-zA-Z]$/.test(inp.value.slice(0, a))) { text = ' ' + text; caret += caret >= 0 ? 1 : 0; }
+      inp.value = inp.value.slice(0, a) + text + inp.value.slice(z);
+      const pos = a + (caret >= 0 ? caret : text.length);
+      inp.focus();
+      inp.setSelectionRange(pos, pos);
+      renderMathPreview();
+    });
+    keys.append(b);
+  });
+})();
+$('#math-src').addEventListener('input', renderMathPreview);
+$('#math-src').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#math-ok').click(); } });
+
+$('#math-ok').addEventListener('click', () => {
+  const src = $('#math-src').value.trim();
+  const { page, k, x, y } = mathEdit;
+  const pg = note.pages[page];
+  const before = pg.strokes.slice();
+  $('#math-dialog').close();
+  if (k >= 0) {
+    if (!src) pg.strokes = pg.strokes.filter((_, j) => j !== k);
+    else if (src !== pg.strokes[k].src) pg.strokes[k] = { ...pg.strokes[k], src };
+    else return;
+  } else {
+    if (!src) return;
+    const sz = Math.round((TEXT_SIZES[size] || 24) * 1.15);
+    const m = mathBox(parseMath(src), sz);
+    pg.strokes.push({ tool: 'math', x: clamp(x, 0, PAGE_W - m.w), y: clamp(y - m.a, 0, PAGE_H - m.a - m.d), size: sz, color: PEN_COLORS[colorSel.pen], src });
+  }
+  pushHistory([{ page, before, after: pg.strokes.slice() }]);
+  drawPage(page);
+  saveNote();
+});
+$('#math-delete').addEventListener('click', () => {
+  const { page, k } = mathEdit;
+  if (k < 0) return;
+  const pg = note.pages[page], before = pg.strokes.slice();
+  pg.strokes = pg.strokes.filter((_, j) => j !== k);
+  $('#math-dialog').close();
+  pushHistory([{ page, before, after: pg.strokes.slice() }]);
+  drawPage(page);
+  saveNote();
+});
 
 // Beim Wechseln/Schließen der App sofort speichern
 function flushNoteSave() {

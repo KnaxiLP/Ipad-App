@@ -169,3 +169,24 @@ Schnell-Ersetzen beim Tippen:
 | `\pi`, `\alpha`, `\Delta`, `\sqrt`, `\inf` | π α Δ √ ∞ |
 
 Im PDF-Export bleiben Sonderzeichen erhalten.
+
+## Formeln
+
+- Wähle das √x-Symbol und tippe auf die Seite. Es öffnet sich ein Formel-Fenster mit Vorschau und Tasten für Bruch, Wurzel, Hoch- und Tiefzahl, griechische Buchstaben und Zeichen.
+- Kurzschreibweise:
+
+| Eingabe | Ergebnis |
+|---|---|
+| `a/b` oder `(a+b)/(c+d)` | Bruch |
+| `x^2`, `x_1` | Hochzahl, Tiefzahl |
+| `sqrt(x)`, `root(3)(x)` | Wurzel, n-te Wurzel |
+| `pi`, `alpha`, `Delta` | griechische Buchstaben |
+| `<=`, `->`, `+-` | ≤, →, ± |
+
+- Eine vorhandene Formel antippen öffnet sie zum Bearbeiten.
+
+## Radierer
+
+Bei aktivem Radierer wählst du in der Leiste aus:
+- **Ganzer Strich:** löscht den ganzen Strich.
+- **Teil:** löscht nur das Stück unter dem Radierer.
