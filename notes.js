@@ -1969,6 +1969,7 @@ function renderColors() {
 document.querySelectorAll('[data-tool]').forEach((b) =>
   b.addEventListener('click', () => {
     tool = b.dataset.tool;
+    if (!['snote', 'lasso', 'select'].includes(tool) && snAddTo) snStopAdd();   // Lasso/Auswahl: weitere Stellen wählen
     if (tool !== 'eraser') store.set('noteTool', tool);
     document.body.dataset.noteTool = tool;
     document.querySelectorAll('[data-tool]').forEach((x) => x.classList.toggle('active', x === b));
@@ -2030,6 +2031,7 @@ function newNote() {
 
 async function openNote(n) {
   commitEditor();
+  if (snAddTo) snStopAdd();
   // leere Notizen nicht aufheben
   if (note && note.id !== n.id && isEmpty(note)) {
     cancelSave();
@@ -3676,22 +3678,28 @@ const snVisible = (n) => !snAllHidden && !snHidden.has(n.key);
 const snSaveKeys = () => { store.set('snKeys', snGlobal); store.set('snHidden', [...snHidden]); store.set('snAllHidden', snAllHidden); };
 const snId = () => 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
-function snBounds(page, n) {
-  const a = n.anchor;
+// Eine Notiz kann mehrere Stellen haben (n.anchors). Ältere Notizen haben nur n.anchor.
+// Jede Stelle hat eine eigene ID (aid); Elemente einer Lasso-Stelle tragen sie in s.sn.
+const snAnchors = (n) => n.anchors || (n.anchor ? [{ ...n.anchor, aid: n.anchor.aid || n.id }] : []);
+
+function snABounds(page, a) {
   if (a.type === 'line') return [Math.min(a.x0, a.x1), Math.min(a.y0, a.y1) - 4, Math.max(a.x0, a.x1), Math.max(a.y0, a.y1) + 4];
   if (a.type === 'items') {
-    const items = page.strokes.filter((s) => s.sn && s.sn.includes(n.id));
+    const items = page.strokes.filter((s) => s.sn && s.sn.includes(a.aid));
     if (items.length) { const b = selBounds(items); return [b.x - 4, b.y - 4, b.x + b.w + 4, b.y + b.h + 4]; }
   }
   return [a.x, a.y, a.x + a.w, a.y + a.h];
 }
+// Bereich der ersten Stelle (für Spalte und Karte)
+const snBounds = (page, n) => snABounds(page, snAnchors(n)[0]);
 
-// Nummer-Marke an der Notiz: rechts oben (bei Unterstreichung am Ende der Linie)
-function snBadgePos(page, n) {
-  const b = snBounds(page, n), a = n.anchor;
+// Nummer-Marke an einer Stelle: rechts oben (bei Unterstreichung am Ende der Linie)
+function snBadgeAt(page, a) {
   if (a.type === 'line') { const r = a.x1 >= a.x0; return [clamp((r ? a.x1 : a.x0) + 13, 12, PAGE_W - 12), clamp((r ? a.y1 : a.y0) + 5, 12, PAGE_H - 12)]; }
+  const b = snABounds(page, a);
   return [clamp(b[2] + 2, 12, PAGE_W - 12), clamp(b[1] - 2, 12, PAGE_H - 12)];
 }
+const snBadgePos = (page, n) => snBadgeAt(page, snAnchors(n)[0]);
 
 const snNumbered = (page) => (page.notes || []).map((n, j) => ({ n, no: j + 1 })).filter(({ n }) => snVisible(n));
 
@@ -3700,14 +3708,18 @@ function snMarksSvg(i) {
   const page = note.pages[i];
   let out = '';
   for (const { n, no } of snNumbered(page)) {
-    const col = snKeyOf(n.key).color, a = n.anchor;
+    const col = snKeyOf(n.key).color;
+    const adding = snAddTo && snAddTo.id === n.id;
+    for (const a of snAnchors(n)) {
     if (a.type === 'line') out += `<path d="M${num(a.x0)} ${num(a.y0)}L${num(a.x1)} ${num(a.y1)}" stroke="${col}" stroke-width="3.2" stroke-linecap="round" opacity=".9"/>`;
     else {
-      const b = snBounds(page, n);
-      out += `<rect x="${num(b[0])}" y="${num(b[1])}" width="${num(b[2] - b[0])}" height="${num(b[3] - b[1])}" rx="5" fill="${col}" fill-opacity=".07" stroke="${col}" stroke-opacity=".55" stroke-width="1.3" stroke-dasharray="6 4"/>`;
+      const b = snABounds(page, a);
+      out += `<rect x="${num(b[0])}" y="${num(b[1])}" width="${num(b[2] - b[0])}" height="${num(b[3] - b[1])}" rx="5" fill="${col}" fill-opacity="${adding ? '.16' : '.07'}" stroke="${col}" stroke-opacity=".55" stroke-width="1.3" stroke-dasharray="6 4"/>`;
     }
-    const [bx, by] = snBadgePos(page, n);
+    const [bx, by] = snBadgeAt(page, a);
+    if (adding) out += `<circle cx="${num(bx)}" cy="${num(by)}" r="15" fill="none" stroke="${col}" stroke-width="2" opacity=".5"/>`;
     out += `<g data-sn="${n.id}" class="sn-badge"><circle cx="${num(bx)}" cy="${num(by)}" r="10" fill="${col}"/><circle cx="${num(bx)}" cy="${num(by)}" r="18" fill="transparent"/><text x="${num(bx)}" y="${num(by + 4.3)}" font-size="12" font-weight="bold" font-family="${TEXT_FONT}" fill="#fff" text-anchor="middle">${no}</text></g>`;
+    }
   }
   return out;
 }
@@ -3768,7 +3780,7 @@ function snShowPop(i, id) {
   const pop = document.createElement('div');
   pop.className = 'sn-pop';
   pop.style.setProperty('--c', snKeyOf(n.key).color);
-  pop.innerHTML = snContentHtml(n) + '<div class="sn-pop-actions"><button type="button" data-a="edit">Bearbeiten</button><button type="button" data-a="close">Schließen</button></div>';
+  pop.innerHTML = snContentHtml(n) + '<div class="sn-pop-actions"><button type="button" data-a="add">＋ Stelle</button><button type="button" data-a="edit">Bearbeiten</button><button type="button" data-a="close">Schließen</button></div>';
   const left = bx / PAGE_W, top = by / PAGE_H;
   Object.assign(pop.style, { top: top * 100 + 2 + '%' });
   if (left > 0.55) pop.style.right = (1 - left) * 100 + '%'; else pop.style.left = left * 100 + '%';
@@ -3776,6 +3788,7 @@ function snShowPop(i, id) {
   pop.addEventListener('pointerdown', (e) => e.stopPropagation());
   pop.querySelector('[data-a="edit"]').addEventListener('click', () => { snClosePop(); openSnDialog(i, id); });
   pop.querySelector('[data-a="close"]').addEventListener('click', snClosePop);
+  pop.querySelector('[data-a="add"]').addEventListener('click', () => { snClosePop(); snStartAdd(i, id); });
   snPop = pop;
 }
 function snClosePop() { if (snPop) { snPop.remove(); snPop = null; } }
@@ -3835,7 +3848,53 @@ function snUp(e) {
   const anchor = snShape(a) === 'line'
     ? { type: 'line', x0: a.x0, y0: a.y0, x1: a.x1, y1: a.y1 }
     : { type: 'rect', x: Math.min(a.x0, a.x1), y: Math.min(a.y0, a.y1), w: Math.abs(a.x1 - a.x0), h: Math.abs(a.y1 - a.y0) };
+  if (snAddTo && snAddTo.page === a.page) return snAddAnchor(anchor);
   openSnDialog(a.page, null, anchor);
+}
+
+// ---------- Weitere Stellen zu einer Notiz hinzufügen ----------
+let snAddTo = null;    // { page, id }
+
+function snStartAdd(page, id) {
+  snAddTo = { page, id };
+  if (window.noteTool !== 'snote') $('[data-tool="snote"]').click();
+  let bar = $('#sn-addbar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'sn-addbar';
+    bar.className = 'sn-addbar';
+    document.body.append(bar);
+  }
+  const n = note.pages[page].notes.find((x) => x.id === id);
+  bar.style.setProperty('--c', snKeyOf(n.key).color);
+  bar.innerHTML = '<span>Weitere Stelle unterstreichen, einrahmen oder per Lasso wählen</span><button type="button">Fertig</button>';
+  bar.querySelector('button').addEventListener('click', snStopAdd);
+  bar.style.top = pagesBox.getBoundingClientRect().top + 8 + 'px';
+  bar.hidden = false;
+  drawPage(page);
+}
+
+function snStopAdd() {
+  const a = snAddTo;
+  snAddTo = null;
+  const bar = $('#sn-addbar');
+  if (bar) bar.hidden = true;
+  if (a && note.pages[a.page]) drawPage(a.page);
+}
+
+function snAddAnchor(anchor, items) {
+  const { page, id } = snAddTo;
+  const pg = note.pages[page];
+  const aid = snId();
+  pg.notes = pg.notes.map((n) => (n.id === id ? { ...n, anchor: undefined, anchors: snAnchors(n).concat({ ...anchor, aid }) } : n));
+  if (items) {
+    const set = new Set(items);
+    pg.strokes = pg.strokes.map((s) => (set.has(s) ? { ...s, sn: (s.sn || []).concat(aid) } : s));
+  }
+  drawPage(page);
+  saveNote();
+  const n = pg.notes.find((x) => x.id === id);
+  toast(`Stelle hinzugefügt (jetzt ${snAnchors(n).length})`);
 }
 
 // Side Note an die Lasso-Auswahl hängen
@@ -3844,7 +3903,9 @@ function snFromSelection() {
   const b = selBounds(sel.items);
   const page = sel.page, items = sel.items;
   deselectImage();
-  openSnDialog(page, null, { type: 'items', x: b.x - 4, y: b.y - 4, w: b.w + 8, h: b.h + 8 }, items);
+  const anchor = { type: 'items', x: b.x - 4, y: b.y - 4, w: b.w + 8, h: b.h + 8 };
+  if (snAddTo && snAddTo.page === page) return snAddAnchor(anchor, items);
+  openSnDialog(page, null, anchor, items);
 }
 
 // ---------- Dialog: Side Note schreiben / bearbeiten ----------
@@ -3859,11 +3920,44 @@ function openSnDialog(page, id, anchor, items) {
   snInk = n && n.ink ? n.ink.slice() : [];
   $('#sn-delete').hidden = !n;
   $('#sn-dialog-title').textContent = n ? 'Side Note bearbeiten' : 'Neue Side Note';
+  snRenderAnchorList();
   snRenderDlgKeys();
   snRenderInk();
   snSetMode(n && !n.text && snInk.length ? 'ink' : 'text');
   $('#sn-dialog').showModal();
   if (!snInk.length) $('#sn-text').focus();
+}
+
+const SN_TYPE_NAMES = { line: 'Unterstreichung', rect: 'Bereich', items: 'Auswahl' };
+function snRenderAnchorList() {
+  const box = $('#sn-anchors');
+  const { page, id } = snEdit;
+  const n = id ? note.pages[page].notes.find((x) => x.id === id) : null;
+  box.innerHTML = '';
+  if (!n) { box.hidden = true; return; }
+  box.hidden = false;
+  const list = snAnchors(n);
+  list.forEach((a, j) => {
+    const row = document.createElement('span');
+    row.className = 'sn-anchor';
+    row.innerHTML = `${j + 1}. ${SN_TYPE_NAMES[a.type] || 'Stelle'}` + (list.length > 1 ? ' <button type="button" aria-label="Stelle entfernen">✕</button>' : '');
+    const x = row.querySelector('button');
+    if (x) x.addEventListener('click', () => {
+      const pg = note.pages[page];
+      pg.notes = pg.notes.map((m) => (m.id === id ? { ...m, anchor: undefined, anchors: snAnchors(m).filter((_, k) => k !== j) } : m));
+      if (a.type === 'items') pg.strokes = pg.strokes.map((s) => (s.sn && s.sn.includes(a.aid) ? { ...s, sn: s.sn.filter((v) => v !== a.aid) } : s));
+      drawPage(page);
+      saveNote();
+      snRenderAnchorList();
+    });
+    box.append(row);
+  });
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'btn small';
+  add.textContent = '＋ Stelle hinzufügen';
+  add.addEventListener('click', () => { $('#sn-ok').click(); snStartAdd(page, id); });
+  box.append(add);
 }
 
 function snRenderDlgKeys() {
@@ -3939,11 +4033,12 @@ $('#sn-ok').addEventListener('click', () => {
   if (id) {
     pg.notes = pg.notes.map((n) => (n.id === id ? { ...n, key: snDlgKey, text, ink: snInk } : n));
   } else {
-    const n = { id: snId(), key: snDlgKey, anchor, text, ink: snInk };
+    const aid = snId();
+    const n = { id: snId(), key: snDlgKey, anchors: [{ ...anchor, aid }], text, ink: snInk };
     pg.notes.push(n);
     if (items) {
       const set = new Set(items);
-      pg.strokes = pg.strokes.map((s) => (set.has(s) ? { ...s, sn: (s.sn || []).concat(n.id) } : s));
+      pg.strokes = pg.strokes.map((s) => (set.has(s) ? { ...s, sn: (s.sn || []).concat(aid) } : s));
     }
     snKey = snDlgKey;
     store.set('snKey', snKey);
@@ -3956,8 +4051,11 @@ $('#sn-delete').addEventListener('click', () => {
   const { page, id } = snEdit;
   if (!id || !confirm('Diese Side Note löschen?')) return;
   const pg = note.pages[page];
-  pg.notes = (pg.notes || []).filter((n) => n.id !== id);
-  pg.strokes = pg.strokes.map((s) => (s.sn && s.sn.includes(id) ? { ...s, sn: s.sn.filter((x) => x !== id) } : s));
+  const n = (pg.notes || []).find((x) => x.id === id);
+  const aids = new Set(snAnchors(n).map((a) => a.aid));
+  pg.notes = (pg.notes || []).filter((x) => x.id !== id);
+  pg.strokes = pg.strokes.map((s) => (s.sn && s.sn.some((v) => aids.has(v)) ? { ...s, sn: s.sn.filter((v) => !aids.has(v)) } : s));
+  if (snAddTo && snAddTo.id === id) snStopAdd();
   $('#sn-dialog').close();
   drawPage(page);
   saveNote();
@@ -4054,14 +4152,16 @@ function refreshSn() {
 function snMarkItems(page) {
   const out = [];
   for (const { n, no } of snNumbered(page)) {
-    const col = snKeyOf(n.key).color, a = n.anchor;
+    const col = snKeyOf(n.key).color;
     const line = (pts, size) => ({ tool: 'pen', style: 'ball', shape: true, color: col, size, pts: pts.flatMap(([x, y]) => [x, y, 0.5]) });
-    if (a.type === 'line') out.push(line([[a.x0, a.y0], [a.x1, a.y1]], 2.6));
-    else { const b = snBounds(page, n); out.push(line([[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]], [b[0], b[1]]], 0.8)); }
-    const [bx, by] = snBadgePos(page, n);
-    out.push(line([[bx, by]], 16));
-    const w = measure(String(no), fontOf({ b: true }, 12)) + 2;
-    out.push({ tool: 'text', x: bx - w / 2, y: by - 7.7, w, size: 12, color: '#ffffff', text: String(no), paras: [{ spans: [{ t: String(no), b: true }] }] });
+    for (const a of snAnchors(n)) {
+      if (a.type === 'line') out.push(line([[a.x0, a.y0], [a.x1, a.y1]], 2.6));
+      else { const b = snABounds(page, a); out.push(line([[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]], [b[0], b[1]]], 0.8)); }
+      const [bx, by] = snBadgeAt(page, a);
+      out.push(line([[bx, by]], 16));
+      const w = measure(String(no), fontOf({ b: true }, 12)) + 2;
+      out.push({ tool: 'text', x: bx - w / 2, y: by - 7.7, w, size: 12, color: '#ffffff', text: String(no), paras: [{ spans: [{ t: String(no), b: true }] }] });
+    }
   }
   return out;
 }

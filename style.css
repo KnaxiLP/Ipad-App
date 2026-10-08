@@ -736,3 +736,13 @@ body[data-note-tool="snote"] .pages .page-live { cursor: crosshair; }
   #color-group { width: 186px; }
   .sn-current { width: 174px !important; }
 }
+.sn-anchors { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 10px; }
+.sn-anchor { display: inline-flex; align-items: center; gap: 4px; background: var(--bg); border-radius: 999px; padding: 4px 10px; font-size: 13px; }
+.sn-anchor button { border: 0; background: none; font-size: 12px; cursor: pointer; color: var(--muted); padding: 0 2px; }
+.sn-addbar {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 12px;
+  padding: 8px 8px 8px 16px; border-radius: 999px; background: #1c1c1e; color: #fff; font-size: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .25); border-left: 6px solid var(--c); max-width: calc(100% - 24px);
+}
+.sn-addbar[hidden], body:not([data-view="notes"]) .sn-addbar { display: none; }
+.sn-addbar button { border: 0; border-radius: 999px; padding: 7px 16px; background: var(--c); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }

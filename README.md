@@ -199,6 +199,7 @@ Side Notes sind Anmerkungen an einer Stelle der Seite, zum Beispiel Stilmittel o
 - **Bereich:** Ein Rechteck aufziehen.
 - **Handschrift, Text oder Bilder:** Mit dem Lasso auswählen und im Menü **„Side Note“** wählen. Die Notiz wandert dann mit, wenn du die Auswahl verschiebst.
 - **Inhalt:** getippt oder handschriftlich (Reiter „Schreiben“).
+- **Mehrere Stellen pro Notiz:** In der Karte oder im Bearbeiten-Fenster auf **„＋ Stelle“** tippen. Danach weitere Stellen unterstreichen, einrahmen oder per Lasso wählen und mit „Fertig“ abschließen. Alle Stellen tragen dieselbe Nummer. Einzelne Stellen entfernst du im Bearbeiten-Fenster mit ✕.
 - **Schlüssel (Ebenen):** Jede Notiz hat einen Schlüssel mit eigener Farbe, z. B. Stilmittel, Übersetzung, Grammatik oder Wichtig. Es gibt globale Schlüssel und solche nur für eine Notiz. Im Ebenen-Dialog blendest du sie ein und aus, benennst sie um oder färbst sie um.
 - **Anzeige:** Antippen der Nummer öffnet eine Karte. Bei genug Platz stehen alle Notizen in einer Spalte neben der Seite.
 - **Export** (⋯ → „Side Notes im Export“):
