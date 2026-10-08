@@ -746,3 +746,38 @@ body[data-note-tool="snote"] .pages .page-live { cursor: crosshair; }
 }
 .sn-addbar[hidden], body:not([data-view="notes"]) .sn-addbar { display: none; }
 .sn-addbar button { border: 0; border-radius: 999px; padding: 7px 16px; background: var(--c); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+/* ---------- Side-Note-Panel ---------- */
+.sn-panel {
+  position: fixed; z-index: 6; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px;
+  background: var(--card, #fff); color: var(--text); padding: 12px 14px; overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, .18); border-top: 4px solid var(--c);
+}
+.sn-panel[hidden], body:not([data-view="notes"]) .sn-panel { display: none; }
+.sn-panel.side { right: 12px; width: 340px; bottom: 12px; border-radius: 16px; }
+.sn-panel.sheet { left: 0; right: 0; bottom: 0; max-height: 52vh; border-radius: 18px 18px 0 0; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+.snp-head { display: flex; align-items: flex-start; gap: 8px; }
+.snp-no { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--c); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 14px; margin-top: 2px; }
+.snp-keys { flex: 1; display: flex; flex-wrap: wrap; gap: 6px; }
+.snp-close { flex: none; border: 0; border-radius: 999px; padding: 6px 14px; background: var(--c); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.snp-templates { display: flex; flex-wrap: wrap; gap: 6px; }
+.snp-templates button { border: 0; border-radius: 8px; padding: 5px 9px; background: color-mix(in srgb, var(--c) 12%, transparent); color: inherit; font: inherit; font-size: 13px; cursor: pointer; }
+.snp-text { width: 100%; box-sizing: border-box; resize: vertical; min-height: 64px; font: inherit; }
+.snp-ink-wrap { background: #fff; border-radius: 12px; border: 1px solid rgba(0, 0, 0, .1); }
+.snp-ink { display: block; width: 100%; aspect-ratio: 600 / 300; touch-action: none; background: repeating-linear-gradient(transparent 0 38px, #e5e7f5 38px 39px); border-radius: 12px; }
+.sn-panel.sheet .snp-ink { aspect-ratio: auto; height: 22vh; }
+.snp-ink-actions, .snp-foot-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.snp-quiz { text-align: center; padding: 16px 0; }
+.snp-quiz p { margin: 0 0 10px; color: var(--muted); }
+.snp-grade { display: flex; gap: 10px; }
+.snp-grade .btn { flex: 1; }
+.snp-foot { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border, rgba(0,0,0,.08)); padding-top: 8px; }
+.sn-card.open { box-shadow: 0 0 0 2px var(--c), 0 2px 10px rgba(0, 0, 0, .1); }
+.sn-quiz-cover { color: var(--muted); font-size: 13px; font-style: italic; }
+.snk-overview { margin: 6px 0; }
+/* Übersicht */
+.snov-dialog { width: min(640px, 94vw); }
+.snov-list { list-style: none; margin: 8px 0; padding: 0; max-height: 55vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.snov-item { border-left: 4px solid var(--c); background: var(--bg); border-radius: 10px; padding: 8px 10px; cursor: pointer; }
+.snov-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.snp-templates .snp-more { background: none; color: var(--c); font-weight: 600; }
+.snp-foot-row .btn { white-space: nowrap; }
