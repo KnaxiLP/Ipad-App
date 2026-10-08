@@ -972,14 +972,16 @@ function textDown(e, canvas) {
   const rect = canvas.getBoundingClientRect();
   const x = ((e.clientX - rect.left) / rect.width) * PAGE_W;
   const y = ((e.clientY - rect.top) / rect.height) * PAGE_H;
-  textAction = { id: e.pointerId, touch: e.pointerType === 'touch', page: i, rect, x0: x, y0: y, cx: e.clientX, cy: e.clientY, k: textAt(i, x, y), moved: false, noCreate: hadEditor };
+  textAction = { id: e.pointerId, touch: e.pointerType === 'touch', page: i, rect, x0: x, y0: y, cx: e.clientX, cy: e.clientY, sx: e.clientX, sy: e.clientY,
+    k: textAt(i, x, y), moved: false, noCreate: hadEditor, t0: performance.now(), st: pagesBox.scrollTop, sl: pagesBox.scrollLeft };
+  textSkip = 0;
 }
 
 function textMove(e) {
   const a = textAction;
   const x = ((e.clientX - a.rect.left) / a.rect.width) * PAGE_W;
   const y = ((e.clientY - a.rect.top) / a.rect.height) * PAGE_H;
-  if (!a.moved && Math.hypot(x - a.x0, y - a.y0) < 6) return;
+  if (!a.moved && Math.hypot(e.clientX - a.sx, e.clientY - a.sy) < (a.touch ? 14 : 8)) return;
   if (a.k < 0) {
     // Ziehen auf leerer Fläche = scrollen (auf dem iPad macht das der Browser selbst)
     a.moved = true;
@@ -1010,17 +1012,24 @@ function textMove(e) {
 function textUp(e) {
   const a = textAction;
   textAction = null;
-  if (e.type === 'pointercancel') return;      // Browser hat gescrollt
+  if (e.type === 'pointercancel') {
+    // Safari auf dem iPad bricht kurze Tipper oft ab, statt sie normal zu beenden.
+    // Nur wenn wirklich gescrollt wurde, ist es kein Antippen.
+    const scrolled = Math.abs(pagesBox.scrollTop - a.st) > 3 || Math.abs(pagesBox.scrollLeft - a.sl) > 3;
+    if (scrolled || a.moved || performance.now() - a.t0 > 800) { textSkip = performance.now(); return; }
+  }
   if (a.moved) {
     if (a.k >= 0) {
       pushHistory([{ page: a.page, before: a.before, after: note.pages[a.page].strokes.slice() }]);
       saveNote();
     }
+    textSkip = performance.now();
     return;
   }
-  if (a.noCreate && a.k < 0) return;
+  if (a.noCreate && a.k < 0) { textSkip = performance.now(); return; }
   openEditor(a.page, a.k, a.x0, a.y0);
 }
+let textSkip = 0;    // Zeitpunkt, an dem ein Tipper bewusst kein Feld geöffnet hat
 
 // Safari auf dem iPad schickt nach dem Absetzen noch Maus-Ereignisse und evtl. einen click.
 // Die können dem gerade geöffneten Feld den Fokus nehmen – kurz danach holen wir ihn zurück.
@@ -1038,8 +1047,18 @@ function focusEditor() {
   s.removeAllRanges();
   s.addRange(r);
 }
-$('#pages').addEventListener('click', () => {
-  if (editor && performance.now() - editor.openedAt < EDITOR_GRACE) focusEditor();
+$('#pages').addEventListener('click', (e) => {
+  if (editor) {
+    if (performance.now() - editor.openedAt < EDITOR_GRACE) focusEditor();
+    return;
+  }
+  // Letztes Sicherheitsnetz: Hat das iPad die Stift-/Finger-Ereignisse verschluckt,
+  // kommt wenigstens der click an – dann das Feld hier öffnen.
+  const canvas = e.target.closest && e.target.closest('.page-live');
+  if (!canvas || window.noteTool !== 'text' || textAction || performance.now() - textSkip < 700) return;
+  const r = canvas.getBoundingClientRect(), i = Number(canvas.dataset.page);
+  const x = ((e.clientX - r.left) / r.width) * PAGE_W, y = ((e.clientY - r.top) / r.height) * PAGE_H;
+  openEditor(i, textAt(i, x, y), x, y);
 }, true);
 
 // Editor: formatierbares Feld (contenteditable) + Format-Leiste oben über den Seiten
