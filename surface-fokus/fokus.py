@@ -43,7 +43,8 @@ ALLOWED = {
     "snippingtool.exe",            # Snipping Tool (Bildschirmausschnitt)
     "screenclippinghost.exe",      # Ausschnitt-Overlay von Win+Umschalt+S
     "screensketch.exe",            # "Ausschneiden und skizzieren" (Windows 10)
-    # Klett: Namen aus fokus-log.txt hier eintragen, z. B. "klettlernen.exe"
+    "klettlernen.exe",             # Klett Lernen
+    "notepad.exe",                 # Editor
 }
 
 # Teile von Windows, die nie angefasst werden (sonst lässt sich das Gerät nicht bedienen)
