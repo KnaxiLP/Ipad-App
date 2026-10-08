@@ -94,9 +94,16 @@ function saveNote() {
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const strokeWidth = (s) => s.size * BASE_WIDTH[s.tool];
 // Radius je Punkt: Füller reagiert auf Druck, Kugelschreiber bleibt fast gleich dick
+// Einstellungen: Druckempfindlichkeit (0 aus … 3 stark) und Glättung (Durchgänge)
+let penPressure = store.get('penPressure', 2);
+let penSmooth = store.get('penSmooth', 2);
 function pointRadius(s, p) {
   const w = strokeWidth(s) / 2;
-  return s.style === 'ball' ? w * (0.9 + 0.2 * p) : w * (0.5 + 1.2 * Math.pow(p, 0.8));
+  if (s.style === 'ball') return w * (0.9 + 0.2 * p);
+  if (penPressure === 0) return w * 1.15;
+  if (penPressure === 1) return w * (0.8 + 0.65 * Math.pow(p, 0.8));
+  if (penPressure === 3) return w * (0.25 + 1.8 * Math.pow(p, 0.9));
+  return w * (0.5 + 1.2 * Math.pow(p, 0.8));
 }
 
 // Berechnet den Umriss eines Strichs (wie bei Goodnotes):
@@ -161,7 +168,7 @@ function strokeOutline(s) {
   }
 
   // 4. Sanft glätten (nur das Zittern, gleich stark bei jeder Geschwindigkeit)
-  for (let pass = 0; pass < (s.shape ? 0 : 2); pass++) {
+  for (let pass = 0; pass < (s.shape ? 0 : penSmooth); pass++) {
     for (let i = pts.length - 2; i >= 1; i--) {
       if (keep[i]) continue;
       pts[i][0] = pts[i - 1][0] * 0.25 + pts[i][0] * 0.5 + pts[i + 1][0] * 0.25;
@@ -288,7 +295,12 @@ function cmdsToCanvas(ctx, cmds) {
 }
 
 // SVG-Code eines Strichs – wird pro Strich gemerkt, damit Neuzeichnen schnell geht
-const svgCache = new WeakMap();
+let svgCache = new WeakMap();
+// Nach geänderten Stift-Einstellungen alle Striche neu berechnen
+function resetInkCache() {
+  svgCache = new WeakMap();
+  if (note) pageEls.forEach((_, i) => drawPage(i));
+}
 function markerAttrs(color, width) {
   return `fill="none" stroke="${color}" stroke-width="${num(width)}" stroke-linecap="round" stroke-linejoin="round" style="mix-blend-mode:multiply"`;
 }
@@ -852,7 +864,7 @@ function erasePart(page, cx, cy, r) {
 }
 
 // ---------- Formen erkennen (wie in Goodnotes: am Ende kurz stillhalten) ----------
-const HOLD_MS = 550;
+let HOLD_MS = store.get('holdMs', 550);
 let shapeRecog = store.get('shapeRecog', true);
 
 function rdp(points, eps) {
@@ -1136,6 +1148,8 @@ const TEXT_STEPS = [14, 18, 24, 30, 36, 48, 60];
 const TEXT_COLORS = PEN_COLORS.concat(['#ea580c', '#8e8e93']);
 const ALIGNS = ['left', 'center', 'right'];
 let textSpell = store.get('textSpell', true);
+let textReplace = store.get('textReplace', true);   // Schnell-Ersetzen (-> → , ^2 ² …)
+let rulerSnap = store.get('rulerSnap', true);
 let barTouch = 0;
 
 // Schnell-Ersetzen beim Tippen
@@ -1371,7 +1385,7 @@ function editorInput(ev) {
       return updateTextBar();
     }
   }
-  for (const [from, to] of REPLACE) {
+  for (const [from, to] of textReplace ? REPLACE : []) {
     if (before.endsWith(from)) {
       node.data = before.slice(0, -from.length) + to + node.data.slice(off);
       s.collapse(node, off - from.length + to.length);
@@ -1545,9 +1559,11 @@ let pan = null;
 // Handballen: Solange der Stift schreibt oder gerade eben noch in der Nähe war (auch schwebend),
 // werden Berührungen komplett ignoriert – sie scrollen nicht und zeichnen nicht.
 let lastPenTime = 0;
-const PALM_MS = 700;
+// Handballen-Erkennung: [Sperrzeit nach dem Stift in ms, Auflagefläche ab der es eine Hand ist]
+const PALM_LEVELS = { off: [0, 9999], normal: [700, 45], strong: [1200, 30] };
+let [PALM_MS, PALM_SIZE] = PALM_LEVELS[store.get('palm', 'normal')] || PALM_LEVELS.normal;
 const penNear = () => (active && active.pointerType === 'pen') || performance.now() - lastPenTime < PALM_MS;
-const isPalm = (e) => e.width > 45 || e.height > 45;
+const isPalm = (e) => e.width > PALM_SIZE || e.height > PALM_SIZE;
 let pinch = null;
 let inertia = null;
 const touchDist = () => {
@@ -3179,7 +3195,7 @@ rulerEl.addEventListener('pointermove', (e) => {
   }
   // bei 0°, 45°, 90° … leicht einrasten
   const step = Math.PI / 4, near = Math.round(a / step) * step;
-  if (Math.abs(a - near) < (2.5 * Math.PI) / 180) a = near;
+  if (rulerSnap && Math.abs(a - near) < (2.5 * Math.PI) / 180) a = near;
   ruler.a = a;
   ruler.cx = clamp(cx, 0, L.width);
   ruler.cy = clamp(cy, 0, L.height);
@@ -4084,7 +4100,7 @@ $('#snp-text').addEventListener('input', (e) => {
   const ta = e.target, pos = ta.selectionStart;
   if (e.inputType === 'insertText' && pos === ta.selectionEnd) {
     const before = ta.value.slice(0, pos);
-    for (const [from, to] of REPLACE) {
+    for (const [from, to] of textReplace ? REPLACE : []) {
       if (before.endsWith(from)) {
         ta.value = before.slice(0, -from.length) + to + ta.value.slice(pos);
         const np = pos - from.length + to.length;

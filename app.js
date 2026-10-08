@@ -1,3 +1,9 @@
+// Design (hell/dunkel) so früh wie möglich setzen
+try {
+  const th = JSON.parse(localStorage.getItem('theme') || '"auto"');
+  if (th !== 'auto') document.documentElement.dataset.theme = th;
+} catch {}
+
 // Funktionen, die vor einem Update/Neuladen offene Änderungen speichern
 window.appFlush = [];
 
@@ -283,4 +289,7 @@ setCounter(counter, false);
 updateClock();
 updateInfo();
 setInterval(updateClock, 1000);
-showView(store.get('view', 'home'));
+{
+  const start = store.get('startView', 'last');
+  showView(start === 'last' ? store.get('view', 'home') : start);
+}

@@ -216,3 +216,16 @@ Side Notes sind Anmerkungen an Stellen der Seite, zum Beispiel Stilmittel oder e
 **Übersicht:** Alle Side Notes aus allen Notizen, filterbar nach Schlüssel und durchsuchbar. Antippen springt zur Stelle.
 
 **Export** (⋯ → „Side Notes im Export“): Aus, Markiert oder Mit Liste. Ausgeblendete Ebenen werden nicht exportiert.
+
+## Einstellungen
+
+Erreichbar über **Einstellungen** in der Seitenleiste oder in einer Notiz über **⋯ → „Einstellungen“**.
+
+| Bereich | Einstellungen |
+|---|---|
+| Allgemein | Design (automatisch/hell/dunkel), Ansicht beim Öffnen |
+| Stift & Schreiben | Druckempfindlichkeit, Glättung, Finger zeichnet, Handballen-Erkennung, Formerkennung und Haltedauer, Radierer-Modus |
+| Papier & Lineal | Papier für neue Notizen, Lineal rastet ein |
+| Text | Rechtschreibprüfung, Schnell-Ersetzen |
+| Side Notes | Anzeigen, Spalte, Verbindungslinien, Export |
+| Werkzeugleiste | Knöpfe ein- und ausblenden |

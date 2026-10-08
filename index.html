@@ -28,6 +28,7 @@
       <button class="nav-item" data-view="braces"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4c-2 0-3 1-3 3v2c0 1.5-1 2.5-2 3 1 .5 2 1.5 2 3v2c0 2 1 3 3 3"/><path d="M16 4c2 0 3 1 3 3v2c0 1.5 1 2.5 2 3-1 .5-2 1.5-2 3v2c0 2-1 3-3 3"/></svg></span><span>Klammern</span></button>
       <button class="nav-item" data-view="python"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8l-5 4 5 4M16 8l5 4-5 4M13.5 5l-3 14"/></svg></span><span>Python</span></button>
       <button class="nav-item" data-view="counter"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4L7 20M17 4l-2 16M4 9h16M3 15h16"/></svg></span><span>Zähler</span></button>
+      <button class="nav-item" data-view="settings"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1M18.7 18.7l-2.1-2.1M7.4 7.4L5.3 5.3"/></svg></span><span>Einstellungen</span></button>
       <button class="nav-item" data-view="info"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg></span><span>Info</span></button>
     </nav>
 
@@ -222,11 +223,21 @@
         </div>
       </section>
 
+      <!-- Einstellungen -->
+      <section class="view" id="view-settings">
+        <header class="view-header"><h2>Einstellungen</h2></header>
+        <div id="settings-list"></div>
+        <h3 class="set-title">Daten</h3>
+        <div class="list-group">
+          <button type="button" class="row set-link" id="settings-to-info"><span>Updates und Datensicherung</span><span class="muted">Info ›</span></button>
+        </div>
+      </section>
+
       <!-- Info -->
       <section class="view" id="view-info">
         <header class="view-header"><h2>Info</h2></header>
         <div class="list-group">
-          <div class="row"><span>Version</span><span class="muted">5.1</span></div>
+          <div class="row"><span>Version</span><span class="muted">5.2</span></div>
           <div class="row"><span>Als App gestartet</span><span class="muted" id="info-standalone">–</span></div>
           <div class="row"><span>Offline-Modus</span><span class="muted" id="info-sw">–</span></div>
           <div class="row"><span>Bildschirm</span><span class="muted" id="info-screen">–</span></div>
@@ -415,6 +426,7 @@
       <button type="button" class="menu-item" id="note-export-pdf">Als PDF teilen (Vektor, scharf in Goodnotes)</button>
       <button type="button" class="menu-item" id="note-export">Als Bild teilen oder speichern</button>
       <button type="button" class="menu-item" id="note-clear-page">Alle Seiten leeren</button>
+      <button type="button" class="menu-item" id="note-settings">Einstellungen (Stift, Leiste, Design …)</button>
       <button type="button" class="menu-item danger-text" id="note-delete">Notiz löschen</button>
     </div>
     <p class="muted small-text">Radiergummi-Ende oder Seitentaste am Stift: Radierer.<br>Formen: Strich zeichnen, Stift kurz halten, dann weiterziehen zum Vergrößern.<br>Hand-Symbol: Mit dem Finger zeichnen an/aus.</p>
@@ -436,5 +448,6 @@
   <script src="notes.js"></script>
   <script src="python.js"></script>
   <script src="braces.js"></script>
+  <script src="settings.js"></script>
 </body>
 </html>
