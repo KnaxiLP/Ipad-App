@@ -146,3 +146,26 @@ python3 -m http.server 8000
 - Nur antippen ergibt ein System mit 16 × 16 Kästchen.
 - Im Menü wählst du **4 Quadranten** oder **1. Quadrant** und als Einheit **1 cm** oder **1 Kästchen**.
 - Beim Verschieben rastet das System auf den Kästchen ein.
+
+## Textfelder
+
+Beim Bearbeiten erscheint oben eine Format-Leiste:
+
+- **Fett, kursiv, unterstrichen** (auch mit Strg+B, Strg+I, Strg+U).
+- **Farben** für einzelne Wörter: Text markieren und eine Farbe wählen.
+- **Schriftgröße** mit A− und A+, Überschrift mit Ü.
+- **Listen** über die Knöpfe oder durch Tippen von „- “ bzw. „1. “. Ein leerer Punkt und Enter beendet die Liste.
+- **Ausrichtung** links, mittig oder rechts.
+- **Hintergrundfarbe**, **Rahmen** und **Rechtschreibprüfung**.
+- Mit dem Griff rechts oben änderst du die **Breite** des Feldes.
+
+Schnell-Ersetzen beim Tippen:
+
+| Eingabe | Ergebnis |
+|---|---|
+| `->`, `<-`, `<->`, `=>` | → ← ↔ ⇒ |
+| `<=`, `>=`, `!=`, `+-`, `~=` | ≤ ≥ ≠ ± ≈ |
+| `^2`, `_2` | ² ₂ |
+| `\pi`, `\alpha`, `\Delta`, `\sqrt`, `\inf` | π α Δ √ ∞ |
+
+Im PDF-Export bleiben Sonderzeichen erhalten.

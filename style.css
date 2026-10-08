@@ -423,11 +423,41 @@ body[data-note-tool="coord"] .pages .page-live { cursor: crosshair; }
 
 /* Textfeld beim Bearbeiten */
 .text-editor {
-  position: absolute; z-index: 3; margin: 0; padding: 0; border: 0; resize: none; overflow: hidden;
-  background: rgba(255, 255, 255, .85); outline: 1.5px dashed color-mix(in srgb, var(--accent) 70%, transparent);
-  outline-offset: 4px; white-space: pre-wrap; word-break: break-word;
-  -webkit-user-select: text; user-select: text;
+  position: absolute; z-index: 3; margin: 0; padding: 0; border: 0; overflow: hidden; min-height: 1.3em;
+  outline: 1.5px dashed color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 8px; white-space: pre-wrap; word-break: break-word; cursor: text;
+  -webkit-user-select: text; user-select: text; touch-action: manipulation;
 }
+.text-editor > div { min-height: 1.3em; }
+.text-editor > div[data-h] { font-size: 1.35em; font-weight: 700; }
+.text-editor > div[data-list] { position: relative; padding-left: 1.1em; }
+.text-editor > div[data-list="number"] { padding-left: 1.6em; counter-increment: tnum; }
+.text-editor > div:not([data-list="number"]) { counter-reset: tnum; }
+.text-editor > div[data-list]::before { position: absolute; right: calc(100% - 1.1em + .35em); }
+.text-editor > div[data-list="bullet"]::before { content: '•'; }
+.text-editor > div[data-list="number"]::before { content: counter(tnum) '.'; right: calc(100% - 1.6em + .35em); }
+/* Griff zum Ändern der Breite */
+.te-handle {
+  position: absolute; z-index: 4; width: 14px; height: 28px; margin: -2px 0 0 4px; border-radius: 7px;
+  background: #fff; border: 2px solid var(--accent); box-sizing: border-box; cursor: ew-resize; touch-action: none;
+}
+/* Format-Leiste */
+.text-bar {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 6; display: flex; flex-wrap: wrap; justify-content: center;
+  align-items: center; gap: 2px; max-width: calc(100% - 24px); padding: 5px 6px; border-radius: 12px;
+  background: #1c1c1e; color: #fff; box-shadow: 0 8px 24px rgba(0, 0, 0, .25); touch-action: manipulation;
+}
+.text-bar button {
+  min-width: 32px; height: 32px; padding: 0 6px; border: 0; border-radius: 8px; background: none; color: inherit;
+  font: inherit; font-size: 15px; cursor: pointer;
+}
+.text-bar button.on { background: rgba(255, 255, 255, .2); }
+.text-bar .tb-color { min-width: 22px; width: 22px; height: 22px; padding: 0; border-radius: 50%; background: var(--c); border: 2px solid rgba(255, 255, 255, .6); margin: 0 2px; }
+.text-bar .tb-color.on { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
+.text-bar .tb-sep { width: 1px; height: 22px; background: rgba(255, 255, 255, .2); margin: 0 4px; }
+.text-bar .tb-size { min-width: 22px; text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; opacity: .8; }
+.text-bar .tb-bg { display: inline-block; width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid rgba(255, 255, 255, .7); vertical-align: middle; }
+body:not([data-view="notes"]) .text-bar { display: none; }
 body[data-note-tool="text"] .pages .page-live { cursor: text; }
 .fast-ink { position: fixed; pointer-events: none; z-index: 4; display: none; }
 body[data-view="notes"] .fast-ink { display: block; }
