@@ -40,6 +40,10 @@ ALLOWED = {
     "pythonw.exe",
     "py.exe",
     "cornelsenofflinelernen.exe",  # Cornelsen Lernen (offline)
+    "snippingtool.exe",            # Snipping Tool (Bildschirmausschnitt)
+    "screenclippinghost.exe",      # Ausschnitt-Overlay von Win+Umschalt+S
+    "screensketch.exe",            # "Ausschneiden und skizzieren" (Windows 10)
+    # Klett: Namen aus fokus-log.txt hier eintragen, z. B. "klettlernen.exe"
 }
 
 # Teile von Windows, die nie angefasst werden (sonst lässt sich das Gerät nicht bedienen)
@@ -63,7 +67,7 @@ CLOSE_FILE_EXPLORER = True
 
 # Diese Prozesse werden höchstens gebeten zu schließen, aber nie hart beendet
 # (explorer.exe ist auch die Taskleiste!)
-NEVER_KILL = SYSTEM | {"explorer.exe"}
+NEVER_KILL = SYSTEM | {"explorer.exe", "applicationframehost.exe"}
 
 # Programme, die sich nicht schließen lassen, nach so vielen Sekunden hart beenden (0 = nie)
 KILL_AFTER_SECONDS = 5
@@ -180,6 +184,7 @@ def run():
 
     EnumWindowsProc = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
     user32.EnumWindows.argtypes = [EnumWindowsProc, wt.LPARAM]
+    user32.EnumChildWindows.argtypes = [wt.HWND, EnumWindowsProc, wt.LPARAM]
     user32.IsWindowVisible.argtypes = [wt.HWND]
     user32.GetWindowTextLengthW.argtypes = [wt.HWND]
     user32.GetWindowTextW.argtypes = [wt.HWND, wt.LPWSTR, ctypes.c_int]
@@ -212,6 +217,30 @@ def run():
             return ""
         finally:
             kernel32.CloseHandle(h)
+
+    frame_apps = {}   # Rahmen-Fenster → (exe, pid) des Programms darin
+
+    def real_app(hwnd, pid):
+        """Store-Apps (z. B. Snipping Tool) laufen in einem Rahmen von ApplicationFrameHost.exe.
+        Dann zählt das Programm im Rahmen – sonst würde jede Store-App gleich behandelt."""
+        exe = exe_of(pid)
+        if exe.lower() != "applicationframehost.exe":
+            return exe, pid
+        inner = []
+
+        def child(h, _):
+            p = wt.DWORD()
+            user32.GetWindowThreadProcessId(h, ctypes.byref(p))
+            if p.value and p.value != pid:
+                inner.append(p.value)
+                return False
+            return True
+
+        user32.EnumChildWindows(hwnd, EnumWindowsProc(child), 0)
+        if inner:
+            frame_apps[hwnd] = (exe_of(inner[0]), inner[0])
+        # minimiert hängt Windows das Programm kurz aus dem Rahmen – dann das zuletzt bekannte nehmen
+        return frame_apps.get(hwnd, (exe, pid))
 
     def kill(pid):
         h = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
@@ -295,7 +324,7 @@ def run():
         for hwnd, pid, title, cls in windows():
             if pid == my_pid:
                 continue
-            exe = exe_of(pid)
+            exe, pid = real_app(hwnd, pid)
             if not should_close(exe, cls):
                 continue
             seen.add(hwnd)
@@ -312,6 +341,9 @@ def run():
         for hwnd in list(closing):
             if hwnd not in seen or not user32.IsWindow(hwnd):
                 del closing[hwnd]
+        for hwnd in list(frame_apps):
+            if not user32.IsWindow(hwnd):
+                del frame_apps[hwnd]
 
         time.sleep(CHECK_EVERY_SECONDS)
 
