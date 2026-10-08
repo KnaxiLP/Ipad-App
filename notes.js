@@ -3964,22 +3964,16 @@ $('#sn-delete').addEventListener('click', () => {
 });
 
 // ---------- Schlüssel (Ebenen) in der Werkzeugleiste und im Ebenen-Dialog ----------
+// In der Leiste nur ein Knopf: aktueller Schlüssel ▾ – öffnet die Liste (auswählen, ein-/ausblenden, verwalten)
 function renderSnBar(g) {
-  snKeys().forEach((k) => {
-    const b = document.createElement('button');
-    b.className = 'tool sn-chip' + (k.id === snKey ? ' active' : '') + (snHidden.has(k.id) ? ' hidden-key' : '');
-    b.style.setProperty('--c', k.color);
-    b.textContent = k.name.length > 12 ? k.name.slice(0, 11) + '…' : k.name;
-    b.title = (k.global ? 'Global: ' : 'Diese Notiz: ') + k.name;
-    b.addEventListener('click', () => { snKey = k.id; store.set('snKey', snKey); renderColors(); });
-    g.append(b);
-  });
-  const layers = document.createElement('button');
-  layers.className = 'tool sn-layers-btn';
-  layers.setAttribute('aria-label', 'Ebenen');
-  layers.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>';
-  layers.addEventListener('click', openSnKeysDialog);
-  g.append(layers);
+  const k = snKeyOf(snKey);
+  const b = document.createElement('button');
+  b.className = 'tool sn-current sn-layers-btn';
+  b.style.setProperty('--c', k.color);
+  b.title = 'Schlüssel und Ebenen';
+  b.innerHTML = `<span class="dot"></span><span class="nm">${escXml(k.name)}</span><span>▾</span>`;
+  b.addEventListener('click', openSnKeysDialog);
+  g.append(b);
 }
 
 function openSnKeysDialog() {
@@ -3992,7 +3986,7 @@ function renderSnKeysDialog() {
   list.innerHTML = '';
   snKeys().forEach((k) => {
     const row = document.createElement('div');
-    row.className = 'snk-row';
+    row.className = 'snk-row' + (k.id === snKey ? ' current' : '');
     const hidden = snHidden.has(k.id);
     row.innerHTML = `<button type="button" class="snk-eye" aria-label="Ein-/ausblenden">${hidden ? '◌' : '●'}</button>` +
       `<button type="button" class="snk-color" style="--c:${k.color}" aria-label="Farbe ändern"></button>` +
@@ -4006,6 +4000,12 @@ function renderSnKeysDialog() {
       renderSnKeysDialog();
       refreshSn();
     };
+    row.querySelector('.snk-name').addEventListener('click', () => {   // Name antippen = auswählen
+      snKey = k.id;
+      store.set('snKey', snKey);
+      renderSnKeysDialog();
+      renderColors();
+    });
     row.querySelector('.snk-eye').addEventListener('click', () => {
       if (snHidden.has(k.id)) snHidden.delete(k.id); else snHidden.add(k.id);
       snSaveKeys();

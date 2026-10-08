@@ -301,12 +301,12 @@ body[data-view="notes"] .app { padding-top: 0; }
 
 .toolbar {
   position: relative; z-index: 5;
-  display: flex; flex-wrap: nowrap; justify-content: flex-start; align-items: center; gap: 2px;
-  padding: 4px 10px 8px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 2px;
+  padding: 4px 10px 8px;
   background: var(--bar-bg);
   border-bottom: 1px solid var(--border);
 }
-.tool-group { display: flex; align-items: center; gap: 2px; padding: 0 8px; position: relative; }
+.tool-group { display: flex; align-items: center; gap: 2px; padding: 0 6px; position: relative; }
 .tool-group + .tool-group::before {
   content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 1px; background: var(--border);
 }
@@ -719,7 +719,20 @@ body[data-note-tool="math"] .pages .page-live { cursor: copy; }
 .segmented.small-seg { margin: 0; }
 .segmented.small-seg button { padding: 5px 9px; font-size: 13px; }
 body[data-note-tool="snote"] .pages .page-live { cursor: crosshair; }
-/* Leiste: mittig, solange sie passt – sonst seitlich wischbar (nie zweizeilig, damit nichts springt) */
-.toolbar > :first-child { margin-left: auto; }
-.toolbar > :last-child { margin-right: auto; }
+/* Der wechselnde Bereich (Farben / Radierer-Modus / Schlüssel) hat eine feste Breite:
+   so bleibt die Leiste beim Werkzeugwechsel gleich, auch wenn sie zweizeilig ist (iPad hochkant). */
 .toolbar .tool-group { flex: none; }
+#color-group { width: 200px; justify-content: center; overflow: hidden; }
+.sn-current { width: 186px !important; height: 34px; display: flex !important; align-items: center; gap: 8px; padding: 0 10px; border-radius: 999px; font-size: 14px; font-weight: 600; background: color-mix(in srgb, var(--c) 14%, transparent); color: var(--c); }
+.sn-current .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); flex: none; }
+.sn-current .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.snk-row.current { background: color-mix(in srgb, var(--accent) 10%, transparent); border-radius: 8px; }
+.snk-name { cursor: pointer; }
+/* mittlere Breiten (Surface, iPad quer): etwas kompakter, damit alles in eine Zeile passt */
+@media (max-width: 1300px) and (min-width: 701px) {
+  .toolbar .tool { width: 37px; height: 38px; }
+  .toolbar .tool .ico { width: 24px; height: 24px; }
+  .toolbar .tool-group { padding: 0 4px; }
+  #color-group { width: 186px; }
+  .sn-current { width: 174px !important; }
+}
