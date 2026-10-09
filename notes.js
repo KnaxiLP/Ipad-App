@@ -1821,7 +1821,7 @@ function onMove(e) {
       const c = avgTouch();
       if (pinch && touches.size >= 2) {
         const r = pagesBox.getBoundingClientRect();
-        setZoom(pinch.zoom * touchDist() / pinch.dist, c.x - r.left, c.y - r.top);
+        zoomPreview(pinch.zoom * touchDist() / pinch.dist, c.x - r.left, c.y - r.top);
       }
       const now = performance.now(), dt = Math.max(1, now - pan.t);
       const dx = c.x - pan.x, dy = c.y - pan.y;
@@ -1879,6 +1879,7 @@ function onUp(e) {
   if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
     const wasPanning = pan && !fingerDraw && !IS_IOS && touches.size === 1;
     touches.delete(e.pointerId);
+    if (pinch) endZoomPreview();
     pinch = null;
     if (wasPanning && e.type === 'pointerup' && performance.now() - pan.t < 80) startInertia(pan.vx, pan.vy);
     // bleibt ein Finger liegen, scrollt er weiter – ohne Sprung
@@ -1924,22 +1925,76 @@ pagesBox.addEventListener('touchmove', blockScroll, { passive: false });
 const ZOOM_MIN = 0.5, ZOOM_MAX = 4;
 let zoom = 1;
 
+// Breite der Seiten aus Zoom und Side-Notes-Spalte – an genau einer Stelle
+function applyZoomLayout() {
+  pagesInner.style.width = zoom * 100 + '%';
+  pagesInner.style.maxWidth = 900 * zoom + (pagesInner.classList.contains('sn-cols') ? 300 : 0) + 'px';
+}
+
+// Punkt (cx, cy im Seitenbereich) → welche Seite, wo auf ihr (0…1). Abstände zwischen den
+// Seiten wachsen beim Zoomen nicht mit – deshalb wird an der Seite selbst festgehalten.
+function zoomAnchor(cx, cy) {
+  const box = pagesBox.getBoundingClientRect(), y = box.top + cy, x = box.left + cx;
+  let best = null, bestD = Infinity;
+  pageEls.forEach((pe, i) => {
+    const r = pe.wrap.getBoundingClientRect();
+    const d = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+    if (d < bestD) { bestD = d; best = { i, fx: (x - r.left) / r.width, fy: (y - r.top) / r.height }; }
+  });
+  return best;
+}
+
 function setZoom(z, cx, cy) {
+  endZoomPreview(false);
   z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
   if (Math.abs(z - zoom) < 0.001) return;
   // Punkt unter den Fingern (cx, cy) soll beim Zoomen an derselben Stelle bleiben
   if (cx == null) { cx = pagesBox.clientWidth / 2; cy = pagesBox.clientHeight / 2; }
-  const ratio = z / zoom;
-  const left = (pagesBox.scrollLeft + cx) * ratio - cx;
-  const top = (pagesBox.scrollTop + cy) * ratio - cy;
+  const anchor = zoomAnchor(cx, cy);
   zoom = z;
-  pagesInner.style.width = zoom * 100 + '%';
-  pagesInner.style.maxWidth = 900 * zoom + 'px';
-  pagesBox.scrollLeft = left;
-  pagesBox.scrollTop = top;
+  applyZoomLayout();
+  if (anchor) {
+    const box = pagesBox.getBoundingClientRect(), r = pageEls[anchor.i].wrap.getBoundingClientRect();
+    pagesBox.scrollLeft += r.left - box.left + anchor.fx * r.width - cx;
+    pagesBox.scrollTop += r.top - box.top + anchor.fy * r.height - cy;
+  }
   $('#zoom-label').textContent = Math.round(zoom * 100) + '%';
   if (typeof ruler !== 'undefined' && ruler) requestAnimationFrame(renderRuler);
   requestAnimationFrame(snRenderColumns);
+}
+
+// Während einer Geste (Pinch, Strg+Rad) nur die Ansicht skalieren – das ist schnell, auch bei
+// vielen Seiten. Erst am Ende wird die echte Größe gesetzt (einmal neu aufbauen).
+let zoomPrev = null;   // { z, ox, oy } – Ursprung in Inhalts-Koordinaten
+// Lage des Seiten-Inhalts im scrollbaren Bereich (ohne Skalierung)
+function innerOffset() {
+  const a = pagesInner.getBoundingClientRect(), b = pagesBox.getBoundingClientRect();
+  return [a.left - b.left + pagesBox.scrollLeft, a.top - b.top + pagesBox.scrollTop];
+}
+function zoomPreview(z, cx, cy) {
+  z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+  if (!zoomPrev) {
+    const [il, it] = innerOffset();
+    const ox = pagesBox.scrollLeft + cx - il, oy = pagesBox.scrollTop + cy - it;
+    zoomPrev = { ox, oy };
+    pagesInner.style.transformOrigin = `${ox}px ${oy}px`;
+    pagesInner.style.willChange = 'transform';
+    if (fastInk) clearFastInk();
+  }
+  zoomPrev.z = z;
+  pagesInner.style.transform = `scale(${z / zoom})`;
+  $('#zoom-label').textContent = Math.round(z * 100) + '%';
+}
+function endZoomPreview(commit = true) {
+  const p = zoomPrev;
+  if (!p) return;
+  zoomPrev = null;
+  pagesInner.style.transform = '';
+  pagesInner.style.willChange = '';
+  if (!commit || p.z == null) return;
+  // Der Ursprung blieb während der Geste an seiner Bildschirmstelle → dort festhalten
+  const [il, it] = innerOffset();
+  setZoom(p.z, p.ox + il - pagesBox.scrollLeft, p.oy + it - pagesBox.scrollTop);
 }
 
 // Pinch-Geste mit zwei Fingern (Safari auf dem iPad)
@@ -1953,17 +2008,20 @@ pagesBox.addEventListener('gesturechange', (e) => {
   e.preventDefault();
   if (gestureStart == null) return;
   const r = pagesBox.getBoundingClientRect();
-  setZoom(gestureStart * e.scale, e.clientX - r.left, e.clientY - r.top);
+  zoomPreview(gestureStart * e.scale, e.clientX - r.left, e.clientY - r.top);
 });
-pagesBox.addEventListener('gestureend', (e) => { e.preventDefault(); gestureStart = null; });
+pagesBox.addEventListener('gestureend', (e) => { e.preventDefault(); gestureStart = null; endZoomPreview(); });
 
 // Trackpad / Strg + Mausrad (am Computer)
 pagesBox.addEventListener('wheel', (e) => {
   if (!e.ctrlKey) return;
   e.preventDefault();
   const r = pagesBox.getBoundingClientRect();
-  setZoom(zoom * Math.exp(-e.deltaY * 0.01), e.clientX - r.left, e.clientY - r.top);
+  zoomPreview((zoomPrev ? zoomPrev.z : zoom) * Math.exp(-e.deltaY * 0.01), e.clientX - r.left, e.clientY - r.top);
+  clearTimeout(wheelZoomTimer);
+  wheelZoomTimer = setTimeout(endZoomPreview, 160);
 }, { passive: false });
+let wheelZoomTimer = 0;
 
 $('#zoom-in').addEventListener('click', () => setZoom(zoom * 1.25));
 $('#zoom-out').addEventListener('click', () => setZoom(zoom / 1.25));
@@ -3922,7 +3980,7 @@ function snRenderColumns() {
   if (!note) return;
   const on = snColumnOn();
   pagesInner.classList.toggle('sn-cols', on);
-  pagesInner.style.maxWidth = 900 * zoom + (on ? 300 : 0) + 'px';
+  applyZoomLayout();
   pageEls.forEach((pe, i) => {
     pe.col.innerHTML = '';
     if (!on) return;
