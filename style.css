@@ -834,3 +834,7 @@ body[data-note-tool="snote"] .pages .page-live { cursor: crosshair; }
 .tool.fav.active { background: color-mix(in srgb, var(--c) 18%, transparent); }
 .tool.fav-add { font-size: 19px; color: var(--muted); }
 #fav-group:empty { display: none; }
+/* Sprechblase einer Side Note */
+.sn-pop { border-left: 0; border-top: 4px solid var(--c); border-radius: 12px; box-shadow: 0 12px 30px rgba(0, 0, 0, .18); }
+.sn-pop::before { content: ''; position: absolute; top: -11px; left: 22px; border: 7px solid transparent; border-bottom-color: var(--c); }
+.sn-pop[style*="right"]::before { left: auto; right: 22px; }

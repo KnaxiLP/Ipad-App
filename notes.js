@@ -1699,7 +1699,7 @@ function onDown(e) {
   const canvas = e.target.closest && e.target.closest('.page-live');
   if (!canvas) return;
   snClosePop();
-  if (!active && !(e.pointerType === 'touch' && penNear()) && snBadgeDown(e)) return;   // Side-Note-Marke angetippt
+  if (!(e.pointerType === 'touch' && (penNear() || isPalm(e)))) snTapDown(e, canvas);   // evtl. Antippen einer Side Note
   // Tippen neben ein ausgewähltes Bild hebt die Auswahl auf
   if (sel && !(e.pointerType === 'touch' && penNear())) deselectImage();
   if (window.noteTool === 'select' && !active && !(e.pointerType === 'touch' && (penNear() || isPalm(e)))) {
@@ -1812,6 +1812,7 @@ function onDown(e) {
 
 function onMove(e) {
   if (e.pointerType === 'pen') lastPenTime = performance.now();   // auch schwebender Stift zählt
+  if (snTap) snTapMove(e);
   if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
     const t = touches.get(e.pointerId);
     t.x = e.clientX;
@@ -1871,6 +1872,10 @@ function onMove(e) {
 
 function onUp(e) {
   if (e.pointerType === 'pen') lastPenTime = performance.now();
+  if (snTap && snTapUp(e)) {
+    if (e.pointerType === 'touch') { touches.delete(e.pointerId); if (!touches.size) pan = null; }
+    return;
+  }
   if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
     const wasPanning = pan && !fingerDraw && !IS_IOS && touches.size === 1;
     touches.delete(e.pointerId);
@@ -1884,7 +1889,6 @@ function onUp(e) {
   if (coordAction && e.pointerId === coordAction.id) return coordUp(e);
   if (mathTap && e.pointerId === mathTap.id) return mathUp(e);
   if (snAction && e.pointerId === snAction.id) return snUp(e);
-  if (snBadgeTap && e.pointerId === snBadgeTap.id) { const b = snBadgeTap; snBadgeTap = null; return openSnPanel(b.page, b.sn); }
   if (!active || e.pointerId !== active.id) return;
   // Bricht iOS einen Stift-Strich ab, wird er trotzdem behalten – bisher verschwand er dann.
   // Nur Finger-Striche werden bei einem Abbruch verworfen (dann war es meist eine Geste).
@@ -3702,7 +3706,7 @@ let snGlobal = store.get('snKeys', SN_DEFAULT);
 let snHidden = new Set(store.get('snHidden', []));
 let snAllHidden = store.get('snAllHidden', false);
 let snKey = store.get('snKey', 'g-stil');
-let snColumn = store.get('snColumn', true);
+let snColumn = store.get('snColumn2', false);
 let snPdf = store.get('snPdf', 'list');     // 'off' | 'marks' | 'list'
 let snAction = null;     // Ziehen mit dem Side-Notes-Werkzeug
 let snEdit = null;       // offener Dialog: { page, id | null, anchor, items }
@@ -3740,32 +3744,148 @@ const snBadgePos = (page, n) => snBadgeAt(page, snAnchors(n)[0]);
 const snNumbered = (page) => (page.notes || []).map((n, j) => ({ n, no: j + 1 })).filter(({ n }) => snVisible(n));
 
 // Markierungen als SVG (über der Tinte)
+// ---------- Darstellung: farbige Unterstreichung im Stil des Schlüssels ----------
+// Keine Nummern auf der Seite. Kurzes Antippen einer Markierung zeigt den Inhalt als Sprechblase.
+const SN_STYLES = [['line', 'gerade'], ['double', 'doppelt'], ['wavy', 'wellig'], ['dotted', 'gepunktet'], ['marker', 'Textmarker']];
+const SN_STYLE_DEFAULT = { 'g-stil': 'wavy', 'g-gram': 'double', 'g-uebers': 'marker', 'g-wichtig': 'line' };
+const snStyleOf = (k) => k.style || SN_STYLE_DEFAULT[k.id] || 'line';
+
+// Linie immer von links nach rechts (damit "oben" = Richtung Text)
+function snLineDir(a) {
+  let x0 = a.x0, y0 = a.y0, x1 = a.x1, y1 = a.y1;
+  if (x1 < x0) [x0, y0, x1, y1] = [x1, y1, x0, y0];
+  const L = Math.hypot(x1 - x0, y1 - y0) || 1, ux = (x1 - x0) / L, uy = (y1 - y0) / L;
+  return { x0, y0, x1, y1, L, ux, uy, nx: -uy, ny: ux };
+}
+
+// Punkte einer Unterstreichung (für SVG und Export); liefert Listen von Linienzügen
+function snLinePolys(a, style) {
+  const d = snLineDir(a);
+  const off = (o) => [[d.x0 + d.nx * o, d.y0 + d.ny * o], [d.x1 + d.nx * o, d.y1 + d.ny * o]];
+  if (style === 'double') return [off(-2.4), off(2.4)];
+  if (style === 'wavy') {
+    const waves = Math.max(2, Math.round(d.L / 10)), steps = waves * 8, pts = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = (i / steps) * d.L, o = 2.6 * Math.sin((i / 8) * 2 * Math.PI);
+      pts.push([d.x0 + d.ux * t + d.nx * o, d.y0 + d.uy * t + d.ny * o]);
+    }
+    return [pts];
+  }
+  if (style === 'marker') return [off(-14)];
+  return [off(0)];
+}
+
+function snMarkSvg(page, a, style, col, hot) {
+  const k = hot ? 1.35 : 1;
+  if (a.type === 'line') {
+    const polys = snLinePolys(a, style);
+    const d = polys.map((p) => p.map(([x, y], j) => (j ? 'L' : 'M') + num(x) + ' ' + num(y)).join('')).join('');
+    if (style === 'marker') return `<path d="${d}" stroke="${col}" stroke-width="28" stroke-linecap="butt" opacity="${hot ? '.36' : '.24'}" fill="none"/>`;
+    if (style === 'dotted') return `<path d="${d}" stroke="${col}" stroke-width="${num(3.2 * k)}" stroke-linecap="round" stroke-dasharray="0.1 6.5" fill="none"/>`;
+    return `<path d="${d}" stroke="${col}" stroke-width="${num((style === 'line' ? 2.4 : 1.6) * k)}" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
+  }
+  const b = snABounds(page, a);
+  const rect = `x="${num(b[0])}" y="${num(b[1])}" width="${num(b[2] - b[0])}" height="${num(b[3] - b[1])}" rx="6"`;
+  if (style === 'marker') return `<rect ${rect} fill="${col}" opacity="${hot ? '.3' : '.18'}"/>`;
+  return `<rect ${rect} fill="${col}" fill-opacity="${hot ? '.12' : '.05'}" stroke="${col}" stroke-width="${num(1.4 * k)}"${style === 'dotted' ? ' stroke-dasharray="0.1 5" stroke-linecap="round"' : ''}/>`;
+}
+
+// Mitte einer Stelle (für Verbindungslinien und die Sprechblase)
+function snACenter(page, a) {
+  if (a.type === 'line') return [(a.x0 + a.x1) / 2, (a.y0 + a.y1) / 2];
+  const b = snABounds(page, a);
+  return [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
+}
+
 function snMarksSvg(i) {
   const page = note.pages[i];
   let out = '';
-  for (const { n, no } of snNumbered(page)) {
-    const col = snKeyOf(n.key).color;
-    const adding = snAddTo && snAddTo.id === n.id;
+  const openId = (snBubble && snBubble.page === i && snBubble.id) || (snOpen && snOpen.page === i && snOpen.id) || (snAddTo && snAddTo.page === i && snAddTo.id);
+  for (const { n } of snNumbered(page)) {
+    const k = snKeyOf(n.key), col = k.color, style = snStyleOf(k), hot = n.id === openId;
     const anchors = snAnchors(n);
-    if (snLinks && anchors.length > 1) {
-      const pts = anchors.map((a) => snBadgeAt(page, a));
+    // Verbindungslinien: immer (Einstellung) oder nur, wenn die Notiz gerade offen ist
+    if ((snLinks || hot) && anchors.length > 1) {
+      const pts = anchors.map((a) => snACenter(page, a));
       for (let j = 1; j < pts.length; j++) {
-        const [x0, y0] = pts[j - 1], [x1, y1] = pts[j], mx = (x0 + x1) / 2, my = (y0 + y1) / 2, d = Math.hypot(x1 - x0, y1 - y0);
-        out += `<path d="M${num(x0)} ${num(y0)}Q${num(mx + (y1 - y0) * 0.15)} ${num(my - (x1 - x0) * 0.15 - d * 0.05)} ${num(x1)} ${num(y1)}" fill="none" stroke="${col}" stroke-width="1.6" stroke-dasharray="5 5" opacity=".7"/>`;
+        const [x0, y0] = pts[j - 1], [x1, y1] = pts[j];
+        out += `<path d="M${num(x0)} ${num(y0)}L${num(x1)} ${num(y1)}" fill="none" stroke="${col}" stroke-width="1.4" stroke-dasharray="4 5" opacity="${hot ? '.8' : '.45'}"/>`;
       }
     }
-    for (const a of anchors) {
-    if (a.type === 'line') out += `<path d="M${num(a.x0)} ${num(a.y0)}L${num(a.x1)} ${num(a.y1)}" stroke="${col}" stroke-width="3.2" stroke-linecap="round" opacity=".9"/>`;
-    else {
-      const b = snABounds(page, a);
-      out += `<rect x="${num(b[0])}" y="${num(b[1])}" width="${num(b[2] - b[0])}" height="${num(b[3] - b[1])}" rx="5" fill="${col}" fill-opacity="${adding ? '.16' : '.07'}" stroke="${col}" stroke-opacity=".55" stroke-width="1.3" stroke-dasharray="6 4"/>`;
-    }
-    const [bx, by] = snBadgeAt(page, a);
-    if (adding) out += `<circle cx="${num(bx)}" cy="${num(by)}" r="15" fill="none" stroke="${col}" stroke-width="2" opacity=".5"/>`;
-    out += `<g data-sn="${n.id}" class="sn-badge"><circle cx="${num(bx)}" cy="${num(by)}" r="10" fill="${col}"/><circle cx="${num(bx)}" cy="${num(by)}" r="18" fill="transparent"/><text x="${num(bx)}" y="${num(by + 4.3)}" font-size="12" font-weight="bold" font-family="${TEXT_FONT}" fill="#fff" text-anchor="middle">${no}</text></g>`;
-    }
+    for (const a of anchors) out += snMarkSvg(page, a, style, col, hot);
   }
   return out;
+}
+
+// Liegt (x, y) auf einer Markierung? → Notiz-ID (oberste zuerst)
+function snHitAt(i, x, y) {
+  const page = note.pages[i];
+  const list = snNumbered(page);
+  for (let j = list.length - 1; j >= 0; j--) {
+    const n = list[j].n;
+    for (const a of snAnchors(n)) {
+      if (a.type === 'line') {
+        const d = snLineDir(a);
+        // etwas großzügiger nach oben (dort steht das unterstrichene Wort)
+        if (distToSegment(x, y, d.x0, d.y0, d.x1, d.y1) <= 12 || distToSegment(x, y, d.x0 + d.nx * -14, d.y0 + d.ny * -14, d.x1 + d.nx * -14, d.y1 + d.ny * -14) <= 12) return n.id;
+      } else {
+        const b = snABounds(page, a);
+        if (x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3]) return n.id;
+      }
+    }
+  }
+  return null;
+}
+
+// Kurzes Antippen erkennen (mit jedem Werkzeug außer Radierer)
+let snTap = null;
+function snTapDown(e, canvas) {
+  snTap = null;
+  if (snAllHidden || window.noteTool === 'eraser') return;
+  const r = canvas.getBoundingClientRect(), i = Number(canvas.dataset.page);
+  const id = snHitAt(i, ((e.clientX - r.left) / r.width) * PAGE_W, ((e.clientY - r.top) / r.height) * PAGE_H);
+  if (id) snTap = { pid: e.pointerId, page: i, id, x: e.clientX, y: e.clientY, t: performance.now() };
+}
+function snTapMove(e) {
+  if (snTap && e.pointerId === snTap.pid && Math.hypot(e.clientX - snTap.x, e.clientY - snTap.y) > 9) snTap = null;
+}
+// true = es war ein Antippen einer Markierung (Strich/Textfeld werden dann verworfen)
+function snTapUp(e) {
+  const t = snTap;
+  snTap = null;
+  if (!t || e.pointerId !== t.pid || performance.now() - t.t > 450 || Math.hypot(e.clientX - t.x, e.clientY - t.y) > 9) return false;
+  if (active && active.id === e.pointerId) cancelActive();
+  if (textAction && textAction.id === e.pointerId) textAction = null;
+  textSkip = performance.now();   // kein Textfeld nachträglich öffnen
+  if (lasso && lasso.id === e.pointerId) { pageEls[lasso.page].live.removeAttribute('d'); lasso = null; }
+  if (snAction && snAction.id === e.pointerId) { pageEls[snAction.page].live.removeAttribute('d'); snAction = null; }
+  if (mathTap && mathTap.id === e.pointerId) mathTap = null;
+  if (snQuiz) openSnPanel(t.page, t.id);
+  else snShowBubble(t.page, t.id);
+  return true;
+}
+
+// Sprechblase mit dem Inhalt, direkt unter der Stelle
+let snBubble = null;   // { page, id }
+function snShowBubble(i, id) {
+  snClosePop();
+  const page = note.pages[i], n = (page.notes || []).find((x) => x.id === id);
+  if (!n) return;
+  const a = snAnchors(n)[0], b = snABounds(page, a);
+  const pop = document.createElement('div');
+  pop.className = 'sn-pop';
+  pop.style.setProperty('--c', snKeyOf(n.key).color);
+  pop.innerHTML = snContentHtml(n) + '<div class="sn-pop-actions"><button type="button" data-a="edit">Bearbeiten</button></div>';
+  const cx = (b[0] + b[2]) / 2 / PAGE_W;
+  pop.style.top = ((a.type === 'line' ? Math.max(a.y0, a.y1) + 8 : b[3] + 4) / PAGE_H) * 100 + '%';
+  if (cx > 0.6) pop.style.right = Math.max(0, (1 - b[2] / PAGE_W) * 100 - 2) + '%';
+  else pop.style.left = Math.max(1, (b[0] / PAGE_W) * 100 - 2) + '%';
+  pageEls[i].wrap.append(pop);
+  pop.addEventListener('pointerdown', (e) => e.stopPropagation());
+  pop.querySelector('[data-a="edit"]').addEventListener('click', () => { snClosePop(); openSnPanel(i, id); });
+  snPop = pop;
+  snBubble = { page: i, id };
+  drawPage(i);
 }
 
 // Inhalt einer Notiz (Text + Handschrift) als HTML
@@ -3818,18 +3938,11 @@ function snRenderColumns() {
 window.addEventListener('resize', () => requestAnimationFrame(snRenderColumns));
 
 // Karte beim Antippen einer Marke
-function snClosePop() { if (snPop) { snPop.remove(); snPop = null; } }
-
-// Antippen einer Marke (mit jedem Werkzeug) – wird am Anfang von onDown geprüft
-function snBadgeDown(e) {
-  const g = e.target.closest && e.target.closest('[data-sn]');
-  if (!g) return false;
-  e.preventDefault();
-  const canvas = g.closest('.page-live');
-  snBadgeTap = { id: e.pointerId, page: Number(canvas.dataset.page), sn: g.dataset.sn };
-  return true;
+function snClosePop() {
+  if (snPop) { snPop.remove(); snPop = null; }
+  if (snBubble) { const p = snBubble.page; snBubble = null; if (pageEls[p]) drawPage(p); }
 }
-let snBadgeTap = null;
+
 
 // Werkzeug: Linie unter Wörter ziehen = Unterstreichung, sonst Rechteck = Bereich
 function snDown(e, canvas) {
@@ -3953,7 +4066,7 @@ const snTemplatesOf = (k) => k.templates || SN_TEMPLATES[k.id] || [];
 const SN_INK = { w: 600, h: 300 };
 let snOpen = null;         // { page, id }
 let snQuiz = store.get('snQuiz', false);
-let snLinks = store.get('snLinks', true);
+let snLinks = store.get('snLinks2', false);
 const snRevealed = new Set();
 let snInkAct = null;
 let snTplMore = false;
@@ -4346,7 +4459,7 @@ function renderSnKeysDialog() {
     row.innerHTML = `<button type="button" class="snk-eye" aria-label="Ein-/ausblenden">${hidden ? '◌' : '●'}</button>` +
       `<button type="button" class="snk-color" style="--c:${k.color}" aria-label="Farbe ändern"></button>` +
       `<span class="snk-name">${escXml(k.name)}</span><span class="muted small-text">${k.global ? 'Global' : 'Diese Notiz'}</span>` +
-      `<button type="button" class="btn link snk-tpl">Vorlagen</button><button type="button" class="btn link snk-ren">Umbenennen</button><button type="button" class="btn link danger-text snk-del">Löschen</button>`;
+      `<button type="button" class="btn link snk-style">${(SN_STYLES.find(([v]) => v === snStyleOf(k)) || SN_STYLES[0])[1]}</button><button type="button" class="btn link snk-tpl">Vorlagen</button><button type="button" class="btn link snk-ren">Umbenennen</button><button type="button" class="btn link danger-text snk-del">Löschen</button>`;
     row.style.opacity = hidden ? 0.5 : 1;
     const update = (fn) => {
       if (k.global) snGlobal = snGlobal.map((x) => (x.id === k.id ? fn({ ...x }) : x)).filter(Boolean);
@@ -4368,6 +4481,10 @@ function renderSnKeysDialog() {
       refreshSn();
     });
     row.querySelector('.snk-color').addEventListener('click', () => update((x) => ({ ...x, color: SN_COLORS[(SN_COLORS.indexOf(x.color) + 1) % SN_COLORS.length] })));
+    row.querySelector('.snk-style').addEventListener('click', () => {
+      const j = SN_STYLES.findIndex(([v]) => v === snStyleOf(k));
+      update((x) => ({ ...x, style: SN_STYLES[(j + 1) % SN_STYLES.length][0] }));
+    });
     row.querySelector('.snk-tpl').addEventListener('click', () => {
       const v = prompt('Vorlagen für „' + k.name + '“ (mit Komma trennen):', snTemplatesOf(k).join(', '));
       if (v !== null) update((x) => ({ ...x, templates: v.split(',').map((t) => t.trim()).filter(Boolean) }));
@@ -4403,8 +4520,8 @@ function snNewKey(global) {
 $('#snk-add-global').addEventListener('click', () => snNewKey(true));
 $('#snk-add-local').addEventListener('click', () => snNewKey(false));
 $('#snk-all').addEventListener('change', (e) => { snAllHidden = !e.target.checked; snSaveKeys(); refreshSn(); });
-$('#snk-col').addEventListener('change', (e) => { snColumn = e.target.checked; store.set('snColumn', snColumn); refreshSn(); });
-$('#snk-links').addEventListener('change', (e) => { snLinks = e.target.checked; store.set('snLinks', snLinks); refreshSn(); });
+$('#snk-col').addEventListener('change', (e) => { snColumn = e.target.checked; store.set('snColumn2', snColumn); refreshSn(); });
+$('#snk-links').addEventListener('change', (e) => { snLinks = e.target.checked; store.set('snLinks2', snLinks); refreshSn(); });
 $('#snk-quiz').addEventListener('change', (e) => setSnQuiz(e.target.checked));
 $('#snk-overview').addEventListener('click', () => { $('#snkeys-dialog').close(); openSnOverview(); });
 
@@ -4416,20 +4533,38 @@ function refreshSn() {
 }
 
 // ---------- Export: Markierungen als Striche, Notizen als eigene Seite ----------
-function snMarkItems(page) {
+function snLighten(hex, f) {
+  const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return '#' + c.map((v) => Math.round(v + (255 - v) * f).toString(16).padStart(2, '0')).join('');
+}
+function snMarkItems(page, withNo) {
   const out = [];
   for (const { n, no } of snNumbered(page)) {
-    const col = snKeyOf(n.key).color;
+    const k = snKeyOf(n.key), col = k.color, style = snStyleOf(k);
     const line = (pts, size) => ({ tool: 'pen', style: 'ball', shape: true, color: col, size, pts: pts.flatMap(([x, y]) => [x, y, 0.5]) });
+    const band = (pts) => ({ tool: 'marker', shape: true, color: snLighten(col, 0.55), size: 1.75, pts: pts.flatMap(([x, y]) => [x, y, 0.5]) });
     const anchors = snAnchors(n);
-    if (snLinks) for (let j = 1; j < anchors.length; j++) out.push(line([snBadgeAt(page, anchors[j - 1]), snBadgeAt(page, anchors[j])], 0.8));
+    if (snLinks) for (let j = 1; j < anchors.length; j++) out.push(line([snACenter(page, anchors[j - 1]), snACenter(page, anchors[j])], 0.6));
     for (const a of anchors) {
-      if (a.type === 'line') out.push(line([[a.x0, a.y0], [a.x1, a.y1]], 2.6));
-      else { const b = snABounds(page, a); out.push(line([[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]], [b[0], b[1]]], 0.8)); }
-      const [bx, by] = snBadgeAt(page, a);
-      out.push(line([[bx, by]], 16));
-      const w = measure(String(no), fontOf({ b: true }, 12)) + 2;
-      out.push({ tool: 'text', x: bx - w / 2, y: by - 7.7, w, size: 12, color: '#ffffff', text: String(no), paras: [{ spans: [{ t: String(no), b: true }] }] });
+      if (a.type === 'line') {
+        for (const p of snLinePolys(a, style)) {
+          if (style === 'marker') out.push(band(p));
+          else if (style === 'dotted') {
+            const d = snLineDir(a);
+            for (let t = 0; t <= d.L; t += 6.5) out.push(line([[d.x0 + d.ux * t, d.y0 + d.uy * t]], 2.4));
+          } else out.push(line(p, style === 'line' ? 1.9 : 1.3));
+        }
+      } else {
+        const b = snABounds(page, a);
+        if (style === 'marker') out.push({ ...band([[b[0], (b[1] + b[3]) / 2], [b[2], (b[1] + b[3]) / 2]]), size: Math.max(1, (b[3] - b[1]) / 16) });
+        else out.push(line([[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]], [b[0], b[1]]], 1.1));
+      }
+    }
+    if (withNo) {
+      // kleine hochgestellte Zahl, damit die Liste zuzuordnen ist
+      const a = anchors[anchors.length - 1], b = snABounds(page, a);
+      const x = a.type === 'line' ? Math.max(a.x0, a.x1) + 3 : b[2] + 3, y = a.type === 'line' ? Math.min(a.y0, a.y1) - 34 : b[1] - 4;
+      out.push({ tool: 'text', x, y, w: 30, size: 13, color: col, text: String(no), paras: [{ spans: [{ t: String(no), b: true }] }] });
     }
   }
   return out;
@@ -4441,7 +4576,7 @@ function snExportPages(pages, withList) {
   pages.forEach((page) => {
     const notes = snNumbered(page);
     if (!notes.length) { out.push(page); return; }
-    out.push({ ...page, strokes: page.strokes.concat(snMarkItems(page)) });
+    out.push({ ...page, strokes: page.strokes.concat(snMarkItems(page, withList)) });
     if (!withList) return;
     const pageNo = note.pages.indexOf(page) + 1;
     let list = { strokes: [], plain: true }, y = 70;

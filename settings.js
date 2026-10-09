@@ -47,8 +47,8 @@ const SETTINGS = [
   ] },
   { title: 'Side Notes', items: [
     { label: 'Side Notes anzeigen', get: () => !snAllHidden, set: (v) => { snAllHidden = !v; snSaveKeys(); refreshSn(); } },
-    { label: 'Spalte neben der Seite', get: () => snColumn, set: (v) => { snColumn = v; store.set('snColumn', v); refreshSn(); } },
-    { label: 'Verbindungslinien', get: () => snLinks, set: (v) => { snLinks = v; store.set('snLinks', v); refreshSn(); } },
+    { label: 'Spalte neben der Seite', get: () => snColumn, set: (v) => { snColumn = v; store.set('snColumn2', v); refreshSn(); } },
+    { label: 'Verbindungslinien immer zeigen', hint: 'Sonst nur, wenn eine Notiz mit mehreren Stellen geöffnet ist', get: () => snLinks, set: (v) => { snLinks = v; store.set('snLinks2', v); refreshSn(); } },
     { label: 'Im Export', get: () => snPdf, set: (v) => { snPdf = v; store.set('snPdf', v); renderSnPdf(); }, opts: [['off', 'Aus'], ['marks', 'Markiert'], ['list', 'Mit Liste']] }
   ] }
 ];

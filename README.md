@@ -195,27 +195,27 @@ Bei aktivem Radierer wählst du in der Leiste aus:
 
 Side Notes sind Anmerkungen an Stellen der Seite, zum Beispiel Stilmittel oder eine alternative Übersetzung.
 
-**Stellen markieren**
-- **Unterstreichen:** mit dem Side-Notes-Werkzeug (Sprechblasen-Symbol) unter Wörter ziehen.
-- **Bereich:** ein Rechteck aufziehen.
-- **Handschrift, Text oder Bilder:** mit dem Lasso auswählen und im Menü **„Side Note“** wählen.
+**Markieren**
+- Mit dem Side-Notes-Werkzeug (Sprechblasen-Symbol) unter Wörter ziehen oder einen Bereich aufziehen.
+- Oder mit dem Lasso auswählen und **„Side Note“** wählen.
+- Jeder Schlüssel hat eine Farbe und einen eigenen Strich:
 
-**Panel**
-- Es liegt neben der Seite, auf schmalen Bildschirmen unten. Die Seite und die Werkzeugleiste bleiben dabei bedienbar.
-- Getippt wird oben im Panel. Darunter schreibst du mit dem Stift, und zwar mit dem Werkzeug, der Farbe und der Dicke aus der Leiste. Auch der Radierer der Leiste funktioniert dort.
-- Alles wird sofort gespeichert. Eine leere Notiz verschwindet beim Schließen.
-- **Vorlagen** je Schlüssel (z. B. Stilmittel) setzt du mit einem Tipp ein. Bearbeiten lassen sie sich im Ebenen-Dialog.
-- Über **„＋ Stelle“** hängst du beliebig viele weitere Stellen an. Alle tragen dieselbe Nummer und werden mit Verbindungslinien verbunden.
+| Schlüssel | Strich |
+|---|---|
+| Stilmittel | gewellt |
+| Grammatik | doppelt |
+| Übersetzung | Textmarker |
+| Wichtig | gerade |
 
-**Ebenen-Dialog** (Schlüssel-Knopf in der Leiste)
-- Schlüssel global oder nur für diese Notiz, ein- und ausblenden, Farbe, Name, Vorlagen.
-- Verbindungslinien, Spalte neben der Seite, **Abfrage-Modus** und **Übersicht aller Side Notes**.
+Der Stil lässt sich im Ebenen-Dialog umstellen (gerade, doppelt, wellig, gepunktet, Textmarker).
 
-**Abfrage-Modus:** Die Inhalte sind verdeckt. Marke antippen, aufdecken, dann „✓ Gewusst“ oder „✗ Nochmal“ wählen. Danach geht es zur nächsten Notiz.
+**Inhalt ansehen:** Eine Markierung kurz antippen, mit Stift, Finger oder Maus, egal welches Werkzeug gerade aktiv ist (außer Radierer). Die Sprechblase zeigt den Inhalt, **„Bearbeiten“** öffnet das Panel. Ziehen über eine Markierung schreibt ganz normal.
 
-**Übersicht:** Alle Side Notes aus allen Notizen, filterbar nach Schlüssel und durchsuchbar. Antippen springt zur Stelle.
+**Panel:** Es liegt neben der Seite bzw. unten. Getippt wird oben, darunter schreibst du mit Stift, Farbe und Dicke aus der Leiste. Alles wird sofort gespeichert. Es gibt Vorlagen je Schlüssel, und mit **„＋ Stelle“** hängst du weitere Stellen an. Bei offener Notiz verbinden Linien ihre Stellen.
 
-**Export** (⋯ → „Side Notes im Export“): Aus, Markiert oder Mit Liste. Ausgeblendete Ebenen werden nicht exportiert.
+**Ebenen-Dialog:** Schlüssel global oder nur für diese Notiz, ein- und ausblenden, Farbe, Stil, Name, Vorlagen. Dazu Abfrage-Modus und die Übersicht aller Side Notes.
+
+**Export** (⋯ → „Side Notes im Export“): Aus, Markiert oder Mit Liste. Bei „Mit Liste“ stehen kleine Zahlen an den Stellen. Ausgeblendete Ebenen werden nicht exportiert.
 
 ## Einstellungen
 
