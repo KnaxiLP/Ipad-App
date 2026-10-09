@@ -209,6 +209,8 @@ Side Notes sind Anmerkungen an Stellen der Seite, zum Beispiel Stilmittel oder e
 
 Der Stil lässt sich im Ebenen-Dialog umstellen (gerade, doppelt, wellig, gepunktet, Textmarker).
 
+**Nur markieren:** Der Umschalter **„mit Notiz / Nur Strich“** neben dem Schlüssel legt fest, was beim Unterstreichen passiert. Bei „Nur Strich“ entsteht nur die farbige Markierung, ohne Panel und ohne Eingabe. Antippen zeigt **„Notiz schreiben“** oder **„Entfernen“**.
+
 **Inhalt ansehen:** Eine Markierung kurz antippen, mit Stift, Finger oder Maus, egal welches Werkzeug gerade aktiv ist (außer Radierer). Die Sprechblase zeigt den Inhalt, **„Bearbeiten“** öffnet das Panel. Ziehen über eine Markierung schreibt ganz normal.
 
 **Panel:** Es liegt neben der Seite bzw. unten. Getippt wird oben, darunter schreibst du mit Stift, Farbe und Dicke aus der Leiste. Alles wird sofort gespeichert. Es gibt Vorlagen je Schlüssel, und mit **„＋ Stelle“** hängst du weitere Stellen an. Bei offener Notiz verbinden Linien ihre Stellen.

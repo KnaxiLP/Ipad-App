@@ -3860,7 +3860,8 @@ function snTapUp(e) {
   if (lasso && lasso.id === e.pointerId) { pageEls[lasso.page].live.removeAttribute('d'); lasso = null; }
   if (snAction && snAction.id === e.pointerId) { pageEls[snAction.page].live.removeAttribute('d'); snAction = null; }
   if (mathTap && mathTap.id === e.pointerId) mathTap = null;
-  if (snQuiz) openSnPanel(t.page, t.id);
+  const tn = (note.pages[t.page].notes || []).find((x) => x.id === t.id);
+  if (snQuiz && tn && snHasContent(tn)) openSnPanel(t.page, t.id);
   else snShowBubble(t.page, t.id);
   return true;
 }
@@ -3875,14 +3876,23 @@ function snShowBubble(i, id) {
   const pop = document.createElement('div');
   pop.className = 'sn-pop';
   pop.style.setProperty('--c', snKeyOf(n.key).color);
-  pop.innerHTML = snContentHtml(n) + '<div class="sn-pop-actions"><button type="button" data-a="edit">Bearbeiten</button></div>';
+  pop.innerHTML = snContentHtml(n) + (snHasContent(n)
+    ? '<div class="sn-pop-actions"><button type="button" data-a="edit">Bearbeiten</button></div>'
+    : '<div class="sn-pop-actions"><button type="button" data-a="del">Entfernen</button><button type="button" data-a="edit">Notiz schreiben</button></div>');
   const cx = (b[0] + b[2]) / 2 / PAGE_W;
   pop.style.top = ((a.type === 'line' ? Math.max(a.y0, a.y1) + 8 : b[3] + 4) / PAGE_H) * 100 + '%';
   if (cx > 0.6) pop.style.right = Math.max(0, (1 - b[2] / PAGE_W) * 100 - 2) + '%';
   else pop.style.left = Math.max(1, (b[0] / PAGE_W) * 100 - 2) + '%';
   pageEls[i].wrap.append(pop);
   pop.addEventListener('pointerdown', (e) => e.stopPropagation());
-  pop.querySelector('[data-a="edit"]').addEventListener('click', () => { snClosePop(); openSnPanel(i, id); });
+  pop.querySelector('[data-a="edit"]').addEventListener('click', () => { snClosePop(); openSnPanel(i, id, true); });
+  const del = pop.querySelector('[data-a="del"]');
+  if (del) del.addEventListener('click', () => {
+    snClosePop();
+    snBeginSession(i);
+    snRemove(i, id);
+    snEndSession();
+  });
   snPop = pop;
   snBubble = { page: i, id };
   drawPage(i);
@@ -3901,7 +3911,7 @@ function snContentHtml(n) {
   if (snQuiz && !snRevealed.has(n.id)) return `<div class="sn-key" style="--c:${k.color}">${escXml(k.name)}</div><div class="sn-quiz-cover">? antippen zum Abfragen</div>`;
   return `<div class="sn-key" style="--c:${k.color}">${escXml(k.name)}</div>` +
     (n.text ? `<div class="sn-text">${escXml(n.text)}</div>` : '') + snInkSvg(n.ink, 'sn-ink-view') +
-    (!n.text && !(n.ink && n.ink.length) ? '<div class="muted small-text">(leer)</div>' : '');
+    (!snHasContent(n) ? `<div class="muted small-text">${n.mark ? 'Nur markiert' : '(leer)'}</div>` : '');
 }
 
 // Spalte neben der Seite (nur wenn genug Platz ist)
@@ -3917,7 +3927,7 @@ function snRenderColumns() {
     pe.col.innerHTML = '';
     if (!on) return;
     const page = note.pages[i];
-    const items = snNumbered(page).map(({ n, no }) => ({ n, no, top: snBounds(page, n)[1] / PAGE_H }));
+    const items = snNumbered(page).filter(({ n }) => snHasContent(n)).map(({ n, no }) => ({ n, no, top: snBounds(page, n)[1] / PAGE_H }));
     items.sort((a, b) => a.top - b.top);
     let bottom = 0;
     const h = pe.wrap.clientHeight;
@@ -4091,14 +4101,24 @@ function snCreate(page, anchor, items) {
   const pg = note.pages[page];
   const session = { page, before: pg.strokes.slice(), nbefore: (pg.notes || []).slice() };
   const aid = snId(), id = snId();
-  pg.notes = (pg.notes || []).concat({ id, key: snKey, anchors: [{ ...anchor, aid }], text: '', ink: [] });
+  pg.notes = (pg.notes || []).concat({ id, key: snKey, anchors: [{ ...anchor, aid }], text: '', ink: [], mark: snMarkOnly || undefined });
   if (items) {
     const set = new Set(items);
     pg.strokes = pg.strokes.map((s) => (set.has(s) ? { ...s, sn: (s.sn || []).concat(aid) } : s));
   }
   drawPage(page);
+  if (snMarkOnly) {
+    // Nur markieren: kein Panel, gleich ein Rückgängig-Schritt
+    pushHistory([{ page, before: session.before, after: pg.strokes.slice(), nbefore: session.nbefore, nafter: pg.notes.slice() }]);
+    saveNote();
+    return;
+  }
   openSnPanel(page, id, true, session);
 }
+
+// Markierung ohne Inhalt?
+const snHasContent = (n) => !!((n.text || '').trim() || (n.ink && n.ink.length));
+let snMarkOnly = store.get('snMarkOnly', false);
 
 function snRemove(page, id) {
   const pg = note.pages[page];
@@ -4173,7 +4193,7 @@ function closeSnPanel() {
   $('#sn-panel').hidden = true;
   snPanelLayout();
   // leere Notiz ohne Inhalt nicht aufheben
-  if (n && !(n.text || '').trim() && !(n.ink && n.ink.length)) snRemove(page, id);
+  if (n && !snHasContent(n) && !n.mark) snRemove(page, id);
   else if (note.pages[page]) drawPage(page);
   snEndSession();
 }
@@ -4374,7 +4394,7 @@ function snGrade(ok) {
   snUpdate((m) => ({ ...m, quiz: { ok: ((m.quiz && m.quiz.ok) || 0) + (ok ? 1 : 0), bad: ((m.quiz && m.quiz.bad) || 0) + (ok ? 0 : 1) } }));
   // nächste sichtbare Notiz (gleiche Seite, dann folgende Seiten)
   const all = [];
-  note.pages.forEach((pg, i) => snNumbered(pg).forEach(({ n: m }) => all.push([i, m.id])));
+  note.pages.forEach((pg, i) => snNumbered(pg).forEach(({ n: m }) => snHasContent(m) && all.push([i, m.id])));
   const at = all.findIndex(([i, id]) => i === snOpen.page && id === n.id);
   const next = all.slice(at + 1).find(([, id]) => !snRevealed.has(id));
   if (next) openSnPanel(next[0], next[1]);
@@ -4408,6 +4428,7 @@ async function openSnOverview() {
     for (const nt of all.sort((a, b) => b.updated - a.updated)) {
       nt.pages.forEach((pg, pi) => (pg.notes || []).forEach((sn, j) => {
         if (snOvKey !== 'all' && sn.key !== snOvKey) return;
+        if (!snHasContent(sn)) return;
         if (q && !((sn.text || '') + ' ' + noteName(nt)).toLowerCase().includes(q)) return;
         const k = snGlobal.find((x) => x.id === sn.key) || (nt.keys || []).find((x) => x.id === sn.key) || { name: 'Ohne Schlüssel', color: '#8e8e93' };
         const li = document.createElement('li');
@@ -4441,7 +4462,17 @@ function renderSnBar(g) {
   b.title = 'Schlüssel und Ebenen';
   b.innerHTML = `<span class="dot"></span><span class="nm">${snQuiz ? 'Abfrage · ' : ''}${escXml(k.name)}</span><span>▾</span>`;
   b.addEventListener('click', openSnKeysDialog);
-  g.append(b);
+  const m = document.createElement('button');
+  m.className = 'tool sn-mode' + (snMarkOnly ? ' active' : '');
+  m.title = snMarkOnly ? 'Nur markieren (ohne Notiz) – antippen für: mit Notiz' : 'Mit Notiz – antippen für: nur markieren';
+  m.innerHTML = snMarkOnly ? '<span>Nur</span><span>Strich</span>' : '<span>mit</span><span>Notiz</span>';
+  m.addEventListener('click', () => {
+    snMarkOnly = !snMarkOnly;
+    store.set('snMarkOnly', snMarkOnly);
+    renderColors();
+    toast(snMarkOnly ? 'Nur markieren: Unterstreichen ohne Notiz' : 'Mit Notiz: nach dem Unterstreichen öffnet sich das Panel');
+  });
+  g.append(b, m);
 }
 
 function openSnKeysDialog() {
@@ -4560,7 +4591,7 @@ function snMarkItems(page, withNo) {
         else out.push(line([[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]], [b[0], b[1]]], 1.1));
       }
     }
-    if (withNo) {
+    if (withNo && snHasContent(n)) {
       // kleine hochgestellte Zahl, damit die Liste zuzuordnen ist
       const a = anchors[anchors.length - 1], b = snABounds(page, a);
       const x = a.type === 'line' ? Math.max(a.x0, a.x1) + 3 : b[2] + 3, y = a.type === 'line' ? Math.min(a.y0, a.y1) - 34 : b[1] - 4;
@@ -4574,10 +4605,10 @@ function snMarkItems(page, withNo) {
 function snExportPages(pages, withList) {
   const out = [];
   pages.forEach((page) => {
-    const notes = snNumbered(page);
-    if (!notes.length) { out.push(page); return; }
+    const notes = snNumbered(page).filter(({ n }) => snHasContent(n));
+    if (!snNumbered(page).length) { out.push(page); return; }
     out.push({ ...page, strokes: page.strokes.concat(snMarkItems(page, withList)) });
-    if (!withList) return;
+    if (!withList || !notes.length) return;
     const pageNo = note.pages.indexOf(page) + 1;
     let list = { strokes: [], plain: true }, y = 70;
     const head = () => list.strokes.push({ tool: 'text', x: 70, y: 50, w: 860, size: 26, color: '#1c1c1e', text: '', paras: [{ h: true, spans: [{ t: `Side Notes – Seite ${pageNo}` }] }] });

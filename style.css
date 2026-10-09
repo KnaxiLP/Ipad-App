@@ -838,3 +838,8 @@ body[data-note-tool="snote"] .pages .page-live { cursor: crosshair; }
 .sn-pop { border-left: 0; border-top: 4px solid var(--c); border-radius: 12px; box-shadow: 0 12px 30px rgba(0, 0, 0, .18); }
 .sn-pop::before { content: ''; position: absolute; top: -11px; left: 22px; border: 7px solid transparent; border-bottom-color: var(--c); }
 .sn-pop[style*="right"]::before { left: auto; right: 22px; }
+/* Umschalter "mit Notiz" / "Nur Strich" neben dem Schlüssel */
+#color-group .sn-current { width: 132px !important; }
+.tool.sn-mode { width: 48px !important; height: 34px; display: flex !important; flex-direction: column; justify-content: center; gap: 0; font-size: 10.5px; font-weight: 700; line-height: 1.15; border-radius: 10px; color: var(--muted); border: 1.5px solid var(--border); }
+.tool.sn-mode.active { color: var(--ink-active); border-color: var(--ink-active); background: color-mix(in srgb, var(--ink-active) 12%, transparent); }
+@media (max-width: 1300px) and (min-width: 701px) { #color-group .sn-current { width: 124px !important; } }
