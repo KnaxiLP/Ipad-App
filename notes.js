@@ -1837,6 +1837,7 @@ function onMove(e) {
   if (textAction && e.pointerId === textAction.id) return textMove(e);
   if (lasso && e.pointerId === lasso.id) return lassoMove(e);
   if (coordAction && e.pointerId === coordAction.id) return coordMove(e);
+  if (graphDrag && e.pointerId === graphDrag.id) return graphMove(e);
   if (snAction && e.pointerId === snAction.id) return snMove(e);
   if (!active || e.pointerId !== active.id) return;
   e.preventDefault();
@@ -1892,6 +1893,7 @@ function onUp(e) {
   if (coordAction && e.pointerId === coordAction.id) return coordUp(e);
   if (mathTap && e.pointerId === mathTap.id) return mathUp(e);
   if (graphTap && e.pointerId === graphTap.id) return graphUp(e);
+  if (graphDrag && e.pointerId === graphDrag.id) return graphUpDrag(e);
   if (snAction && e.pointerId === snAction.id) return snUp(e);
   if (!active || e.pointerId !== active.id) return;
   // Bricht iOS einen Stift-Strich ab, wird er trotzdem behalten – bisher verschwand er dann.
@@ -4988,26 +4990,37 @@ function graphEquation(r) {
   return 'f(x) = ' + (out || '0');
 }
 
+// Auswertung einer Kurve in Einheiten: { f(x), a, b } (Definitionsbereich zum Zeichnen)
+function graphEvaluator(c, pts, r) {
+  const xmin = (c.x0 - c.ox) / c.U, xmax = (c.x1 - c.ox) / c.U;
+  if (r.mode !== 'smooth') return { f: r.f, a: xmin, b: xmax };
+  // Catmull-Rom durch die Punkte (nach x sortiert), dazwischen linear auswerten
+  const p = pts.slice().sort((u, v) => u[0] - v[0]), sm = [];
+  for (let i = 0; i < p.length - 1; i++) {
+    const p0 = p[i - 1] || p[i], p1 = p[i], p2 = p[i + 1], p3 = p[i + 2] || p2;
+    for (let t = 0; t < 1; t += 1 / 24) {
+      const t2 = t * t, t3 = t2 * t;
+      const f = (a, b, c2, d) => 0.5 * (2 * b + (-a + c2) * t + (2 * a - 5 * b + 4 * c2 - d) * t2 + (-a + 3 * b - 3 * c2 + d) * t3);
+      sm.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
+    }
+  }
+  sm.push(p[p.length - 1]);
+  const f = (x) => {
+    if (x < sm[0][0] || x > sm[sm.length - 1][0]) return NaN;
+    let lo = 0, hi = sm.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (sm[m][0] <= x) lo = m; else hi = m; }
+    const [x0, y0] = sm[lo], [x1, y1] = sm[hi];
+    return x1 === x0 ? y0 : y0 + ((y1 - y0) * (x - x0)) / (x1 - x0);
+  };
+  return { f, a: p[0][0], b: p[p.length - 1][0], samples: sm };
+}
+
 // Kurve als Linienzüge in Seiten-Koordinaten (am Rand des Koordinatensystems abgeschnitten)
 function graphPolys(c, pts, r) {
-  const xmin = (c.x0 - c.ox) / c.U, xmax = (c.x1 - c.ox) / c.U, ymin = (c.oy - c.y1) / c.U, ymax = (c.oy - c.y0) / c.U;
-  let samples = [];
-  if (r.mode === 'smooth') {
-    // Catmull-Rom durch die Punkte (nach x sortiert)
-    const p = pts.slice().sort((a, b) => a[0] - b[0]);
-    for (let i = 0; i < p.length - 1; i++) {
-      const p0 = p[i - 1] || p[i], p1 = p[i], p2 = p[i + 1], p3 = p[i + 2] || p2;
-      for (let t = 0; t < 1; t += 1 / 16) {
-        const t2 = t * t, t3 = t2 * t;
-        const f = (a, b, c2, d) => 0.5 * (2 * b + (-a + c2) * t + (2 * a - 5 * b + 4 * c2 - d) * t2 + (-a + 3 * b - 3 * c2 + d) * t3);
-        samples.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
-      }
-    }
-    samples.push(p[p.length - 1]);
-  } else {
-    const step = (xmax - xmin) / 400;
-    for (let x = xmin; x <= xmax + 1e-9; x += step) samples.push([x, r.f(x)]);
-  }
+  const ymin = (c.oy - c.y1) / c.U, ymax = (c.oy - c.y0) / c.U;
+  const ev = graphEvaluator(c, pts, r);
+  const samples = ev.samples || [];
+  if (!ev.samples) { const step = (ev.b - ev.a) / 500; for (let x = ev.a; x <= ev.b + 1e-9; x += step) samples.push([x, ev.f(x)]); }
   const polys = [];
   let cur = [];
   for (const [x, y] of samples) {
@@ -5018,10 +5031,112 @@ function graphPolys(c, pts, r) {
   return polys;
 }
 
+// Nullstellen einer Funktion h im Bereich [a, b] (Vorzeichenwechsel + Halbierung)
+function rootsOf(h, a, b, n = 1200) {
+  const out = [];
+  let px = a, py = h(a);
+  for (let i = 1; i <= n; i++) {
+    const x = a + ((b - a) * i) / n, y = h(x);
+    if (isFinite(py) && isFinite(y)) {
+      if (py === 0) out.push(px);
+      else if (py * y < 0) {
+        let lo = px, hi = x, flo = py;
+        for (let k = 0; k < 50; k++) { const m = (lo + hi) / 2, fm = h(m); if (flo * fm <= 0) hi = m; else { lo = m; flo = fm; } }
+        out.push((lo + hi) / 2);
+      }
+    }
+    px = x;
+    py = y;
+  }
+  return out;
+}
+
+// Besondere Punkte: Nullstellen (N), Extrempunkte (H/T), Schnittpunkte (S)
+function graphFeatures(c, d, r) {
+  const ev = graphEvaluator(c, d.pts, r), o = d.opts, out = [];
+  const ymin = (c.oy - c.y1) / c.U, ymax = (c.oy - c.y0) / c.U;
+  const push = (x, kind) => {
+    const y = ev.f(x);
+    if (!isFinite(y) || y < ymin || y > ymax) return;
+    if (out.some((p) => Math.abs(p.x - x) < 0.02 && Math.abs(p.y - y) < 0.02)) return;
+    out.push({ x, y, kind });
+  };
+  if (o.roots) rootsOf(ev.f, ev.a, ev.b).forEach((x) => push(x, 'N'));
+  if (o.ext && r.mode !== 'line') {
+    const h = 1e-4, d1 = (x) => (ev.f(x + h) - ev.f(x - h)) / (2 * h);
+    rootsOf(d1, ev.a + h, ev.b - h).forEach((x) => push(x, ev.f(x) > ev.f(x + 0.05) && ev.f(x) > ev.f(x - 0.05) ? 'H' : 'T'));
+  }
+  if (o.inter) {
+    const page = note.pages[d.page];
+    const seen = new Set();
+    for (const s of page.strokes) {
+      const g = s.graph;
+      if (!g || g.csid !== d.cs || g.gid === d.gid || seen.has(g.gid)) continue;
+      seen.add(g.gid);
+      const r2 = graphFit(g.pts, g.mode);
+      if (!r2) continue;
+      const ev2 = graphEvaluator(c, g.pts, r2);
+      const a = Math.max(ev.a, ev2.a), b = Math.min(ev.b, ev2.b);
+      if (a < b) rootsOf((x) => ev.f(x) - ev2.f(x), a, b).forEach((x) => push(x, 'S'));
+    }
+  }
+  return out;
+}
+
+// Fläche zwischen Kurve und x-Achse von a bis b (Trapezregel)
+function graphArea(ev, a, b) {
+  const n = 600;
+  let s = 0;
+  for (let i = 0; i < n; i++) {
+    const x0 = a + ((b - a) * i) / n, x1 = a + ((b - a) * (i + 1)) / n, y0 = ev.f(x0), y1 = ev.f(x1);
+    if (isFinite(y0) && isFinite(y1)) s += ((Math.abs(y0) + Math.abs(y1)) / 2) * (x1 - x0);
+  }
+  return s;
+}
+
+let graphOpts = store.get('graphOpts', { roots: false, ext: false, inter: false, area: false });
+let graphDrag = null;
+let graphTable = false;
+
 function graphDown(e, canvas) {
+  const r = canvas.getBoundingClientRect(), i = Number(canvas.dataset.page);
+  const x = ((e.clientX - r.left) / r.width) * PAGE_W, y = ((e.clientY - r.top) / r.height) * PAGE_H;
+  // Punkt der offenen Kurve anfassen → ziehen (Stift/Maus; mit dem Finger auch am Surface)
+  if (graphDraft && graphDraft.page === i && (e.pointerType !== 'touch' || !IS_IOS)) {
+    const cs = csOf(note.pages[i], graphDraft.cs);
+    const j = cs ? graphDraft.pts.findIndex(([ux, uy]) => { const [px, py] = csToPage(cs, ux, uy); return Math.hypot(px - x, py - y) < 13; }) : -1;
+    if (j >= 0) {
+      e.preventDefault();
+      try { canvas.setPointerCapture(e.pointerId); } catch {}
+      graphDrag = { id: e.pointerId, j, rect: r, moved: false, sx: e.clientX, sy: e.clientY };
+      return;
+    }
+  }
   if (e.pointerType !== 'touch') e.preventDefault();
-  const r = canvas.getBoundingClientRect();
-  graphTap = { id: e.pointerId, page: Number(canvas.dataset.page), x: ((e.clientX - r.left) / r.width) * PAGE_W, y: ((e.clientY - r.top) / r.height) * PAGE_H, sx: e.clientX, sy: e.clientY, st: pagesBox.scrollTop };
+  graphTap = { id: e.pointerId, page: i, x, y, sx: e.clientX, sy: e.clientY, st: pagesBox.scrollTop };
+}
+
+function graphMove(e) {
+  const g = graphDrag, d = graphDraft;
+  e.preventDefault();
+  if (!g.moved && Math.hypot(e.clientX - g.sx, e.clientY - g.sy) < 5) return;
+  g.moved = true;
+  const cs = csOf(note.pages[d.page], d.cs);
+  const x = ((e.clientX - g.rect.left) / g.rect.width) * PAGE_W, y = ((e.clientY - g.rect.top) / g.rect.height) * PAGE_H;
+  const sx = cs.ox + Math.round((x - cs.ox) / GRID_STEP) * GRID_STEP, sy = cs.oy + Math.round((y - cs.oy) / GRID_STEP) * GRID_STEP;
+  const [ux, uy] = csToUnit(cs, sx, sy).map((v) => Math.round(v * 1000) / 1000);
+  if (d.pts.some(([px], k) => k !== g.j && Math.abs(px - ux) < 1e-6)) return;   // ein y je x
+  d.pts[g.j] = [ux, uy];
+  graphRender();
+}
+
+function graphUpDrag(e) {
+  const g = graphDrag;
+  graphDrag = null;
+  if (!g.moved && graphDraft) {        // nur angetippt = Punkt entfernen
+    graphDraft.pts.splice(g.j, 1);
+    graphRender();
+  }
 }
 
 function graphUp(e) {
@@ -5035,9 +5150,10 @@ function graphUp(e) {
     if (hit) {
       const cs = csOf(page, hit.graph.csid);
       if (cs) {
-        graphDraft = { page: t.page, cs: cs.id, pts: hit.graph.pts.map((p) => p.slice()), mode: hit.graph.mode, gid: hit.graph.gid, no: hit.graph.no, color: hit.color, size: hit.size };
-        graphMode = hit.graph.mode;
-        toast('Kurve wird bearbeitet – Punkte antippen, „Abbrechen“ für eine neue');
+        const g = hit.graph;
+        graphDraft = { page: t.page, cs: cs.id, pts: g.pts.map((p) => p.slice()), mode: g.mode, gid: g.gid, no: g.no, color: hit.color, size: hit.size, opts: { ...graphOpts, ...(g.opts || {}) }, area: g.area ? { ...g.area } : null };
+        graphMode = g.mode;
+        toast('Kurve wird bearbeitet – Punkte ziehen oder antippen, „Abbrechen“ für eine neue');
         return graphRender();
       }
     }
@@ -5045,16 +5161,12 @@ function graphUp(e) {
   const cs = csAt(page, t.x, t.y);
   if (!cs) return toast('Tippe in ein Koordinatensystem (Koordinaten-Werkzeug). Ältere Systeme bitte neu anlegen.');
   if (graphDraft && (graphDraft.page !== t.page || graphDraft.cs !== cs.id)) return toast('Erst die aktuelle Kurve übernehmen oder abbrechen');
-  if (!graphDraft) graphDraft = { page: t.page, cs: cs.id, pts: [], mode: graphMode, color: PEN_COLORS[colorSel.pen], size };
+  if (!graphDraft) graphDraft = { page: t.page, cs: cs.id, pts: [], mode: graphMode, color: PEN_COLORS[colorSel.pen], size, opts: { ...graphOpts }, area: null };
   // auf die Kästchen einrasten
   const sx = cs.ox + Math.round((t.x - cs.ox) / GRID_STEP) * GRID_STEP, sy = cs.oy + Math.round((t.y - cs.oy) / GRID_STEP) * GRID_STEP;
   const [ux, uy] = csToUnit(cs, sx, sy).map((v) => Math.round(v * 1000) / 1000);
-  const j = graphDraft.pts.findIndex(([x, y]) => Math.abs(x - ux) < 1e-6 && Math.abs(y - uy) < 1e-6);
-  if (j >= 0) graphDraft.pts.splice(j, 1);                        // nochmal antippen = Punkt weg
-  else {
-    graphDraft.pts = graphDraft.pts.filter(([x]) => Math.abs(x - ux) > 1e-6);   // eine Funktion: ein y je x
-    graphDraft.pts.push([ux, uy]);
-  }
+  graphDraft.pts = graphDraft.pts.filter(([x]) => Math.abs(x - ux) > 1e-6);   // eine Funktion: ein y je x
+  graphDraft.pts.push([ux, uy]);
   graphRender();
 }
 
@@ -5065,6 +5177,13 @@ function graphLayer(i) {
   if (!g) { g = svgEl('g', { class: 'graph-draft' }); svg.append(g); }
   return g;
 }
+const ptLabel = (x, y) => `(${fmtNum(x)}|${fmtNum(y)})`;
+function graphAreaRange(d) {
+  if (d.area) return d.area;
+  const xs = d.pts.map((p) => p[0]);
+  return xs.length ? { a: Math.min(...xs), b: Math.max(...xs) } : { a: 0, b: 1 };
+}
+
 function graphRender() {
   const d = graphDraft;
   document.querySelectorAll('.graph-draft').forEach((g) => { g.innerHTML = ''; });
@@ -5074,21 +5193,102 @@ function graphRender() {
   if (!cs) { graphDraft = null; bar.hidden = true; return; }
   let out = '';
   const r = graphFit(d.pts, d.mode);
-  if (r) for (const p of graphPolys(cs, d.pts, r)) out += `<path d="${p.map(([x, y], j) => (j ? 'L' : 'M') + num(x) + ' ' + num(y)).join('')}" fill="none" stroke="${d.color}" stroke-width="2" stroke-dasharray="6 5" opacity=".75"/>`;
+  let info2 = '';
+  if (r) {
+    const ev = graphEvaluator(cs, d.pts, r);
+    if (d.opts.area) {
+      const { a, b } = graphAreaRange(d);
+      for (const [x0, y0, x1, y1] of graphHatch(cs, ev, a, b)) out += `<path d="M${num(x0)} ${num(y0)}L${num(x1)} ${num(y1)}" stroke="${d.color}" stroke-width="1" opacity=".45"/>`;
+      info2 += ` · Fläche ≈ ${fmtNum(graphArea(ev, a, b))} FE`;
+    }
+    for (const p of graphPolys(cs, d.pts, r)) out += `<path d="${p.map(([x, y], j) => (j ? 'L' : 'M') + num(x) + ' ' + num(y)).join('')}" fill="none" stroke="${d.color}" stroke-width="2" stroke-dasharray="6 5" opacity=".75"/>`;
+    const feats = graphFeatures(cs, d, r);
+    for (const f of feats) {
+      const [x, y] = csToPage(cs, f.x, f.y);
+      out += `<circle cx="${num(x)}" cy="${num(y)}" r="4.5" fill="#fff" stroke="${d.color}" stroke-width="2"/><text x="${num(x + 7)}" y="${num(y - 8)}" font-size="13" font-family="${TEXT_FONT}" fill="${d.color}">${f.kind} ${ptLabel(f.x, f.y)}</text>`;
+    }
+    if (feats.length) info2 += ` · ${feats.length} besondere Punkte`;
+  }
   for (const [ux, uy] of d.pts) {
     const [x, y] = csToPage(cs, ux, uy);
-    out += `<circle cx="${num(x)}" cy="${num(y)}" r="5" fill="${d.color}"/><circle cx="${num(x)}" cy="${num(y)}" r="9" fill="none" stroke="${d.color}" stroke-width="1.2" opacity=".5"/>`;
+    out += `<circle cx="${num(x)}" cy="${num(y)}" r="5" fill="${d.color}"/><circle cx="${num(x)}" cy="${num(y)}" r="10" fill="none" stroke="${d.color}" stroke-width="1.2" opacity=".5"/>`;
   }
   graphLayer(d.page).innerHTML = out;
   // Leiste
   const eq = r ? graphEquation(r) : '';
-  bar.querySelector('.gb-info').textContent = d.pts.length < 2 ? 'Punkte antippen (nochmal tippen = weg)' : (r && r.mode !== d.mode && d.mode === 'auto' ? GRAPH_MODES.find(([m]) => m === r.mode)[1] + (eq ? ': ' : '') : '') + (eq || (r ? 'glatte Kurve' : 'Diese Art passt nicht zu den Punkten'));
+  bar.querySelector('.gb-info').textContent = d.pts.length < 2 ? 'Punkte antippen · ziehen = verschieben · antippen = weg'
+    : (r && d.mode === 'auto' ? GRAPH_MODES.find(([m]) => m === r.mode)[1] + (eq ? ': ' : '') : '') + (eq || (r ? 'glatte Kurve' : 'Diese Art passt nicht zu den Punkten')) + info2;
   bar.querySelectorAll('[data-mode]').forEach((b) => b.classList.toggle('on', b.dataset.mode === d.mode));
   bar.querySelector('[data-a="eq"]').classList.toggle('on', graphEq);
   bar.querySelector('[data-a="pts"]').classList.toggle('on', graphPts);
+  for (const k of ['roots', 'ext', 'inter', 'area']) bar.querySelector(`[data-o="${k}"]`).classList.toggle('on', !!d.opts[k]);
+  bar.querySelector('[data-a="table"]').classList.toggle('on', graphTable);
+  const ar = bar.querySelector('.gb-area');
+  ar.hidden = !d.opts.area;
+  if (d.opts.area && document.activeElement.closest('.gb-area') == null) {
+    const { a, b } = graphAreaRange(d);
+    ar.querySelector('[data-b="a"]').value = fmtNum(a).replace('−', '-');
+    ar.querySelector('[data-b="b"]').value = fmtNum(b).replace('−', '-');
+  }
+  graphRenderTable(bar, d);
   bar.querySelector('[data-a="ok"]').disabled = !r;
-  bar.style.top = pagesBox.getBoundingClientRect().top + 8 + 'px';
+  // oben oder unten – je nachdem, wo die Leiste weniger vom Koordinatensystem verdeckt (Tabelle: oben wegen der Tastatur)
   bar.hidden = false;
+  const box = pagesBox.getBoundingClientRect(), cv = pageEls[d.page].svg.getBoundingClientRect(), h = bar.offsetHeight;
+  const csTop = cv.top + (cs.y0 / PAGE_H) * cv.height, csBot = cv.top + (cs.y1 / PAGE_H) * cv.height;
+  const cover = (t) => Math.max(0, Math.min(t + h, csBot) - Math.max(t, csTop));
+  const top = box.top + 8, bottom = Math.min(box.bottom, innerHeight) - h - 8;
+  bar.style.top = (graphTable || cover(top) <= cover(bottom) ? top : bottom) + 'px';
+}
+
+// Schraffur zwischen Kurve und x-Achse (senkrechte Striche)
+function graphHatch(cs, ev, a, b) {
+  const out = [], ymin = (cs.oy - cs.y1) / cs.U, ymax = (cs.oy - cs.y0) / cs.U;
+  if (!(b > a)) return out;
+  const step = Math.max((b - a) / 80, 6 / cs.U);
+  for (let x = a; x <= b + 1e-9; x += step) {
+    const y = Math.max(ymin, Math.min(ymax, ev.f(x)));
+    if (!isFinite(y) || Math.abs(y) < 1e-6) continue;
+    const [px0, py0] = csToPage(cs, x, 0), [, py1] = csToPage(cs, x, y);
+    out.push([px0, py0, px0, py1]);
+  }
+  return out;
+}
+
+// Wertetabelle: Punkte als Zahlen eingeben (genau, ohne Einrasten)
+const parseNum = (v) => parseFloat(String(v).replace(',', '.').replace('−', '-'));
+function graphRenderTable(bar, d) {
+  const box = bar.querySelector('.gb-table');
+  box.hidden = !graphTable;
+  if (!graphTable || box.contains(document.activeElement)) return;
+  const rows = d.pts.slice().sort((p, q) => p[0] - q[0]);
+  box.innerHTML = '<div class="gbt-head"><span>x</span><span>y</span><span></span></div>' +
+    rows.map(([x, y]) => `<div class="gbt-row"><input inputmode="decimal" value="${fmtNum(x).replace('−', '-')}"><input inputmode="decimal" value="${fmtNum(y).replace('−', '-')}"><button type="button" aria-label="Zeile löschen">✕</button></div>`).join('') +
+    '<div class="gbt-row new"><input inputmode="decimal" placeholder="x"><input inputmode="decimal" placeholder="y"><button type="button" class="gbt-add" aria-label="Hinzufügen">＋</button></div>';
+  const read = () => {
+    const pts = [];
+    box.querySelectorAll('.gbt-row:not(.new)').forEach((row) => {
+      const [ix, iy] = row.querySelectorAll('input'), x = parseNum(ix.value), y = parseNum(iy.value);
+      if (isFinite(x) && isFinite(y) && !pts.some(([px]) => Math.abs(px - x) < 1e-9)) pts.push([x, y]);
+    });
+    d.pts = pts;
+    graphRender();
+  };
+  box.querySelectorAll('.gbt-row:not(.new) input').forEach((inp) => inp.addEventListener('change', read));
+  box.querySelectorAll('.gbt-row:not(.new) button').forEach((b, k) => b.addEventListener('click', () => { b.closest('.gbt-row').remove(); read(); graphRenderTable(bar, d); }));
+  const add = () => {
+    const [ix, iy] = box.querySelectorAll('.gbt-row.new input'), x = parseNum(ix.value), y = parseNum(iy.value);
+    if (!isFinite(x) || !isFinite(y)) return toast('x und y als Zahlen eingeben, z. B. 1,5');
+    d.pts = d.pts.filter(([px]) => Math.abs(px - x) > 1e-9).concat([[x, y]]);
+    ix.blur();
+    iy.blur();
+    graphRender();
+    graphRenderTable(bar, d);
+    const nx = bar.querySelector('.gbt-row.new input');
+    if (nx) nx.focus();
+  };
+  box.querySelector('.gbt-add').addEventListener('click', add);
+  box.querySelectorAll('.gbt-row.new input').forEach((inp) => inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }));
 }
 
 function graphBar() {
@@ -5100,20 +5300,32 @@ function graphBar() {
   bar.hidden = true;
   bar.innerHTML = '<div class="gb-info"></div><div class="gb-row">' +
     GRAPH_MODES.map(([m, l]) => `<button type="button" data-mode="${m}">${l}</button>`).join('') +
-    '</div><div class="gb-row"><button type="button" data-a="eq">f(x) zeigen</button><button type="button" data-a="pts">Punkte zeigen</button>' +
+    '</div><div class="gb-row"><button type="button" data-o="roots">Nullstellen</button><button type="button" data-o="ext">Extrempunkte</button>' +
+    '<button type="button" data-o="inter">Schnittpunkte</button><button type="button" data-o="area">Fläche</button>' +
+    '<span class="gb-area" hidden>von <input data-b="a" inputmode="decimal"> bis <input data-b="b" inputmode="decimal"></span></div>' +
+    '<div class="gb-table" hidden></div>' +
+    '<div class="gb-row"><button type="button" data-a="table">Tabelle</button><button type="button" data-a="eq">f(x) zeigen</button><button type="button" data-a="pts">Punkte zeigen</button>' +
     '<span class="gb-sp"></span><button type="button" data-a="cancel">Abbrechen</button><button type="button" data-a="ok" class="gb-ok">Übernehmen</button></div>';
   document.body.append(bar);
   bar.addEventListener('pointerdown', (e) => e.stopPropagation());
   bar.addEventListener('click', (e) => {
     const b = e.target.closest('button');
-    if (!b || !graphDraft) return;
-    if (b.dataset.mode) { graphDraft.mode = graphMode = b.dataset.mode; store.set('graphMode', graphMode); }
+    if (!b || !graphDraft || b.closest('.gb-table')) return;
+    const d = graphDraft;
+    if (b.dataset.mode) { d.mode = graphMode = b.dataset.mode; store.set('graphMode', graphMode); }
+    else if (b.dataset.o) { d.opts[b.dataset.o] = !d.opts[b.dataset.o]; graphOpts = { ...d.opts }; store.set('graphOpts', graphOpts); }
     else if (b.dataset.a === 'eq') { graphEq = !graphEq; store.set('graphEq', graphEq); }
     else if (b.dataset.a === 'pts') { graphPts = !graphPts; store.set('graphPts', graphPts); }
+    else if (b.dataset.a === 'table') graphTable = !graphTable;
     else if (b.dataset.a === 'cancel') graphDraft = null;
     else if (b.dataset.a === 'ok') return graphCommit();
     graphRender();
   });
+  bar.querySelectorAll('.gb-area input').forEach((inp) => inp.addEventListener('change', () => {
+    const a = parseNum(bar.querySelector('[data-b="a"]').value), b = parseNum(bar.querySelector('[data-b="b"]').value);
+    if (graphDraft && isFinite(a) && isFinite(b)) graphDraft.area = { a: Math.min(a, b), b: Math.max(a, b) };
+    graphRender();
+  }));
   return bar;
 }
 
@@ -5125,20 +5337,30 @@ function graphCommit() {
   const gid = d.gid || 'g' + Date.now().toString(36);
   // alte Version derselben Kurve ersetzen
   page.strokes = page.strokes.filter((s) => !(s.graph && s.graph.gid === gid) && s.graphOf !== gid);
-  const graph = { gid, csid: cs.id, pts: d.pts.map((p) => p.slice()), mode: d.mode };
-  for (const p of graphPolys(cs, d.pts, r)) {
-    page.strokes.push({ tool: 'pen', style: 'ball', shape: true, color: d.color, size: d.size, pts: p.flatMap(([x, y]) => [Math.round(x * 10) / 10, Math.round(y * 10) / 10, 0.5]), graph });
+  const ev = graphEvaluator(cs, d.pts, r);
+  const others = [...new Set(page.strokes.filter((x) => x.graph && x.graph.csid === cs.id).map((x) => x.graph.gid))];
+  const no = d.gid && d.no != null ? d.no : others.length;
+  const graph = { gid, csid: cs.id, pts: d.pts.map((p) => p.slice()), mode: d.mode, no, opts: { ...d.opts }, area: d.opts.area ? graphAreaRange(d) : null };
+  const pen = (pts, sz, extra) => ({ tool: 'pen', style: 'ball', shape: true, color: d.color, size: sz, pts: pts.flatMap(([x, y]) => [Math.round(x * 10) / 10, Math.round(y * 10) / 10, 0.5]), graphOf: gid, ...extra });
+  const label = (text, x, y, fs = 13) => { const w = measure(text, fontOf({}, fs)) + 4; return { tool: 'text', x, y, w, size: fs, color: d.color, text, graphOf: gid }; };
+  // Fläche zuerst (liegt unter der Kurve)
+  if (d.opts.area) {
+    const { a, b } = graph.area;
+    for (const [x0, y0, x1, y1] of graphHatch(cs, ev, a, b)) page.strokes.push(pen([[x0, y0], [x1, y1]], 0.5));
+    const mx = (a + b) / 2, my = ev.f(mx) / 2, [lx, ly] = csToPage(cs, mx, isFinite(my) ? my : 0);
+    const t = `A ≈ ${fmtNum(graphArea(ev, a, b))} FE`;
+    page.strokes.push(label(t, lx - measure(t, fontOf({}, 13)) / 2, ly - 9));
   }
+  for (const p of graphPolys(cs, d.pts, r)) page.strokes.push({ ...pen(p, d.size), graphOf: undefined, graph });
   if (graphPts) for (const [ux, uy] of d.pts) {
     const [x, y] = csToPage(cs, ux, uy);
-    page.strokes.push({ tool: 'pen', style: 'ball', shape: true, color: d.color, size: 1, pts: [x - 4, y - 4, 0.5, x + 4, y + 4, 0.5], graphOf: gid });
-    page.strokes.push({ tool: 'pen', style: 'ball', shape: true, color: d.color, size: 1, pts: [x - 4, y + 4, 0.5, x + 4, y - 4, 0.5], graphOf: gid });
+    page.strokes.push(pen([[x - 4, y - 4], [x + 4, y + 4]], 1), pen([[x - 4, y + 4], [x + 4, y - 4]], 1));
   }
-  // Mehrere Kurven im selben System: f, g, h … untereinander
-  const others = [...new Set(page.strokes.filter((x) => x.graph && x.graph.csid === cs.id && x.graph.gid !== gid).map((x) => x.graph.gid))];
-  const no = d.gid ? (d.no ?? others.length) : others.length;
-  graph.no = no;
-  page.strokes.forEach((x) => { if (x.graph && x.graph.gid === gid) x.graph = graph; });
+  for (const f of graphFeatures(cs, { ...d, gid }, r)) {
+    const [x, y] = csToPage(cs, f.x, f.y);
+    page.strokes.push(pen([[x, y]], 5), label(`${f.kind} ${ptLabel(f.x, f.y)}`, x + 7, y - 22));
+  }
+  // Gleichung: mehrere Kurven im selben System heißen f, g, h … und stehen untereinander
   const name = 'fghpqrs'[no % 7];
   const eq = graphEq && graphEquation(r).replace(/^f\(x\)/, name + '(x)');
   if (eq) {

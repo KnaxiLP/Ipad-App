@@ -858,3 +858,12 @@ body[data-note-tool="snote"] .pages .page-live { cursor: crosshair; }
 .gb-row .gb-ok { background: #34c759; color: #fff; font-weight: 700; }
 .gb-sp { flex: 1; }
 body[data-note-tool="graph"] .pages .page-live { cursor: crosshair; }
+.gb-area { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.gb-area[hidden] { display: none; }
+.gb-area input, .gb-table input { width: 64px; border: 0; border-radius: 6px; padding: 5px 7px; font: inherit; font-size: 13px; background: rgba(255,255,255,.14); color: #fff; }
+.gb-table { display: flex; flex-direction: column; gap: 4px; max-height: 30vh; overflow-y: auto; }
+.gb-table[hidden] { display: none; }
+.gbt-head, .gbt-row { display: grid; grid-template-columns: 80px 80px 34px; gap: 6px; align-items: center; }
+.gbt-head span { font-size: 12px; opacity: .7; font-weight: 600; padding-left: 4px; }
+.gbt-row button { border: 0; border-radius: 6px; height: 28px; background: rgba(255,255,255,.12); color: #fff; cursor: pointer; }
+.gbt-row .gbt-add { background: #34c759; }

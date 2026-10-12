@@ -250,12 +250,16 @@ Rückgängig und Wiederholen gelten auch für Seiten-Aktionen (einfügen, versch
 ## Kurven-Werkzeug
 
 1. Mit dem Koordinaten-Werkzeug ein Koordinatensystem aufziehen.
-2. Das Kurven-Werkzeug wählen (Kurve mit Punkten) und Punkte ins System tippen. Sie rasten auf die Kästchen ein. Nochmal tippen entfernt einen Punkt.
+2. Das Kurven-Werkzeug wählen (Kurve mit Punkten) und Punkte ins System tippen. Sie rasten auf die Kästchen ein. Einen Punkt ziehen verschiebt ihn, kurz antippen entfernt ihn. Am iPad zieht man mit dem Pencil.
 3. Eine gestrichelte Vorschau zeigt die Kurve. Oben wählst du:
    - **Automatisch:** die einfachste Funktionsart, die genau passt
    - **Gerade**, **Parabel**, **3. Grades**, **Exponential**
    - **Glatt:** eine weiche Kurve durch alle Punkte
-4. **„f(x) zeigen“** schreibt die Gleichung dazu (f, g, h … untereinander). **„Punkte zeigen“** markiert die Punkte mit ×.
-5. **„Übernehmen“** zeichnet die Kurve in der aktuellen Farbe und Dicke. Eine fertige Kurve antippen öffnet ihre Punkte wieder.
+4. Markieren lassen:
+   - **Nullstellen** (N), **Extrempunkte** (H/T) und **Schnittpunkte** (S) mit den anderen Kurven im selben System
+   - **Fläche** zwischen Kurve und x-Achse schraffieren, „von“/„bis“ einstellbar, mit „A ≈ … FE“
+   - **Tabelle:** Wertetabelle, um Punkte genau als Zahlen einzugeben (auch mit Komma, Enter fügt hinzu)
+5. **„f(x) zeigen“** schreibt die Gleichung dazu (f, g, h … untereinander). **„Punkte zeigen“** markiert die Punkte mit ×.
+6. **„Übernehmen“** zeichnet die Kurve in der aktuellen Farbe und Dicke. Eine fertige Kurve antippen öffnet ihre Punkte wieder.
 
 Bei genau 3 Punkten wählt „Automatisch“ die Parabel. Für Exponentialfunktionen „Exponential“ wählen oder 4 Punkte setzen.
