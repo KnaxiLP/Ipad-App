@@ -110,6 +110,17 @@ python3 -m http.server 8000
 - Notizen, Noten, Aufgaben und Python-Programme bleiben bei Updates erhalten, weil sie getrennt von den App-Dateien gespeichert sind.
 - **„Sicherung speichern“** erzeugt eine JSON-Datei mit allen Daten. **„Sicherung laden“** spielt diese Datei wieder ein. Mach das, bevor du die App vom Home-Bildschirm löschst.
 
+## Werkzeugleiste
+
+Die Werkzeuge sind in Gruppen sortiert. Der Knopf einer Gruppe zeigt das zuletzt benutzte Werkzeug (kleines ▾ unten rechts):
+
+- **Schreiben:** Füller, Kugelschreiber, Textmarker, Text
+- **Auswählen:** Lasso, Pfeil, Bild einfügen
+- **Mathe:** Formel, Koordinatensystem, Kurve, Lineal (ein Punkt am Knopf zeigt: Lineal ist an)
+- Einzeln: Side Notes, Radierer, Formerkennung
+
+Antippen wählt das zuletzt benutzte Werkzeug der Gruppe. Ist die Gruppe schon aktiv, öffnet Antippen das Menü mit allen Werkzeugen der Gruppe.
+
 ## Bilder einfügen
 
 - **Als Element** über den Bild-Knopf in der Werkzeugleiste, mit **Strg+V** oder per Ziehen auf die Seite: Das Bild liegt frei auf der aktuellen Seite.

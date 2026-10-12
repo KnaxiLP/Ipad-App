@@ -16,6 +16,7 @@ function applyTools() {
   // ausgeblendetes Werkzeug war aktiv → zurück zum Füller
   const cur = document.querySelector(`#toolbar [data-tool="${tool}"]`);
   if (cur && cur.hidden) document.querySelector('#toolbar [data-tool="pen"]').click();
+  tgUpdate();
 }
 
 function applyTheme(v) {

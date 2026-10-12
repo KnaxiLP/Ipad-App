@@ -5384,6 +5384,106 @@ document.addEventListener('visibilitychange', () => document.hidden && flushNote
 // Vor einem Update: offenes Textfeld übernehmen und fertig speichern
 window.appFlush.push(async () => { commitEditor(); await flushNoteSave(); });
 
+// ---------- Werkzeug-Gruppen ----------
+// Thematische Gruppen: der Knopf zeigt das zuletzt benutzte Werkzeug der Gruppe.
+// Antippen wählt es, nochmal antippen (oder ▾) öffnet die Gruppe. Die Original-Knöpfe wandern ins Menü.
+const TOOL_GROUPS = [
+  ['write', 'Schreiben', [['[data-tool="pen"]', 'Füller'], ['[data-tool="ball"]', 'Kugelschreiber'], ['[data-tool="marker"]', 'Textmarker'], ['[data-tool="text"]', 'Text']]],
+  ['pick', 'Auswählen', [['[data-tool="lasso"]', 'Lasso'], ['[data-tool="select"]', 'Pfeil'], ['#image-insert', 'Bild einfügen']]],
+  ['math', 'Mathe', [['[data-tool="math"]', 'Formel'], ['[data-tool="coord"]', 'Koordinatensystem'], ['[data-tool="graph"]', 'Kurve'], ['#ruler-toggle', 'Lineal']]]
+];
+let tgLast = store.get('tgLast', {});
+const tgGroups = [];
+let tgOpen = null;
+
+function tgSetup() {
+  const main = $('.tools-main');
+  for (const [id, title, items] of TOOL_GROUPS) {
+    const btns = items.map(([q]) => main.querySelector(q)).filter(Boolean);
+    if (!btns.length) continue;
+    const wrap = document.createElement('div');
+    wrap.className = 'tg';
+    wrap.dataset.g = id;
+    const head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'tool tg-btn';
+    head.setAttribute('aria-label', title);
+    head.setAttribute('aria-haspopup', 'true');
+    const pop = document.createElement('div');
+    pop.className = 'tg-pop';
+    pop.hidden = true;
+    pop.setAttribute('role', 'menu');
+    btns[0].before(wrap);
+    items.forEach(([q, label]) => {
+      const b = main.querySelector(q);
+      if (!b) return;
+      const l = document.createElement('span');
+      l.className = 'tg-label';
+      l.textContent = label;
+      b.append(l);
+      pop.append(b);
+      // Werkzeug aus dem Menü gewählt → Menü zu
+      b.addEventListener('click', () => tgClose());
+    });
+    wrap.append(head, pop);
+    const g = { id, wrap, head, pop, btns };
+    tgGroups.push(g);
+    head.addEventListener('click', () => {
+      const cur = tgCurrent(g);
+      // Gruppe nicht aktiv → zuletzt benutztes Werkzeug wählen; sonst Menü auf/zu
+      if (cur && cur.dataset.tool && cur.dataset.tool !== tool) { tgClose(); cur.click(); }
+      else if (tgOpen === g) tgClose();
+      else tgShow(g);
+    });
+  }
+  // nach jedem Werkzeugwechsel (die Original-Listener laufen vorher)
+  document.querySelectorAll('[data-tool]').forEach((b) => b.addEventListener('click', tgUpdate));
+  $('#ruler-toggle').addEventListener('click', tgUpdate);
+  document.addEventListener('pointerdown', (e) => { if (tgOpen && !tgOpen.wrap.contains(e.target)) tgClose(); }, true);
+  window.addEventListener('resize', () => tgClose());
+  $('#pages').addEventListener('scroll', () => tgClose(), { passive: true });
+}
+
+// zuletzt benutzter, sichtbarer Werkzeug-Knopf der Gruppe (nur echte Werkzeuge, keine Aktionen)
+function tgCurrent(g) {
+  const vis = g.btns.filter((b) => !b.hidden && b.dataset.tool);
+  return vis.find((b) => b.dataset.tool === tool) || vis.find((b) => b.dataset.tool === tgLast[g.id]) || vis[0] || g.btns.find((b) => !b.hidden);
+}
+
+function tgUpdate() {
+  for (const g of tgGroups) {
+    const act = g.btns.find((b) => b.dataset.tool && b.dataset.tool === tool);
+    if (act && tgLast[g.id] !== tool) { tgLast[g.id] = tool; store.set('tgLast', tgLast); }
+    const cur = tgCurrent(g);
+    g.wrap.hidden = !cur;
+    if (!cur) continue;
+    const svg = cur.querySelector('svg');
+    g.head.innerHTML = (svg ? svg.outerHTML : '') + '<i class="tg-caret" aria-hidden="true"></i>';
+    g.head.classList.toggle('active', !!act);
+    // Lineal an → kleiner Punkt an der Mathe-Gruppe
+    g.head.classList.toggle('tg-on', g.btns.some((b) => b.id === 'ruler-toggle' && b.classList.contains('active')));
+  }
+}
+
+function tgShow(g) {
+  tgClose();
+  tgUpdate();
+  tgOpen = g;
+  g.pop.hidden = false;
+  g.head.setAttribute('aria-expanded', 'true');
+  const r = g.head.getBoundingClientRect(), w = g.pop.offsetWidth;
+  g.pop.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + 'px';
+  g.pop.style.top = r.bottom + 6 + 'px';
+}
+
+function tgClose() {
+  if (!tgOpen) return;
+  tgOpen.pop.hidden = true;
+  tgOpen.head.setAttribute('aria-expanded', 'false');
+  tgOpen = null;
+}
+tgSetup();
+
 // ---------- Start ----------
 setupFastInk();
 (async () => {
@@ -5393,6 +5493,7 @@ setupFastInk();
   document.body.dataset.noteTool = tool;
   renderColors();
   renderSize();
+  tgUpdate();
   let all = [];
   try { all = await noteDb.all(); } catch {}
   const last = all.find((n) => n.id === store.get('currentNote')) ||
