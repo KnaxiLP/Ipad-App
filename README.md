@@ -246,3 +246,16 @@ Das Vier-Kästchen-Symbol oben neben dem Titel öffnet alle Seiten als Vorschaub
 ## Rückgängig
 
 Rückgängig und Wiederholen gelten auch für Seiten-Aktionen (einfügen, verschieben, doppeln, löschen, PDF-Seiten) und für Side Notes. Eine Bearbeitung im Panel ist ein Schritt.
+
+## Kurven-Werkzeug
+
+1. Mit dem Koordinaten-Werkzeug ein Koordinatensystem aufziehen.
+2. Das Kurven-Werkzeug wählen (Kurve mit Punkten) und Punkte ins System tippen. Sie rasten auf die Kästchen ein. Nochmal tippen entfernt einen Punkt.
+3. Eine gestrichelte Vorschau zeigt die Kurve. Oben wählst du:
+   - **Automatisch:** die einfachste Funktionsart, die genau passt
+   - **Gerade**, **Parabel**, **3. Grades**, **Exponential**
+   - **Glatt:** eine weiche Kurve durch alle Punkte
+4. **„f(x) zeigen“** schreibt die Gleichung dazu (f, g, h … untereinander). **„Punkte zeigen“** markiert die Punkte mit ×.
+5. **„Übernehmen“** zeichnet die Kurve in der aktuellen Farbe und Dicke. Eine fertige Kurve antippen öffnet ihre Punkte wieder.
+
+Bei genau 3 Punkten wählt „Automatisch“ die Parabel. Für Exponentialfunktionen „Exponential“ wählen oder 4 Punkte setzen.

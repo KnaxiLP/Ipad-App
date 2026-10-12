@@ -843,3 +843,18 @@ body[data-note-tool="snote"] .pages .page-live { cursor: crosshair; }
 .tool.sn-mode { width: 48px !important; height: 34px; display: flex !important; flex-direction: column; justify-content: center; gap: 0; font-size: 10.5px; font-weight: 700; line-height: 1.15; border-radius: 10px; color: var(--muted); border: 1.5px solid var(--border); }
 .tool.sn-mode.active { color: var(--ink-active); border-color: var(--ink-active); background: color-mix(in srgb, var(--ink-active) 12%, transparent); }
 @media (max-width: 1300px) and (min-width: 701px) { #color-group .sn-current { width: 124px !important; } }
+/* Kurven-Werkzeug: Leiste */
+.graph-bar {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 6; width: min(560px, calc(100% - 24px));
+  background: #1c1c1e; color: #fff; border-radius: 14px; padding: 10px 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, .3);
+  display: flex; flex-direction: column; gap: 8px; font-size: 14px;
+}
+.graph-bar[hidden], body:not([data-view="notes"]) .graph-bar { display: none; }
+.gb-info { font-weight: 600; min-height: 1.3em; }
+.gb-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.gb-row button { border: 0; border-radius: 8px; padding: 6px 10px; background: rgba(255, 255, 255, .12); color: inherit; font: inherit; font-size: 13px; cursor: pointer; }
+.gb-row button.on { background: #fff; color: #1c1c1e; font-weight: 600; }
+.gb-row button:disabled { opacity: .4; }
+.gb-row .gb-ok { background: #34c759; color: #fff; font-weight: 700; }
+.gb-sp { flex: 1; }
+body[data-note-tool="graph"] .pages .page-live { cursor: crosshair; }

@@ -4,7 +4,7 @@ const TOOLBAR_OPTIONAL = [
   ['#fav-group', 'favs', 'Stift-Favoriten'], ['[data-tool="ball"]', 'ball', 'Kugelschreiber'], ['[data-tool="marker"]', 'marker', 'Textmarker'],
   ['[data-tool="text"]', 'text', 'Text'], ['[data-tool="lasso"]', 'lasso', 'Lasso'], ['[data-tool="select"]', 'select', 'Auswahl-Pfeil'],
   ['#image-insert', 'image', 'Bild einfügen'], ['[data-tool="snote"]', 'snote', 'Side Notes'], ['[data-tool="math"]', 'math', 'Formel'],
-  ['[data-tool="coord"]', 'coord', 'Koordinatensystem'], ['#ruler-toggle', 'ruler', 'Lineal'], ['#shape-toggle', 'shape', 'Formerkennung-Knopf'],
+  ['[data-tool="coord"]', 'coord', 'Koordinatensystem'], ['[data-tool="graph"]', 'graph', 'Kurven-Werkzeug'], ['#ruler-toggle', 'ruler', 'Lineal'], ['#shape-toggle', 'shape', 'Formerkennung-Knopf'],
   ['.zoom-group', 'zoom', 'Zoom-Knöpfe'], ['#finger-toggle', 'finger', 'Finger-Knopf']
 ];
 let hiddenTools = new Set(store.get('hiddenTools', []));

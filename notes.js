@@ -1733,6 +1733,7 @@ function onDown(e) {
     }
     if (window.noteTool === 'text' && touches.size === 1 && !active) return textDown(e, canvas);
     if (window.noteTool === 'math' && touches.size === 1 && !active) return mathDown(e, canvas);
+    if (window.noteTool === 'graph' && touches.size === 1 && !active) return graphDown(e, canvas);
     if (window.noteTool === 'snote' && touches.size === 1 && !active && fingerDraw) return snDown(e, canvas);
     if (!fingerDraw) {
       // Finger scrollt: auf dem iPad macht das der Browser, sonst die App selbst
@@ -1751,6 +1752,7 @@ function onDown(e) {
   if (tool === 'lasso') return lassoDown(e, canvas);
   if (tool === 'coord') return coordDown(e, canvas);
   if (tool === 'math') return mathDown(e, canvas);
+  if (tool === 'graph') return graphDown(e, canvas);
   if (tool === 'snote') return snDown(e, canvas);
 
   e.preventDefault();
@@ -1889,6 +1891,7 @@ function onUp(e) {
   if (lasso && e.pointerId === lasso.id) return lassoUp(e);
   if (coordAction && e.pointerId === coordAction.id) return coordUp(e);
   if (mathTap && e.pointerId === mathTap.id) return mathUp(e);
+  if (graphTap && e.pointerId === graphTap.id) return graphUp(e);
   if (snAction && e.pointerId === snAction.id) return snUp(e);
   if (!active || e.pointerId !== active.id) return;
   // Bricht iOS einen Stift-Strich ab, wird er trotzdem behalten – bisher verschwand er dann.
@@ -2070,6 +2073,8 @@ document.querySelectorAll('[data-tool]').forEach((b) =>
   b.addEventListener('click', () => {
     tool = b.dataset.tool;
     if (!['snote', 'lasso', 'select'].includes(tool) && snAddTo) snStopAdd();   // Lasso/Auswahl: weitere Stellen wählen
+    if (tool !== 'graph' && graphDraft) { graphDraft = null; graphRender(); }
+    if (sel && !['select', 'lasso'].includes(tool)) deselectImage();   // Auswahl würde sonst Tipper abfangen
     if (tool !== 'eraser') store.set('noteTool', tool);
     document.body.dataset.noteTool = tool;
     document.querySelectorAll('[data-tool]').forEach((x) => x.classList.toggle('active', x === b));
@@ -2130,6 +2135,7 @@ function newNote() {
 
 async function openNote(n) {
   commitEditor();
+  if (graphDraft) { graphDraft = null; graphRender(); }
   closePageOverview();
   if (snAddTo) snStopAdd();
   closeSnPanel();
@@ -2892,7 +2898,9 @@ function transformItem(s, k, ox, oy, nx, ny) {
     p[i] = Math.round(tx(p[i]) * 10) / 10;
     p[i + 1] = Math.round(ty(p[i + 1]) * 10) / 10;
   }
-  return { ...s, pts: p, size: s.size * k };
+  const out = { ...s, pts: p, size: s.size * k };
+  if (s.csys) { const c = s.csys; out.csys = { ...c, ox: tx(c.ox), oy: ty(c.oy), U: c.U * k, x0: tx(c.x0), x1: tx(c.x1), y0: ty(c.y0), y1: ty(c.y1) }; }
+  return out;
 }
 
 function selectItems(i, items, coord) {
@@ -3359,8 +3367,10 @@ function coordItems(r, opt) {
     const w = measureCtx.measureText(text).width + 2;
     return { tool: 'text', x: align === 'center' ? x - w / 2 : align === 'right' ? x - w : x, y, w, size: FS, color, text };
   };
+  const xAxis = line([[r.x0, oy], [r.x1, oy]]);
+  xAxis.csys = { id: 'cs' + Date.now().toString(36), ox, oy, U, x0: r.x0, x1: r.x1, y0: r.y0, y1: r.y1 };
   const items = [
-    line([[r.x0, oy], [r.x1, oy]]), line([[r.x1 - 10, oy - 5], [r.x1, oy], [r.x1 - 10, oy + 5]]),
+    xAxis, line([[r.x1 - 10, oy - 5], [r.x1, oy], [r.x1 - 10, oy + 5]]),
     line([[ox, r.y1], [ox, r.y0]]), line([[ox - 5, r.y0 + 10], [ox, r.y0], [ox + 5, r.y0 + 10]]),
     label('x', r.x1 - 4, oy + 6, 'left'), label('y', ox + 7, r.y0 - 4, 'left'), label('0', ox - 4, oy + 5, 'right')
   ];
@@ -4876,6 +4886,270 @@ function removeFav(j) {
   penFavs = penFavs.filter((_, k) => k !== j);
   store.set('penFavs', penFavs);
   renderFavs();
+}
+
+// ---------- Kurven-Werkzeug ----------
+// Punkte in ein Koordinatensystem tippen (rasten auf den Kästchen ein) → die App legt eine
+// Kurve hindurch: automatisch passende Funktionsart, Gerade, Parabel, 3. Grades, Exponential
+// oder glatt durch alle Punkte. Antippen einer fertigen Kurve öffnet ihre Punkte wieder.
+// Das Koordinatensystem merkt sich Ursprung und Einheit an seiner x-Achse (s.csys).
+let graphDraft = null;   // { page, cs, pts: [[ux, uy]], mode, gid?, color, size }
+let graphTap = null;
+let graphMode = store.get('graphMode', 'auto');
+let graphEq = store.get('graphEq', true);
+let graphPts = store.get('graphPts', true);
+const GRAPH_MODES = [['auto', 'Automatisch'], ['line', 'Gerade'], ['quad', 'Parabel'], ['cubic', '3. Grades'], ['exp', 'Exponential'], ['smooth', 'Glatt']];
+
+const csOf = (page, id) => (page.strokes.find((s) => s.csys && s.csys.id === id) || {}).csys;
+function csAt(page, x, y) {
+  for (let k = page.strokes.length - 1; k >= 0; k--) {
+    const c = page.strokes[k].csys;
+    if (c && x >= c.x0 - 6 && x <= c.x1 + 6 && y >= c.y0 - 6 && y <= c.y1 + 6) return c;
+  }
+  return null;
+}
+const csToUnit = (c, x, y) => [(x - c.ox) / c.U, (c.oy - y) / c.U];
+const csToPage = (c, ux, uy) => [c.ox + ux * c.U, c.oy - uy * c.U];
+
+// Lineares Gleichungssystem (klein) lösen
+function solveLin(A, b) {
+  const n = b.length, M = A.map((r, i) => r.concat(b[i]));
+  for (let c = 0; c < n; c++) {
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    if (Math.abs(M[p][c]) < 1e-12) return null;
+    [M[c], M[p]] = [M[p], M[c]];
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue;
+      const f = M[r][c] / M[c][c];
+      for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k];
+    }
+  }
+  return M.map((r, i) => r[n] / r[i]);
+}
+// Polynom vom Grad d (kleinste Quadrate) → Koeffizienten [a0, a1, …]
+function fitPoly(pts, d) {
+  if (pts.length < d + 1) return null;
+  const A = [], b = [];
+  for (let i = 0; i <= d; i++) {
+    A.push([]);
+    for (let j = 0; j <= d; j++) A[i].push(pts.reduce((s, [x]) => s + x ** (i + j), 0));
+    b.push(pts.reduce((s, [x, y]) => s + y * x ** i, 0));
+  }
+  return solveLin(A, b);
+}
+const polyF = (c) => (x) => c.reduce((s, a, i) => s + a * x ** i, 0);
+
+function graphFit(pts, mode) {
+  const xs = new Set(pts.map((p) => p[0]));
+  if (pts.length < 2 || xs.size < 2) return null;
+  const make = (m) => {
+    if (m === 'line') { const c = fitPoly(pts, 1); return c && { mode: m, f: polyF(c), c }; }
+    if (m === 'quad') { const c = pts.length >= 3 && fitPoly(pts, 2); return c && { mode: m, f: polyF(c), c }; }
+    if (m === 'cubic') { const c = pts.length >= 4 && fitPoly(pts, 3); return c && { mode: m, f: polyF(c), c }; }
+    if (m === 'exp') {
+      if (pts.length < 2 || pts.some(([, y]) => y <= 0)) return null;
+      const c = fitPoly(pts.map(([x, y]) => [x, Math.log(y)]), 1);
+      if (!c) return null;
+      const a = Math.exp(c[0]), q = Math.exp(c[1]);
+      return { mode: m, f: (x) => a * q ** x, a, q };
+    }
+    return { mode: 'smooth' };
+  };
+  if (mode !== 'auto') return make(mode);
+  // Automatisch: die einfachste Funktionsart, die (fast) genau durch alle Punkte geht
+  const ys = pts.map((p) => p[1]), span = Math.max(1, Math.max(...ys) - Math.min(...ys));
+  for (const m of ['line', 'quad', 'exp', 'cubic']) {
+    const r = make(m);
+    if (!r) continue;
+    const rms = Math.sqrt(pts.reduce((s, [x, y]) => s + (r.f(x) - y) ** 2, 0) / pts.length);
+    if (rms <= 0.015 * span) return r;
+  }
+  return pts.length === 2 ? make('line') : make('smooth');
+}
+
+// Zahl schön auf Deutsch: 0,5  −2  1,33
+function fmtNum(v) {
+  const r = Math.round(v * 100) / 100;
+  return (r < 0 ? '−' : '') + String(Math.abs(r)).replace('.', ',');
+}
+function graphEquation(r) {
+  if (!r || r.mode === 'smooth') return '';
+  if (r.mode === 'exp') return `f(x) = ${Math.abs(r.a - 1) < 0.005 ? '' : fmtNum(r.a) + ' · '}${fmtNum(r.q)}^x`.replace('^x', 'ˣ');
+  const sup = ['', '', '²', '³'];
+  let out = '';
+  for (let i = r.c.length - 1; i >= 0; i--) {
+    const a = Math.round(r.c[i] * 100) / 100;
+    if (a === 0) continue;
+    const abs = Math.abs(a), sign = a < 0 ? ' − ' : out ? ' + ' : '';
+    const coef = i > 0 && abs === 1 ? '' : String(abs).replace('.', ',');
+    out += (out ? sign : a < 0 ? '−' : '') + coef + (i > 0 ? 'x' + sup[i] : '');
+  }
+  return 'f(x) = ' + (out || '0');
+}
+
+// Kurve als Linienzüge in Seiten-Koordinaten (am Rand des Koordinatensystems abgeschnitten)
+function graphPolys(c, pts, r) {
+  const xmin = (c.x0 - c.ox) / c.U, xmax = (c.x1 - c.ox) / c.U, ymin = (c.oy - c.y1) / c.U, ymax = (c.oy - c.y0) / c.U;
+  let samples = [];
+  if (r.mode === 'smooth') {
+    // Catmull-Rom durch die Punkte (nach x sortiert)
+    const p = pts.slice().sort((a, b) => a[0] - b[0]);
+    for (let i = 0; i < p.length - 1; i++) {
+      const p0 = p[i - 1] || p[i], p1 = p[i], p2 = p[i + 1], p3 = p[i + 2] || p2;
+      for (let t = 0; t < 1; t += 1 / 16) {
+        const t2 = t * t, t3 = t2 * t;
+        const f = (a, b, c2, d) => 0.5 * (2 * b + (-a + c2) * t + (2 * a - 5 * b + 4 * c2 - d) * t2 + (-a + 3 * b - 3 * c2 + d) * t3);
+        samples.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
+      }
+    }
+    samples.push(p[p.length - 1]);
+  } else {
+    const step = (xmax - xmin) / 400;
+    for (let x = xmin; x <= xmax + 1e-9; x += step) samples.push([x, r.f(x)]);
+  }
+  const polys = [];
+  let cur = [];
+  for (const [x, y] of samples) {
+    if (!isFinite(y) || y < ymin - 0.02 || y > ymax + 0.02) { if (cur.length > 1) polys.push(cur); cur = []; continue; }
+    cur.push(csToPage(c, x, y));
+  }
+  if (cur.length > 1) polys.push(cur);
+  return polys;
+}
+
+function graphDown(e, canvas) {
+  if (e.pointerType !== 'touch') e.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  graphTap = { id: e.pointerId, page: Number(canvas.dataset.page), x: ((e.clientX - r.left) / r.width) * PAGE_W, y: ((e.clientY - r.top) / r.height) * PAGE_H, sx: e.clientX, sy: e.clientY, st: pagesBox.scrollTop };
+}
+
+function graphUp(e) {
+  const t = graphTap;
+  graphTap = null;
+  if (Math.hypot(e.clientX - t.sx, e.clientY - t.sy) > 12 || Math.abs(pagesBox.scrollTop - t.st) > 3) return;   // gescrollt
+  const page = note.pages[t.page];
+  // Fertige Kurve angetippt → ihre Punkte wieder bearbeiten
+  if (!graphDraft) {
+    const hit = page.strokes.find((s) => s.graph && strokeHit(s, t.x, t.y, 10));
+    if (hit) {
+      const cs = csOf(page, hit.graph.csid);
+      if (cs) {
+        graphDraft = { page: t.page, cs: cs.id, pts: hit.graph.pts.map((p) => p.slice()), mode: hit.graph.mode, gid: hit.graph.gid, no: hit.graph.no, color: hit.color, size: hit.size };
+        graphMode = hit.graph.mode;
+        toast('Kurve wird bearbeitet – Punkte antippen, „Abbrechen“ für eine neue');
+        return graphRender();
+      }
+    }
+  }
+  const cs = csAt(page, t.x, t.y);
+  if (!cs) return toast('Tippe in ein Koordinatensystem (Koordinaten-Werkzeug). Ältere Systeme bitte neu anlegen.');
+  if (graphDraft && (graphDraft.page !== t.page || graphDraft.cs !== cs.id)) return toast('Erst die aktuelle Kurve übernehmen oder abbrechen');
+  if (!graphDraft) graphDraft = { page: t.page, cs: cs.id, pts: [], mode: graphMode, color: PEN_COLORS[colorSel.pen], size };
+  // auf die Kästchen einrasten
+  const sx = cs.ox + Math.round((t.x - cs.ox) / GRID_STEP) * GRID_STEP, sy = cs.oy + Math.round((t.y - cs.oy) / GRID_STEP) * GRID_STEP;
+  const [ux, uy] = csToUnit(cs, sx, sy).map((v) => Math.round(v * 1000) / 1000);
+  const j = graphDraft.pts.findIndex(([x, y]) => Math.abs(x - ux) < 1e-6 && Math.abs(y - uy) < 1e-6);
+  if (j >= 0) graphDraft.pts.splice(j, 1);                        // nochmal antippen = Punkt weg
+  else {
+    graphDraft.pts = graphDraft.pts.filter(([x]) => Math.abs(x - ux) > 1e-6);   // eine Funktion: ein y je x
+    graphDraft.pts.push([ux, uy]);
+  }
+  graphRender();
+}
+
+// Vorschau (gestrichelt) und Punkte im Seiten-SVG, dazu die Leiste
+function graphLayer(i) {
+  const svg = pageEls[i].svg;
+  let g = svg.querySelector('.graph-draft');
+  if (!g) { g = svgEl('g', { class: 'graph-draft' }); svg.append(g); }
+  return g;
+}
+function graphRender() {
+  const d = graphDraft;
+  document.querySelectorAll('.graph-draft').forEach((g) => { g.innerHTML = ''; });
+  const bar = graphBar();
+  if (!d) { bar.hidden = true; return; }
+  const page = note.pages[d.page], cs = csOf(page, d.cs);
+  if (!cs) { graphDraft = null; bar.hidden = true; return; }
+  let out = '';
+  const r = graphFit(d.pts, d.mode);
+  if (r) for (const p of graphPolys(cs, d.pts, r)) out += `<path d="${p.map(([x, y], j) => (j ? 'L' : 'M') + num(x) + ' ' + num(y)).join('')}" fill="none" stroke="${d.color}" stroke-width="2" stroke-dasharray="6 5" opacity=".75"/>`;
+  for (const [ux, uy] of d.pts) {
+    const [x, y] = csToPage(cs, ux, uy);
+    out += `<circle cx="${num(x)}" cy="${num(y)}" r="5" fill="${d.color}"/><circle cx="${num(x)}" cy="${num(y)}" r="9" fill="none" stroke="${d.color}" stroke-width="1.2" opacity=".5"/>`;
+  }
+  graphLayer(d.page).innerHTML = out;
+  // Leiste
+  const eq = r ? graphEquation(r) : '';
+  bar.querySelector('.gb-info').textContent = d.pts.length < 2 ? 'Punkte antippen (nochmal tippen = weg)' : (r && r.mode !== d.mode && d.mode === 'auto' ? GRAPH_MODES.find(([m]) => m === r.mode)[1] + (eq ? ': ' : '') : '') + (eq || (r ? 'glatte Kurve' : 'Diese Art passt nicht zu den Punkten'));
+  bar.querySelectorAll('[data-mode]').forEach((b) => b.classList.toggle('on', b.dataset.mode === d.mode));
+  bar.querySelector('[data-a="eq"]').classList.toggle('on', graphEq);
+  bar.querySelector('[data-a="pts"]').classList.toggle('on', graphPts);
+  bar.querySelector('[data-a="ok"]').disabled = !r;
+  bar.style.top = pagesBox.getBoundingClientRect().top + 8 + 'px';
+  bar.hidden = false;
+}
+
+function graphBar() {
+  let bar = $('#graph-bar');
+  if (bar) return bar;
+  bar = document.createElement('div');
+  bar.id = 'graph-bar';
+  bar.className = 'graph-bar';
+  bar.hidden = true;
+  bar.innerHTML = '<div class="gb-info"></div><div class="gb-row">' +
+    GRAPH_MODES.map(([m, l]) => `<button type="button" data-mode="${m}">${l}</button>`).join('') +
+    '</div><div class="gb-row"><button type="button" data-a="eq">f(x) zeigen</button><button type="button" data-a="pts">Punkte zeigen</button>' +
+    '<span class="gb-sp"></span><button type="button" data-a="cancel">Abbrechen</button><button type="button" data-a="ok" class="gb-ok">Übernehmen</button></div>';
+  document.body.append(bar);
+  bar.addEventListener('pointerdown', (e) => e.stopPropagation());
+  bar.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b || !graphDraft) return;
+    if (b.dataset.mode) { graphDraft.mode = graphMode = b.dataset.mode; store.set('graphMode', graphMode); }
+    else if (b.dataset.a === 'eq') { graphEq = !graphEq; store.set('graphEq', graphEq); }
+    else if (b.dataset.a === 'pts') { graphPts = !graphPts; store.set('graphPts', graphPts); }
+    else if (b.dataset.a === 'cancel') graphDraft = null;
+    else if (b.dataset.a === 'ok') return graphCommit();
+    graphRender();
+  });
+  return bar;
+}
+
+function graphCommit() {
+  const d = graphDraft;
+  const page = note.pages[d.page], cs = csOf(page, d.cs), r = graphFit(d.pts, d.mode);
+  if (!cs || !r) return;
+  const before = page.strokes.slice();
+  const gid = d.gid || 'g' + Date.now().toString(36);
+  // alte Version derselben Kurve ersetzen
+  page.strokes = page.strokes.filter((s) => !(s.graph && s.graph.gid === gid) && s.graphOf !== gid);
+  const graph = { gid, csid: cs.id, pts: d.pts.map((p) => p.slice()), mode: d.mode };
+  for (const p of graphPolys(cs, d.pts, r)) {
+    page.strokes.push({ tool: 'pen', style: 'ball', shape: true, color: d.color, size: d.size, pts: p.flatMap(([x, y]) => [Math.round(x * 10) / 10, Math.round(y * 10) / 10, 0.5]), graph });
+  }
+  if (graphPts) for (const [ux, uy] of d.pts) {
+    const [x, y] = csToPage(cs, ux, uy);
+    page.strokes.push({ tool: 'pen', style: 'ball', shape: true, color: d.color, size: 1, pts: [x - 4, y - 4, 0.5, x + 4, y + 4, 0.5], graphOf: gid });
+    page.strokes.push({ tool: 'pen', style: 'ball', shape: true, color: d.color, size: 1, pts: [x - 4, y + 4, 0.5, x + 4, y - 4, 0.5], graphOf: gid });
+  }
+  // Mehrere Kurven im selben System: f, g, h … untereinander
+  const others = [...new Set(page.strokes.filter((x) => x.graph && x.graph.csid === cs.id && x.graph.gid !== gid).map((x) => x.graph.gid))];
+  const no = d.gid ? (d.no ?? others.length) : others.length;
+  graph.no = no;
+  page.strokes.forEach((x) => { if (x.graph && x.graph.gid === gid) x.graph = graph; });
+  const name = 'fghpqrs'[no % 7];
+  const eq = graphEq && graphEquation(r).replace(/^f\(x\)/, name + '(x)');
+  if (eq) {
+    const fs = 16, w = measure(eq, fontOf({}, fs)) + 4;
+    page.strokes.push({ tool: 'text', x: Math.max(cs.x0, cs.x1 - w - 8), y: cs.y0 + 6 + no * 24, w, size: fs, color: d.color, text: eq, bg: '#ffffff', graphOf: gid });
+  }
+  graphDraft = null;
+  graphRender();
+  pushHistory([{ page: d.page, before, after: page.strokes.slice() }]);
+  drawPage(d.page);
+  saveNote();
 }
 
 // Beim Wechseln/Schließen der App sofort speichern
