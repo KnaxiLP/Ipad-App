@@ -105,7 +105,8 @@ function gnTpl(b) {
   let j = 8;
   while (j < b.length && b[j]) j++;
   const sig = String.fromCharCode(...b.subarray(8, j));
-  if (!/^[vuA()]*$/.test(sig)) return { sig, out: null };      // andere Elemente (z. B. Formen)
+  if (sig.startsWith('vuA(v)A(S(uu))A(S(uuuu))')) return { sig, curves: gnCurves(b.subarray(j + 1)) };
+  if (!/^[vuA()]*$/.test(sig)) return { sig, out: null };      // unbekannt
   const dv = new DataView(b.buffer, b.byteOffset + j + 1, b.length - j - 1), out = [];
   let i = 0;
   for (const t of sig.match(/A\(.\)|./g)) {
@@ -119,6 +120,44 @@ function gnTpl(b) {
     }
   }
   return { sig, out };
+}
+
+// Neueres Format: Dicke + Pfad aus Befehlen (0 = Start, 1 = quadratische Kurve)
+// Startpunkte als (x, y), Kurven als (Kontrollpunkt x, y, Endpunkt x, y)
+function gnCurves(b) {
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  let i = 2;
+  const width = dv.getFloat32(i, true); i += 4;
+  const nc = dv.getUint32(i, true); i += 4;
+  const cmds = [];
+  for (let k = 0; k < nc; k++, i += 2) cmds.push(dv.getUint16(i, true));
+  const nm = dv.getUint32(i, true); i += 4;
+  const moves = [];
+  for (let k = 0; k < nm; k++, i += 8) moves.push([dv.getFloat32(i, true), dv.getFloat32(i + 4, true)]);
+  const nq = dv.getUint32(i, true); i += 4;
+  const quads = [];
+  for (let k = 0; k < nq; k++, i += 16) quads.push([0, 4, 8, 12].map((o) => dv.getFloat32(i + o, true)));
+  // in Punkte umwandeln (Kurven fein genug abtasten)
+  const parts = [];
+  let cur = null, mi = 0, qi = 0;
+  for (const c of cmds) {
+    if (c === 0) {
+      const m = moves[mi++];
+      if (!m) break;
+      cur = [[m[0], m[1], 0.5]];
+      parts.push(cur);
+    } else {
+      const q = quads[qi++];
+      if (!q || !cur) break;
+      const [x0, y0] = cur[cur.length - 1], [cx, cy, x1, y1] = q;
+      const n = Math.max(1, Math.min(12, Math.ceil((Math.hypot(cx - x0, cy - y0) + Math.hypot(x1 - cx, y1 - cy)) / 3)));
+      for (let k = 1; k <= n; k++) {
+        const t = k / n, u = 1 - t;
+        cur.push([u * u * x0 + 2 * u * t * cx + t * t * x1, u * u * y0 + 2 * u * t * cy + t * t * y1, 0.5]);
+      }
+    }
+  }
+  return { width, parts: parts.filter((p) => p.length > 1 || nq === 0) };
 }
 
 function gnColor(m) {
@@ -139,6 +178,10 @@ function gnSegDist(px, py, ax, ay, bx, by) {
 function gnElement(q) {
   const col = gnColor(gnSub(q, 4));
   const raw = q[2] ? gnBv4(q[2][0]) : null, t = raw && gnTpl(raw);
+  const sh = gnSub(q, 9), list = gnSub(sh, 1)[1] || [];
+  if (t && t.curves && t.curves.parts.some((p) => p.length > 1)) {
+    return { kind: 'stroke', parts: t.curves.parts.filter((p) => p.length > 1), width: t.curves.width || 1.6, color: col.hex, alpha: col.alpha };
+  }
   if (t && t.out && t.out.length >= 9) {
     // Mittellinie: Startpunkt (x, y, Druck) + weitere Punkte; Umriss als Punktpaare
     const pts = [];
@@ -159,15 +202,15 @@ function gnElement(q) {
       ds.sort((a, b) => a - b);
       width = Math.max(0.3, 2 * ds[Math.floor(ds.length / 2)]);
     }
-    return { kind: 'stroke', pts, width, color: col.hex, alpha: col.alpha };
+    return { kind: 'stroke', parts: [pts], width, color: col.hex, alpha: col.alpha };
   }
   // Form (Linie, Pfeil, Vieleck): Punkte in Feld 9, Dicke in 9.15
-  const sh = gnSub(q, 9), list = gnSub(sh, 1)[1] || [];
   if (list.length >= 2) {
     const pts = list.map((v) => { const p = gnMsg(v); return [gnF32(p[1] && p[1][0]), gnF32(p[2] && p[2][0]), 0.5]; });
-    const width = (sh[15] && gnF32(sh[15][0])) || 1.6;
-    return { kind: 'shape', pts, width, color: col.hex, alpha: col.alpha };
+    const width = (t && t.curves && t.curves.width) || (sh[15] && gnF32(sh[15][0])) || 1.6;
+    return { kind: 'shape', parts: [pts], width, color: col.hex, alpha: col.alpha };
   }
+  if (t && (t.curves || t.out)) return null;     // gelöscht (keine Punkte mehr)
   return { kind: 'unknown' };
 }
 
@@ -260,11 +303,13 @@ async function readGoodnotes(file, maxPages) {
         if (el.kind === 'unknown') { skipped++; continue; }
         const marker = el.alpha < 0.95;
         const w = el.width * k;
-        const pts = [];
-        for (const [x, y, p] of el.pts) pts.push(Math.round((fit.x + x * k) * 10) / 10, Math.round((fit.y + y * k) * 10) / 10, Math.round(Math.max(0, Math.min(1, p)) * 100) / 100);
-        page.strokes.push(marker
-          ? { tool: 'marker', color: el.color, size: Math.max(0.2, w / BASE_WIDTH.marker), pts }
-          : { tool: 'pen', style: 'ball', color: el.color, size: Math.max(0.3, w / BASE_WIDTH.pen), pts, ...(el.kind === 'shape' ? { shape: true } : {}) });
+        for (const part of el.parts) {
+          const pts = [];
+          for (const [x, y, p] of part) pts.push(Math.round((fit.x + x * k) * 10) / 10, Math.round((fit.y + y * k) * 10) / 10, Math.round(Math.max(0, Math.min(1, p)) * 100) / 100);
+          page.strokes.push(marker
+            ? { tool: 'marker', color: el.color, size: Math.max(0.2, w / BASE_WIDTH.marker), pts }
+            : { tool: 'pen', style: 'ball', color: el.color, size: Math.max(0.3, w / BASE_WIDTH.pen), pts, ...(el.kind === 'shape' ? { shape: true } : {}) });
+        }
       }
     }
     out.push(page);

@@ -57,7 +57,7 @@ Jetzt startet die Seite vom Home-Bildschirm aus wie eine App.
 
 In Goodnotes die Notiz teilen → **Exportieren → Goodnotes** (`.goodnotes`-Datei), dann hier ⋯ → „PDF oder Bild importieren“ (als Seiten oder als neue Notiz).
 
-- Übernommen werden: Titel, Seiten, PDF-Hintergründe (z. B. eingescannte Blätter), Handschrift in Farbe und Dicke und Linien-Formen. Danach kann man normal weiterschreiben, radieren, mit dem Lasso verschieben usw.
+- Übernommen werden: Titel, Seiten, PDF-Hintergründe (z. B. eingescannte Blätter), Handschrift in Farbe und Dicke, Textmarker und Linien-Formen – aus älteren und neueren Goodnotes-Versionen. Danach kann man normal weiterschreiben, radieren, mit dem Lasso verschieben usw.
 - Goodnotes-Seiten sind oft schmaler als A4. Sie werden ganz auf die Seite eingepasst.
 - Noch nicht übernommen: getippte Textfelder und eingefügte Bilder. Die App sagt nach dem Import, wie viele Elemente fehlen. Für solche Seiten den Umweg über Goodnotes → Exportieren → PDF nehmen.
 - Das Goodnotes-Format ist nicht offen dokumentiert. Der Import wurde an echten Dateien nachgebaut.
