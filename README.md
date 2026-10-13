@@ -48,10 +48,20 @@ Jetzt startet die Seite vom Home-Bildschirm aus wie eine App.
 - Läuft auf iPad **und** Windows-Tablets wie dem Surface (dort übernimmt die App Finger-Scrollen und Zoomen selbst)
 - **Zoomen** mit zwei Fingern (oder − / + in der Leiste, Tippen auf die Prozentzahl = 100 %)
 - **Textfelder** (T-Werkzeug): tippen = neues Feld oder vorhandenes bearbeiten, ziehen = verschieben; Farbe/Größe aus der Leiste; kommt als echter Text ins PDF
-- **Import** (⋯ → „PDF oder Bild importieren“): PDFs werden zu einer neuen Notiz, auf der man schreiben kann; Bilder kommen als neue Seite dazu. Goodnotes-Notizen vorher in Goodnotes als PDF exportieren.
+- **Import** (⋯ → „PDF oder Bild importieren“): PDFs werden zu einer neuen Notiz, auf der man schreiben kann; Bilder kommen als neue Seite dazu. **`.goodnotes`-Dateien** lassen sich direkt importieren (siehe unten).
 - Alles ist **Vektorgrafik (SVG)**: Schrift bleibt in jeder Größe gestochen scharf
 - Export als **PDF (Vektor)**, ideal zum Import in Goodnotes, oder als Bild (⋯ → Teilen)
 - Alles wird nur auf dem Gerät gespeichert
+
+## Goodnotes-Import
+
+In Goodnotes die Notiz teilen → **Exportieren → Goodnotes** (`.goodnotes`-Datei), dann hier ⋯ → „PDF oder Bild importieren“ (als Seiten oder als neue Notiz).
+
+- Übernommen werden: Titel, Seiten, PDF-Hintergründe (z. B. eingescannte Blätter), Handschrift in Farbe und Dicke und Linien-Formen. Danach kann man normal weiterschreiben, radieren, mit dem Lasso verschieben usw.
+- Goodnotes-Seiten sind oft schmaler als A4. Sie werden ganz auf die Seite eingepasst.
+- Noch nicht übernommen: getippte Textfelder und eingefügte Bilder. Die App sagt nach dem Import, wie viele Elemente fehlen. Für solche Seiten den Umweg über Goodnotes → Exportieren → PDF nehmen.
+- Das Goodnotes-Format ist nicht offen dokumentiert. Der Import wurde an echten Dateien nachgebaut.
+- Braucht iPadOS 16.4 oder neuer. Für PDF-Hintergründe braucht der Import beim ersten Mal Internet.
 
 ## Klammern (für Goodnotes)
 
@@ -93,6 +103,7 @@ python3 -m http.server 8000
 | `app.js` | Logik (Navigation, Aufgaben, Zähler, Speichern) |
 | `grades.js` | Notenrechner |
 | `notes.js` | Notizen mit Stift |
+| `goodnotes.js` | Import von `.goodnotes`-Dateien |
 | `braces.js` | Klammern-Generator zum Kopieren |
 | `python.js` | Python-Editor (Oberfläche) |
 | `py-worker.js` | Führt Python im Hintergrund aus (Pyodide) |

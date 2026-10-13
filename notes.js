@@ -2792,7 +2792,10 @@ $('#import-file').addEventListener('change', async (e) => {
   const name = file.name.toLowerCase();
   try {
     if (name.endsWith('.goodnotes')) {
-      alert('Goodnotes-Dateien haben ein eigenes, nicht offenes Format.\n\nSo geht es: In Goodnotes die Notiz öffnen → Teilen → Exportieren → PDF. Diese PDF dann hier importieren.');
+      try { await importGoodnotes(file, importAsNote); } catch (err) {
+        console.error(err);
+        alert('Diese Goodnotes-Datei ließ sich nicht lesen' + (err && err.message ? ` (${err.message})` : '') + '.\n\nAusweg: In Goodnotes Teilen → Exportieren → PDF und die PDF hier importieren.');
+      }
     } else if (file.type === 'application/pdf' || name.endsWith('.pdf')) {
       await (importAsNote ? importPdf(file) : insertPdfPages(file));
     } else if (file.type.startsWith('image/') || /\.(png|jpe?g|heic|gif|webp)$/.test(name)) {
