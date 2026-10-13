@@ -2617,18 +2617,45 @@ function buildPdf(pages, paper) {
   return new Blob(chunks, { type: 'application/pdf' });
 }
 
-function shareFiles(files, title) {
-  if (navigator.canShare && navigator.canShare({ files })) {
-    navigator.share({ files, title }).catch(() => {});
-  } else {
-    files.forEach((f) => {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(f);
-      a.download = f.name;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    });
+// Teilen (iPad) bzw. Speichern (Surface/Windows). Auf Windows meldet der Browser zwar
+// „kann teilen“, das Teilen-Fenster tut in der installierten App aber oft nichts – dort speichern.
+function downloadFiles(files) {
+  files.forEach((f, i) => setTimeout(() => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(f);
+    a.download = f.name;
+    a.style.display = 'none';
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  }, i * 300));
+  toast(files.length > 1 ? `${files.length} Dateien werden heruntergeladen` : `„${files[0].name}“ wird heruntergeladen`);
+}
+
+async function saveFiles(files) {
+  // Ein Datei: „Speichern unter“ (Edge/Chrome), sonst normaler Download
+  if (files.length === 1 && window.showSaveFilePicker) {
+    const f = files[0], ext = f.name.slice(f.name.lastIndexOf('.'));
+    try {
+      const h = await showSaveFilePicker({ suggestedName: f.name, types: [{ description: ext === '.pdf' ? 'PDF' : 'Bild', accept: { [f.type]: [ext] } }] });
+      const w = await h.createWritable();
+      await w.write(f);
+      await w.close();
+      return toast(`Gespeichert: ${h.name}`);
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;      // abgebrochen
+    }
   }
+  downloadFiles(files);
+}
+
+function shareFiles(files, title) {
+  $('#more-dialog').close();
+  if (!IS_IOS) return saveFiles(files);
+  if (navigator.canShare && navigator.canShare({ files })) {
+    navigator.share({ files, title }).catch((err) => { if (!err || err.name !== 'AbortError') downloadFiles(files); });
+  } else downloadFiles(files);
 }
 
 $('#note-export-pdf').addEventListener('click', () => {

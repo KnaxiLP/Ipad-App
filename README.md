@@ -50,7 +50,7 @@ Jetzt startet die Seite vom Home-Bildschirm aus wie eine App.
 - **Textfelder** (T-Werkzeug): tippen = neues Feld oder vorhandenes bearbeiten, ziehen = verschieben; Farbe/Größe aus der Leiste; kommt als echter Text ins PDF
 - **Import** (⋯ → „PDF oder Bild importieren“): PDFs werden zu einer neuen Notiz, auf der man schreiben kann; Bilder kommen als neue Seite dazu. **`.goodnotes`-Dateien** lassen sich direkt importieren (siehe unten).
 - Alles ist **Vektorgrafik (SVG)**: Schrift bleibt in jeder Größe gestochen scharf
-- Export als **PDF (Vektor)**, ideal zum Import in Goodnotes, oder als Bild (⋯ → Teilen)
+- Export als **PDF (Vektor)**, ideal zum Import in Goodnotes, oder als Bild (⋯ → Teilen). Am iPad öffnet sich das Teilen-Menü, am Surface/Windows ein „Speichern unter“-Fenster (sonst landet die Datei in „Downloads“)
 - Alles wird nur auf dem Gerät gespeichert
 
 ## Goodnotes-Import
