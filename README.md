@@ -53,6 +53,31 @@ Jetzt startet die Seite vom Home-Bildschirm aus wie eine App.
 - Export als **PDF (Vektor)**, ideal zum Import in Goodnotes, oder als Bild (⋯ → Teilen). Am iPad öffnet sich das Teilen-Menü, am Surface/Windows ein „Speichern unter“-Fenster (sonst landet die Datei in „Downloads“)
 - Alles wird nur auf dem Gerät gespeichert
 
+## Untis-Stundenplan
+
+Der Bereich **Stundenplan** zeigt deinen Plan live aus WebUntis: Fächer in den Untis-Farben, **Entfall** (rot, durchgestrichen), **Änderungen** wie Vertretung oder Raumwechsel (orange, alter Lehrer/Raum durchgestrichen) und die laufende Stunde (blau umrandet). Eine Stunde antippen zeigt alle Infos. Mit ‹ › blätterst du durch die Wochen. Solange die App offen ist, aktualisiert sie sich etwa alle 15 Minuten; ↻ lädt sofort neu. Ohne Internet siehst du den zuletzt geladenen Stand. Auf der Startseite steht die aktuelle bzw. nächste Stunde.
+
+### Einrichten
+
+**1. Proxy anlegen (einmalig, kostenlos).** Browser dürfen WebUntis nicht direkt abfragen. Ein kleiner eigener Cloudflare-Worker leitet die Anfragen weiter:
+
+1. Auf [cloudflare.com](https://dash.cloudflare.com/sign-up) ein kostenloses Konto anlegen.
+2. **Workers & Pages → Create → Create Worker**, Name z. B. `untis-proxy`, **Deploy**.
+3. **Edit code**, den Inhalt von [`untis-proxy/worker.js`](untis-proxy/worker.js) komplett hineinkopieren, **Deploy**.
+4. Läuft die App nicht unter `https://knaxilp.github.io`, oben in `ALLOWED_ORIGINS` die eigene Adresse eintragen.
+5. Die Adresse des Workers kopieren, z. B. `https://untis-proxy.dein-name.workers.dev`.
+
+Der Worker leitet nur an `*.webuntis.com` weiter, nur für deine App, und speichert nichts.
+
+**2. In der App:** Einstellungen → **Untis-Stundenplan**: Server (z. B. `mese.webuntis.com`), Schule (steht in der WebUntis-Adresse hinter `school=`), Benutzer, Passwort und die Proxy-Adresse eintragen → **Speichern & testen**.
+
+### Datenschutz
+
+- Die Zugangsdaten liegen nur auf deinem Gerät. Das Passwort kommt **nicht** in die Sicherungsdatei (Info → Sicherung) und muss nach einem Wiederherstellen auf einem neuen Gerät neu eingegeben werden.
+- Bei jeder Aktualisierung meldet sich die App an, holt die Woche und meldet sich wieder ab. Passwort und Stundenplan laufen dabei über deinen eigenen Worker.
+- **Zugangsdaten nie ins Repository hochladen** (z. B. eine `untis_config.json`).
+- „Abmelden“ löscht Zugangsdaten und gespeicherten Plan vom Gerät.
+
 ## Goodnotes-Import
 
 In Goodnotes die Notiz teilen → **Exportieren → Goodnotes** (`.goodnotes`-Datei), dann hier ⋯ → „PDF oder Bild importieren“ (als Seiten oder als neue Notiz).
@@ -104,6 +129,8 @@ python3 -m http.server 8000
 | `grades.js` | Notenrechner |
 | `notes.js` | Notizen mit Stift |
 | `goodnotes.js` | Import von `.goodnotes`-Dateien |
+| `untis.js` | Stundenplan aus WebUntis |
+| `untis-proxy/worker.js` | Proxy für WebUntis (Cloudflare Worker) |
 | `braces.js` | Klammern-Generator zum Kopieren |
 | `python.js` | Python-Editor (Oberfläche) |
 | `py-worker.js` | Führt Python im Hintergrund aus (Pyodide) |

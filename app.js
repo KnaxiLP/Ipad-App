@@ -245,6 +245,7 @@ $('#backup-save').addEventListener('click', async () => {
   const local = {};
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
+    if (k === 'untisPass') continue;     // Untis-Passwort nie in die Sicherungsdatei
     local[k] = localStorage.getItem(k);
   }
   let notes = [];
@@ -273,8 +274,10 @@ $('#backup-file').addEventListener('change', async (e) => {
     window.appRestoring = true;
     for (const n of await noteDb.all()) await noteDb.del(n.id);
     for (const n of data.notes) await noteDb.put(n);
+    const pass = localStorage.getItem('untisPass');
     localStorage.clear();
     for (const [k, v] of Object.entries(data.local)) localStorage.setItem(k, v);
+    if (pass) localStorage.setItem('untisPass', pass);
   } catch {
     window.appRestoring = false;
     return toast('Laden fehlgeschlagen');

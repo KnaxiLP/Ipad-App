@@ -890,3 +890,59 @@ body[data-note-tool="graph"] .pages .page-live { cursor: crosshair; }
 .tg-label { white-space: nowrap; }
 .tool > .tg-label { display: none; }
 .tg-pop .tool > .tg-label { display: inline; }
+
+/* Untis-Stundenplan */
+#view-untis { max-width: 1200px; }
+.ut-header { flex-wrap: wrap; }
+.ut-nav { display: flex; gap: 6px; }
+.ut-nav .btn { min-width: 44px; }
+#untis-sync.spin { animation: ut-spin 1s linear infinite; }
+@keyframes ut-spin { to { transform: rotate(360deg); } }
+.ut-sub { margin: 0 4px 12px; font-weight: 600; }
+#untis-status.err { color: #dc2626; }
+.ut-empty { text-align: center; padding: 28px 20px; }
+.ut-empty p { margin: 0 0 10px; }
+#untis-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.ut-grid { display: grid; grid-template-columns: 54px repeat(5, minmax(120px, 1fr)); gap: 4px; min-width: 660px; }
+.ut-head { text-align: center; font-size: 13px; font-weight: 600; padding: 6px 2px; border-radius: 8px; color: var(--muted); }
+.ut-head span { color: var(--text); }
+.ut-head.today { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.ut-head.today span { color: var(--accent); }
+.ut-time { display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); line-height: 1.25; }
+.ut-time b { font-size: 15px; color: var(--text); }
+.ut-cell { display: flex; gap: 3px; min-height: 58px; border-radius: 10px; background: var(--card); padding: 3px; }
+.ut-cell.today { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 40%, transparent); }
+.ut-card {
+  flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left;
+  border: 0; border-left: 5px solid var(--c); border-radius: 7px; padding: 4px 6px; cursor: pointer; font: inherit; color: var(--text);
+  background: color-mix(in srgb, var(--c) 16%, var(--card));
+}
+.ut-card b { font-size: 14px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ut-meta, .ut-info { font-size: 11.5px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ut-info { font-style: italic; }
+.ut-tag { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+.ut-card.cancelled { background: color-mix(in srgb, #dc2626 10%, var(--card)); border-left-color: #dc2626; }
+.ut-card.cancelled b { text-decoration: line-through; color: var(--muted); }
+.ut-card.cancelled .ut-tag { color: #dc2626; }
+.ut-card.changed { box-shadow: inset 0 0 0 2px #f59e0b; }
+.ut-card.changed .ut-tag { color: #d97706; }
+.ut-card.live { box-shadow: inset 0 0 0 2px var(--accent); }
+.ut-note { text-align: center; }
+#untis-dialog .row { display: flex; justify-content: space-between; gap: 16px; }
+.ut-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ut-field > span { display: flex; flex-direction: column; flex: none; }
+.ut-field input { flex: 1; min-width: 0; max-width: 340px; border: 0; background: none; font: inherit; color: var(--text); text-align: right; padding: 6px 0; outline: none; }
+.ut-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: -6px 4px 6px; }
+/* schmale Breiten (iPad hochkant mit Seitenleiste): alle 5 Tage ohne Querscrollen */
+@media (max-width: 1000px) {
+  .ut-grid { grid-template-columns: 36px repeat(5, minmax(0, 1fr)); gap: 3px; min-width: 0; }
+  .ut-time span:last-child { display: none; }
+  .ut-time { font-size: 10px; }
+  .ut-cell { min-height: 54px; padding: 2px; gap: 2px; }
+  .ut-card { padding: 3px 4px; border-left-width: 4px; }
+  .ut-card b { font-size: 13px; }
+  .ut-meta, .ut-info { font-size: 10.5px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .ut-tag { font-size: 9px; }
+  .ut-head { font-size: 12px; padding: 4px 0; }
+}
+@media (max-width: 1000px) and (min-width: 701px) { .ut-header h2 { font-size: 28px; } }
