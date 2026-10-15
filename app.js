@@ -105,6 +105,18 @@ function renderTodos() {
     const text = document.createElement('span');
     text.className = 'todo-text';
     text.textContent = todo.text;
+    // Hausaufgabe aus dem Stundenplan: Fach und Fälligkeit dazu
+    if (todo.hw) {
+      const meta = document.createElement('span');
+      meta.className = 'todo-meta';
+      const due = new Date(todo.hw.due + 'T00:00');
+      const days = Math.round((due - new Date(new Date().toDateString())) / 864e5);
+      const su = document.createElement('b');
+      su.textContent = todo.hw.su;
+      meta.append(su, ` · fällig ${days === 0 ? 'heute' : days === 1 ? 'morgen' : due.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric' })}`);
+      if (days < 0 && !todo.done) meta.classList.add('late');
+      text.append(meta);
+    }
 
     const del = document.createElement('button');
     del.className = 'delete';

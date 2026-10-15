@@ -57,6 +57,22 @@ Jetzt startet die Seite vom Home-Bildschirm aus wie eine App.
 
 Der Bereich **Stundenplan** zeigt deinen Plan live aus WebUntis: Fächer in den Untis-Farben, **Entfall** (rot, durchgestrichen), **Änderungen** wie Vertretung oder Raumwechsel (orange, alter Lehrer/Raum durchgestrichen) und die laufende Stunde (blau umrandet). Eine Stunde antippen zeigt alle Infos. Mit ‹ › blätterst du durch die Wochen. Solange die App offen ist, aktualisiert sie sich etwa alle 15 Minuten; ↻ lädt sofort neu. Ohne Internet siehst du den zuletzt geladenen Stand. Auf der Startseite steht die aktuelle bzw. nächste Stunde.
 
+### Hausaufgaben
+
+Eine Stunde antippen → unten **Hausaufgabe eintragen**. Die Fälligkeit steht automatisch auf der **nächsten Stunde desselben Fachs** laut Untis (fällt die aus, auf der danach); bei Bedarf das Datum ändern. Am iPad kann man mit dem Pencil direkt ins Feld schreiben (Kritzeln), am Surface mit dem Stift.
+
+- Stunden, in denen etwas fällig ist, tragen im Plan ein **HA**.
+- Die Hausaufgaben stehen auch unter **Aufgaben** (mit Fach und Fälligkeit, Überfälliges rot).
+- Die Startseite zeigt, was **bis zum nächsten Schultag** fällig ist – freitags also bis Montag.
+
+### Notiz zum Fach
+
+Im Stunden-Fenster **„📝 Notiz zu …“**: öffnet die heutige Notiz im Ordner des Fachs (z. B. „Physik“) oder legt eine neue an („Physik 12.10.“). Den Ordner legt die App beim ersten Mal selbst an.
+
+### Änderungen und Mitteilungen
+
+Bei jeder Aktualisierung vergleicht die App mit dem letzten Stand. Neue **Ausfälle, Vertretungen, Raumänderungen und Hinweise** erscheinen oben im Stundenplan („Neu im Plan“) und auf der Startseite. Mit **Einstellungen → Mitteilungen bei Änderungen** kommen sie zusätzlich als Mitteilung – solange die App geöffnet ist oder im Hintergrund läuft (am iPad nur als installierte App ab iPadOS 16.4). Ist die App ganz geschlossen, prüft niemand den Plan; die Änderungen erscheinen dann beim nächsten Öffnen.
+
 ### Einrichten
 
 **1. Proxy anlegen (einmalig, kostenlos).** Browser dürfen WebUntis nicht direkt abfragen. Ein kleiner eigener Cloudflare-Worker leitet die Anfragen weiter:

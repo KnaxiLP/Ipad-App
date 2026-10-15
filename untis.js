@@ -117,6 +117,8 @@ async function untisFetchWeek(monday) {
         bg: meta.bg || '', fg: meta.fg || ''
       };
     });
+    const old = untisCache.weeks[untisIso(monday)];
+    if (old) untisDiff(old.lessons, lessons);
     untisCache.weeks[untisIso(monday)] = { at: Date.now(), lessons };
     // nur die letzten Wochen aufheben
     const keys = Object.keys(untisCache.weeks).sort();
@@ -126,17 +128,109 @@ async function untisFetchWeek(monday) {
   });
 }
 
-async function untisSync(force) {
+async function untisSync(force, monday = untisMonday, maxAge = UNTIS_SYNC_MS / 2) {
   if (untisBusy || !untisReady()) { renderUntis(); return; }
-  const wk = untisCache.weeks[untisIso(untisMonday)];
-  if (!force && wk && Date.now() - wk.at < UNTIS_SYNC_MS / 2) return renderUntis();
+  const wk = untisCache.weeks[untisIso(monday)];
+  if (!force && wk && Date.now() - wk.at < maxAge) return renderUntis();
   untisBusy = true;
   untisError = '';
   renderUntis();
-  try { await untisFetchWeek(untisMonday); } catch (err) { untisError = err instanceof UntisError ? err.message : 'Laden fehlgeschlagen'; console.error(err); }
+  try { await untisFetchWeek(monday); } catch (err) { untisError = err instanceof UntisError ? err.message : 'Laden fehlgeschlagen'; console.error(err); }
   untisBusy = false;
   renderUntis();
   renderUntisHome();
+}
+
+// ---- Änderungen (Entfall, Vertretung, Raum, Hinweis) gegenüber dem letzten Stand ----
+const untisKey = (l) => `${l.date} ${l.start} ${l.su}`;
+const untisDayLabel = (iso) => {
+  const d = new Date(iso + 'T00:00'), t = new Date(new Date().toDateString());
+  const diff = Math.round((d - t) / 864e5);
+  return diff === 0 ? 'Heute' : diff === 1 ? 'Morgen' : d.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'numeric' });
+};
+function untisDiff(oldList, newList) {
+  const today = untisIso(new Date());
+  const before = new Map(oldList.map((l) => [untisKey(l), l]));
+  const found = [];
+  for (const l of newList) {
+    if (l.date < today) continue;
+    const o = before.get(untisKey(l));
+    const what = l.code === 'cancelled' && (!o || o.code !== 'cancelled') ? 'entfällt'
+      : l.teOrg && (!o || o.te !== l.te) ? `Vertretung: ${l.te}`
+      : l.roOrg && (!o || o.ro !== l.ro) ? `Raum ${l.ro} statt ${l.roOrg}`
+      : !o && l.code === 'irregular' ? 'zusätzliche Stunde'
+      : o && l.info && l.info !== o.info ? l.info : '';
+    if (what) found.push({ id: untisKey(l) + ' ' + what, date: l.date, start: l.start, su: l.su, text: what, at: Date.now() });
+  }
+  if (!found.length) return;
+  const known = new Set((untisCache.changes || []).map((c) => c.id));
+  const fresh = found.filter((c) => !known.has(c.id));
+  untisCache.changes = (untisCache.changes || []).concat(fresh).filter((c) => c.date >= today).slice(-30);
+  if (fresh.length) untisNotify(fresh);
+}
+
+function untisNotify(list) {
+  const lines = list.map((c) => `${untisDayLabel(c.date)} ${c.start} ${c.su}: ${c.text}`);
+  toast(lines.length === 1 ? lines[0] : `${lines.length} Änderungen im Stundenplan`);
+  if (!store.get('untisNotify', false) || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  const title = lines.length === 1 ? 'Stundenplan geändert' : `${lines.length} Änderungen im Stundenplan`, body = lines.slice(0, 4).join('\n');
+  const opts = { body, tag: 'untis', icon: 'icons/icon-192.png' };
+  (navigator.serviceWorker && navigator.serviceWorker.getRegistration ? navigator.serviceWorker.getRegistration() : Promise.resolve(null))
+    .then((r) => (r && r.showNotification ? r.showNotification(title, opts) : new Notification(title, opts)))
+    .catch(() => { try { new Notification(title, opts); } catch {} });
+}
+
+function untisChangesOpen() { return (untisCache.changes || []).filter((c) => !c.seen && c.date >= untisIso(new Date())); }
+
+function renderUntisChanges() {
+  const box = $('#untis-changes');
+  if (!box) return;
+  const list = untisChangesOpen().sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
+  box.hidden = !list.length;
+  if (!list.length) return;
+  box.innerHTML = '<div class="ut-ch-head"><b>Neu im Plan</b><button type="button" class="btn small link" id="untis-seen">Gesehen</button></div>' +
+    list.map((c) => `<div class="ut-ch"><span>${untisEsc(untisDayLabel(c.date))}, ${c.start}</span> <b>${untisEsc(c.su)}</b> – ${untisEsc(c.text)}</div>`).join('');
+  $('#untis-seen').addEventListener('click', () => {
+    for (const c of untisCache.changes || []) c.seen = true;
+    store.set('untisCache', untisCache);
+    renderUntisChanges();
+    renderUntisHome();
+  });
+}
+
+// ---- Hausaufgaben (als Aufgaben in der Aufgabenliste, mit Fach und Fälligkeit) ----
+const untisHw = () => todos.filter((t) => t.hw);
+function untisAllLessons() {
+  return Object.values(untisCache.weeks).flatMap((w) => w.lessons).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
+}
+// nächste (nicht ausfallende) Stunde desselben Fachs nach dieser Stunde
+function untisNextOf(l) {
+  return untisAllLessons().find((x) => x.su === l.su && x.date > l.date && x.code !== 'cancelled') || null;
+}
+function untisNextSchoolDay(from = new Date()) {
+  const d = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 1);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  return d;
+}
+
+// ---- Notiz zum Fach: Ordner mit dem Fachnamen, heutige Notiz weiterführen oder neue anlegen ----
+async function untisOpenNote(l) {
+  const name = (l.suLong || l.su).slice(0, 30);
+  let f = folders.find((x) => x.name.toLowerCase() === name.toLowerCase() || x.name.toLowerCase() === l.su.toLowerCase());
+  if (!f) { f = { id: 'f' + Date.now().toString(36), name }; folders.push(f); saveFolders(); }
+  let all = [];
+  try { all = await noteDb.all(); } catch {}
+  const day = new Date(l.date + 'T00:00').toDateString();
+  const today = all.filter((n) => n.folder === f.id && new Date(n.created).toDateString() === day).sort((a, b) => b.updated - a.updated)[0];
+  $('#untis-dialog').close();
+  showView('notes');
+  if (today) return openNote(today);
+  const n = newNote();
+  n.folder = f.id;
+  n.title = `${name} ${new Date(l.date + 'T00:00').toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' })}`;
+  await noteDb.put(n).catch(() => {});
+  await openNote(n);
+  toast(`Neue Notiz im Ordner „${f.name}“`);
 }
 
 // ---- Ansicht ----
@@ -153,8 +247,9 @@ function untisCard(l, now) {
   const te = l.teOrg ? `<s>${untisEsc(l.teOrg)}</s> ${untisEsc(l.te)}` : untisEsc(l.te);
   const ro = l.roOrg ? `<s>${untisEsc(l.roOrg)}</s> ${untisEsc(l.ro)}` : untisEsc(l.ro);
   const live = !cancelled && now >= `${l.date} ${l.start}` && now < `${l.date} ${l.end}`;
+  const hw = untisHw().some((t) => !t.done && t.hw.due === l.date && t.hw.su === l.su);
   return `<button type="button" class="ut-card${cancelled ? ' cancelled' : ''}${changed && !cancelled ? ' changed' : ''}${live ? ' live' : ''}" style="--c:${l.bg || 'var(--muted)'}" data-l="${untisEsc(JSON.stringify(l))}">` +
-    `<b>${untisEsc(l.su || '—')}</b>${cancelled ? '<span class="ut-tag">Entfall</span>' : changed ? '<span class="ut-tag">Änderung</span>' : ''}` +
+    `<b>${untisEsc(l.su || '—')}${hw ? '<span class="ut-hw" title="Hausaufgabe fällig">HA</span>' : ''}</b>${cancelled ? '<span class="ut-tag">Entfall</span>' : changed ? '<span class="ut-tag">Änderung</span>' : ''}` +
     `<span class="ut-meta">${[te, ro].filter(Boolean).join(' · ')}</span>` +
     (l.info ? `<span class="ut-info">${untisEsc(l.info)}</span>` : '') + '</button>';
 }
@@ -162,6 +257,7 @@ function untisCard(l, now) {
 function renderUntis() {
   const box = $('#untis-body');
   if (!box) return;
+  renderUntisChanges();
   const mon = untisMonday, fri = untisAddDays(mon, 4);
   $('#untis-week').textContent = `${mon.toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' })} – ${fri.toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric', year: 'numeric' })}`;
   $('#untis-sync').disabled = untisBusy || !untisReady();
@@ -206,7 +302,63 @@ function untisShowDetail(l) {
     row('Status', l.code === 'cancelled' ? '<b style="color:#dc2626">Entfällt</b>' : (l.code === 'irregular' || l.teOrg || l.roOrg) ? '<b style="color:#d97706">Geändert</b>' : '') +
     row('Lehrkraft', l.teOrg ? `<s>${untisEsc(l.teOrg)}</s> → ${untisEsc(l.te)}` : untisEsc(l.te)) +
     row('Raum', l.roOrg ? `<s>${untisEsc(l.roOrg)}</s> → ${untisEsc(l.ro)}` : untisEsc(l.ro)) +
-    row('Info', untisEsc(l.info)) + '</div>';
+    row('Info', untisEsc(l.info)) + '</div>' +
+    `<button type="button" class="btn small ut-note-btn" id="ut-note">📝 Notiz zu ${untisEsc(l.suLong || l.su)}</button>` +
+    '<h4 class="ut-h4">Hausaufgaben</h4><ul class="ut-hwlist" id="ut-hwlist"></ul>' +
+    '<form class="ut-hwform" id="ut-hwform"><input id="ut-hwtext" placeholder="Neue Hausaufgabe …" autocomplete="off">' +
+    '<label class="ut-due">fällig <input type="date" id="ut-hwdue"></label><button type="submit" class="btn primary small">Eintragen</button></form>' +
+    '<p class="muted small-text" id="ut-duehint"></p>';
+  $('#ut-note').addEventListener('click', () => untisOpenNote(l));
+  // Fälligkeit: nächste Stunde dieses Fachs (laut Untis), sonst eine Woche später
+  const dueInput = $('#ut-hwdue'), hint = $('#ut-duehint');
+  let touched = false;
+  dueInput.addEventListener('input', () => { touched = true; hint.textContent = ''; });
+  const setDue = () => {
+    const nx = untisNextOf(l);
+    if (touched) return !!nx;
+    dueInput.value = nx ? nx.date : untisIso(untisAddDays(new Date(l.date + 'T00:00'), 7));
+    hint.textContent = nx ? `Nächste ${l.su}-Stunde: ${untisDayLabel(nx.date)}, ${nx.start}` : `Nächste ${l.su}-Stunde noch nicht geladen – vorläufig eine Woche später`;
+    return !!nx;
+  };
+  if (!setDue() && untisReady()) {
+    // folgende Wochen nachladen, bis die nächste Stunde gefunden ist
+    (async () => {
+      let m = untisMondayOf(new Date(l.date + 'T00:00'));
+      for (let i = 0; i < 3; i++) {
+        m = untisAddDays(m, 7);
+        if (!untisCache.weeks[untisIso(m)]) { try { await untisFetchWeek(m); } catch { return; } }
+        if (!dlg.open) return;
+        if (setDue()) return;
+      }
+    })();
+  }
+  const list = () => {
+    const ul = $('#ut-hwlist');
+    const mine = untisHw().filter((t) => t.hw.su === l.su && (t.hw.due === l.date || t.hw.assigned === l.date));
+    ul.innerHTML = mine.length ? '' : '<li class="muted small-text">Keine für diese Stunde</li>';
+    for (const t of mine) {
+      const li = document.createElement('li');
+      li.className = t.done ? 'done' : '';
+      li.innerHTML = `<button type="button" class="check">${t.done ? '✓' : ''}</button><span><span class="ut-hwt"></span><span class="muted small-text">${t.hw.due === l.date ? 'fällig in dieser Stunde' : 'fällig ' + untisEsc(untisDayLabel(t.hw.due).replace(/^(Heute|Morgen)$/, (m) => m.toLowerCase()))}</span></span><button type="button" class="delete" aria-label="Löschen">×</button>`;
+      li.querySelector('.ut-hwt').textContent = t.text;
+      li.querySelector('.check').addEventListener('click', () => { t.done = !t.done; saveTodos(); list(); renderUntis(); renderUntisHome(); });
+      li.querySelector('.delete').addEventListener('click', () => { todos.splice(todos.indexOf(t), 1); saveTodos(); list(); renderUntis(); renderUntisHome(); });
+      ul.append(li);
+    }
+  };
+  list();
+  $('#ut-hwform').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = $('#ut-hwtext').value.trim();
+    if (!text || !dueInput.value) return;
+    todos.push({ text, done: false, hw: { su: l.su, suLong: l.suLong, assigned: l.date, due: dueInput.value } });
+    saveTodos();
+    $('#ut-hwtext').value = '';
+    list();
+    renderUntis();
+    renderUntisHome();
+    toast(`Eingetragen – fällig ${untisDayLabel(dueInput.value)}`);
+  });
   dlg.showModal();
 }
 
@@ -223,6 +375,16 @@ function renderUntisHome() {
   const l = list[0];
   el.textContent = l ? l.su : '–';
   $('#stat-untis-sub').textContent = l ? `${l.start <= hm ? 'jetzt' : 'ab ' + l.start}${l.ro ? ' · ' + l.ro : ''}` : wk ? 'heute keine Stunde mehr' : 'Stundenplan';
+  // Hausaufgaben bis zum nächsten Schultag (freitags: bis Montag), dazu Überfälliges
+  const nsd = untisNextSchoolDay(d), until = untisIso(nsd);
+  const due = untisHw().filter((t) => !t.done && t.hw.due <= until);
+  const hc = $('#stat-hw').closest('.card');
+  hc.hidden = !untisHw().length;
+  $('#stat-hw').textContent = due.length;
+  $('#stat-hw-sub').textContent = `Hausaufgaben bis ${nsd.getDay() === 1 && d.getDay() !== 0 ? 'Montag' : untisDayLabel(until).toLowerCase()}`;
+  const ch = untisChangesOpen();
+  $('#stat-changes').closest('.card').hidden = !ch.length;
+  $('#stat-changes').textContent = ch.length;
 }
 
 // ---- Einstellungen ----
@@ -236,6 +398,7 @@ function renderUntisSettings() {
     f('ut-user', 'Benutzer', untisCfg.user, 'text', 'WebUntis-Benutzername', '') +
     f('ut-pass', 'Passwort', store.get('untisPass', ''), 'password', '••••••', 'bleibt nur auf diesem Gerät') +
     f('ut-proxy', 'Proxy', untisCfg.proxy, 'url', 'https://…workers.dev', 'eigener Cloudflare-Worker') +
+    `<div class="row ut-field"><span>Mitteilungen bei Änderungen<span class="muted small-text">Entfall, Vertretung, Raum – solange die App läuft</span></span><label class="switch"><input type="checkbox" id="ut-notify"${store.get('untisNotify', false) ? ' checked' : ''}><span></span></label></div>` +
     '</div><div class="ut-actions"><button type="button" class="btn primary small" id="ut-test">Speichern & testen</button><button type="button" class="btn small" id="ut-clear">Abmelden</button><span class="muted small-text" id="ut-msg"></span></div>' +
     '<p class="muted small-text set-note">Server und Schule stehen in der Adresse von WebUntis, z. B. <i>mese</i>.webuntis.com und <i>?school=meine-schule</i>. Wie man den Proxy einrichtet, steht in der Anleitung (README).</p>';
   const read = () => {
@@ -243,7 +406,17 @@ function renderUntisSettings() {
     store.set('untisCfg', untisCfg);
     store.set('untisPass', $('#ut-pass').value);
   };
-  box.querySelectorAll('input').forEach((i) => i.addEventListener('change', read));
+  box.querySelectorAll('input:not([type=checkbox])').forEach((i) => i.addEventListener('change', read));
+  $('#ut-notify').addEventListener('change', async (e) => {
+    let on = e.target.checked;
+    if (on && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+      try { on = (await Notification.requestPermission()) === 'granted'; } catch { on = false; }
+      if (!on) toast('Mitteilungen wurden nicht erlaubt – Hinweise erscheinen nur in der App');
+    }
+    if (on && typeof Notification === 'undefined') toast('Dieser Browser kann keine Mitteilungen – Hinweise erscheinen nur in der App');
+    e.target.checked = on;
+    store.set('untisNotify', on);
+  });
   $('#ut-test').addEventListener('click', async () => {
     read();
     const msg = $('#ut-msg');
@@ -285,12 +458,21 @@ window.addEventListener('viewchange', (e) => {
   if (e.detail === 'home') renderUntisHome();
 });
 // automatisch aktualisieren, solange die App offen ist
-setInterval(() => {
-  if (document.hidden || !untisReady()) return;
-  if (document.body.dataset.view === 'untis') untisSync();
-  else renderUntisHome();
-}, 60 * 1000);
+async function untisBackground() {
+  if (document.hidden || !untisReady() || untisBusy) return;
+  const d = new Date(), mon = untisMondayOf(d);
+  if (document.body.dataset.view === 'untis') await untisSync(false, untisMonday);
+  await untisSync(false, mon, UNTIS_SYNC_MS);
+  if (d.getDay() >= 5 || d.getDay() === 0) await untisSync(false, untisAddDays(mon, d.getDay() === 0 ? 0 : 7), UNTIS_SYNC_MS);
+  renderUntisHome();
+}
+setInterval(untisBackground, 60 * 1000);
+setTimeout(untisBackground, 3000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && document.body.dataset.view === 'untis') untisSync(); });
+// Startseite: Karten führen zum Stundenplan bzw. zu den Aufgaben
+$('#stat-untis').closest('.card').addEventListener('click', () => showView('untis'));
+$('#stat-changes').closest('.card').addEventListener('click', () => showView('untis'));
+$('#stat-hw').closest('.card').addEventListener('click', () => showView('todos'));
 renderUntisSettings();
 renderUntisHome();
 if (document.body.dataset.view === 'untis') untisSync();
