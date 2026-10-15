@@ -463,7 +463,8 @@ async function untisBackground() {
   const d = new Date(), mon = untisMondayOf(d);
   if (document.body.dataset.view === 'untis') await untisSync(false, untisMonday);
   await untisSync(false, mon, UNTIS_SYNC_MS);
-  if (d.getDay() >= 5 || d.getDay() === 0) await untisSync(false, untisAddDays(mon, d.getDay() === 0 ? 0 : 7), UNTIS_SYNC_MS);
+  // nächste Woche auch (Fälligkeiten, Änderungen fürs Wochenende/Montag); sonntags zählt schon die neue Woche
+  await untisSync(false, untisAddDays(mon, 7), d.getDay() >= 5 || d.getDay() === 0 ? UNTIS_SYNC_MS : 4 * UNTIS_SYNC_MS);
   renderUntisHome();
 }
 setInterval(untisBackground, 60 * 1000);
@@ -472,7 +473,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && do
 // Startseite: Karten führen zum Stundenplan bzw. zu den Aufgaben
 $('#stat-untis').closest('.card').addEventListener('click', () => showView('untis'));
 $('#stat-changes').closest('.card').addEventListener('click', () => showView('untis'));
-$('#stat-hw').closest('.card').addEventListener('click', () => showView('todos'));
+$('#stat-hw').closest('.card').addEventListener('click', () => showView('homework'));
 renderUntisSettings();
 renderUntisHome();
 if (document.body.dataset.view === 'untis') untisSync();

@@ -969,3 +969,32 @@ body[data-note-tool="graph"] .pages .page-live { cursor: crosshair; }
 #untis-dialog { width: min(520px, calc(100vw - 32px)); }
 .card.ut-go { cursor: pointer; }
 .card.ut-alert .stat { color: #d97706; }
+
+/* Hausaufgaben-Übersicht */
+.hw-form { display: flex; flex-direction: column; gap: 10px; padding: 14px; }
+.hw-form #hw-text { padding: 11px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg, transparent); color: var(--text); font: inherit; font-size: 17px; outline: none; }
+.hw-form #hw-text:focus { border-color: var(--accent); }
+.hw-form-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.hw-form select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--text); font: inherit; max-width: 240px; }
+.hw-form-row .btn { margin-left: auto; }
+.hw-chips { display: flex; gap: 8px; overflow-x: auto; padding: 14px 0 0; }
+.hw-chips .chip { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.hw-chips small { opacity: .7; }
+.hw-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.hw-group.late { color: #dc2626; }
+.hw-items { list-style: none; padding: 0; margin: 0 0 8px; }
+.hw-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-left: 5px solid var(--c); }
+.hw-item + .hw-item { border-top: 1px solid var(--border); }
+.hw-item .check { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--accent); background: none; color: var(--accent); font-weight: 700; cursor: pointer; flex: none; }
+.hw-main { flex: 1; min-width: 0; cursor: pointer; }
+.hw-text { font-size: 17px; word-break: break-word; }
+.hw-meta { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.hw-meta b { color: var(--text); font-weight: 600; }
+.hw-item.done .hw-text { text-decoration: line-through; color: var(--muted); }
+.hw-empty { text-align: center; padding: 28px 20px; }
+.hw-done-toggle { margin: 6px 0; padding-left: 4px; }
+.hw-clear { margin: 0 0 16px; }
+#hw-edit { width: min(480px, calc(100vw - 32px)); }
+.hw-edit-fields { display: flex; flex-direction: column; gap: 10px; }
+.hw-edit-fields textarea, .hw-edit-fields input { width: 100%; box-sizing: border-box; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--text); font: inherit; }
+.hw-edit-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted); }

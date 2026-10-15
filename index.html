@@ -23,6 +23,7 @@
       <h1 class="sidebar-title"><img src="icons/icon-192.png" alt="" class="brand-icon">Lernheft</h1>
       <button class="nav-item active" data-view="home"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/></svg></span><span>Start</span></button>
       <button class="nav-item" data-view="untis"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2"/></svg></span><span>Stundenplan</span></button>
+      <button class="nav-item" data-view="homework"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3z"/><path d="M5 17a3 3 0 013-3h11"/><path d="M9 8h6"/></svg></span><span>Hausaufgaben</span></button>
       <button class="nav-item" data-view="todos"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg></span><span>Aufgaben</span></button>
       <button class="nav-item" data-view="grades"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span><span>Noten</span></button>
       <button class="nav-item" data-view="notes"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/></svg></span><span>Notizen</span></button>
@@ -62,6 +63,21 @@
         <p class="ut-sub"><span id="untis-week"></span> <span class="muted" id="untis-status"></span></p>
         <div class="card ut-changes" id="untis-changes" hidden></div>
         <div id="untis-body"></div>
+      </section>
+
+      <!-- Hausaufgaben -->
+      <section class="view" id="view-homework">
+        <header class="view-header"><h2>Hausaufgaben</h2></header>
+        <form class="hw-form card" id="hw-form">
+          <input id="hw-text" placeholder="Neue Hausaufgabe, z. B. S. 42 Nr. 3" autocomplete="off">
+          <div class="hw-form-row">
+            <select id="hw-su" aria-label="Fach"></select>
+            <label class="ut-due">fällig <input type="date" id="hw-due"></label>
+            <button type="submit" class="btn primary small">Eintragen</button>
+          </div>
+        </form>
+        <div class="chips hw-chips" id="hw-chips"></div>
+        <div id="hw-list"></div>
       </section>
 
       <!-- Aufgaben -->
@@ -271,7 +287,7 @@
       <section class="view" id="view-info">
         <header class="view-header"><h2>Info</h2></header>
         <div class="list-group">
-          <div class="row"><span>Version</span><span class="muted">6.4</span></div>
+          <div class="row"><span>Version</span><span class="muted">6.5</span></div>
           <div class="row"><span>Als App gestartet</span><span class="muted" id="info-standalone">–</span></div>
           <div class="row"><span>Offline-Modus</span><span class="muted" id="info-sw">–</span></div>
           <div class="row"><span>Bildschirm</span><span class="muted" id="info-screen">–</span></div>
@@ -440,6 +456,16 @@
   <!-- Dialog: Mehr (Papier, Export, Löschen) -->
   <dialog id="untis-dialog"><div id="untis-dialog-body"></div><div class="dlg-actions"><button type="button" class="btn primary" data-close>OK</button></div></dialog>
 
+  <dialog id="hw-edit">
+    <h3>Hausaufgabe</h3>
+    <div class="hw-edit-fields">
+      <textarea id="hwe-text" rows="3"></textarea>
+      <label>Fach <input id="hwe-su" autocomplete="off"></label>
+      <label>Fällig <input type="date" id="hwe-due"></label>
+    </div>
+    <div class="dlg-actions"><button type="button" class="btn danger-text" id="hwe-del">Löschen</button><span class="spacer"></span><button type="button" class="btn" data-close>Abbrechen</button><button type="button" class="btn primary" id="hwe-save">Speichern</button></div>
+  </dialog>
+
   <dialog id="more-dialog">
     <h3>Notiz-Einstellungen</h3>
     <div class="muted small-text">Papier</div>
@@ -487,5 +513,6 @@
   <script src="braces.js"></script>
   <script src="settings.js"></script>
   <script src="untis.js"></script>
+  <script src="homework.js"></script>
 </body>
 </html>

@@ -65,6 +65,16 @@ Eine Stunde antippen → unten **Hausaufgabe eintragen**. Die Fälligkeit steht 
 - Die Hausaufgaben stehen auch unter **Aufgaben** (mit Fach und Fälligkeit, Überfälliges rot).
 - Die Startseite zeigt, was **bis zum nächsten Schultag** fällig ist – freitags also bis Montag.
 
+### Hausaufgaben-Übersicht
+
+Eigener Bereich **Hausaufgaben** in der Seitenleiste:
+
+- Gruppiert nach Fälligkeit: **Überfällig** (rot), **Heute**, **Morgen**, die nächsten Tage, **Später**. Der farbige Streifen zeigt das Fach in der Untis-Farbe.
+- Oben schnell eintragen: Text, Fach wählen (aus deinem Stundenplan) – die Fälligkeit springt automatisch auf die nächste Stunde des Fachs. „Anderes Fach …“ für Fächer, die nicht im Plan stehen.
+- **Filter** nach Fach (mit Anzahl offener Aufgaben).
+- Antippen = bearbeiten (Text, Fach, Datum, löschen); Kreis = erledigt. Erledigte sind unten eingeklappt und lassen sich gesammelt löschen.
+- Die Karte auf der Startseite führt direkt hierher.
+
 ### Notiz zum Fach
 
 Im Stunden-Fenster **„📝 Notiz zu …“**: öffnet die heutige Notiz im Ordner des Fachs (z. B. „Physik“) oder legt eine neue an („Physik 12.10.“). Den Ordner legt die App beim ersten Mal selbst an.
