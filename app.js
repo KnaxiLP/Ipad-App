@@ -70,7 +70,7 @@ document.querySelectorAll('.nav-item').forEach((btn) =>
 // ---------- Start ----------
 function updateClock() {
   const now = new Date();
-  $('#clock').textContent = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  $('#clock').textContent = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   $('#date').textContent = now.toLocaleDateString('de-DE', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
