@@ -5,7 +5,7 @@
 // Änderungen gehen über eine Warteschlange (Outbox), damit auch offline nichts verloren geht.
 
 const ORBIT_SYNC_MS = 2 * 60 * 1000;
-let orbitServer = store.get('orbitServer', '');
+let orbitServer = store.get('orbitServer', '') || ORBIT_DEFAULTS.orbitServer;
 let orbitMe = store.get('orbitMe', null);
 let orbitClasses = store.get('orbitClasses', []);
 let orbitOutbox = store.get('orbitOutbox', []);

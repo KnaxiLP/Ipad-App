@@ -53,6 +53,10 @@ Jetzt startet die Seite vom Home-Bildschirm aus wie eine App.
 - Export als **PDF (Vektor)**, ideal zum Import in Goodnotes, oder als Bild (⋯ → Teilen). Am iPad öffnet sich das Teilen-Menü, am Surface/Windows ein „Speichern unter“-Fenster (sonst landet die Datei in „Downloads“)
 - Alles wird nur auf dem Gerät gespeichert
 
+## Voreinstellungen (`config.js`)
+
+In `config.js` stehen die Adressen für die Schule: Klassen-Server `https://orbit.knaxi.eu`, WebUntis `ak-gym-schwabach.webuntis.com` und Schule `ak-gym-schwabach`. Sie werden auf jedem Gerät automatisch eingetragen, solange das Feld leer ist. **Benutzername, Passwort und Name** gibt jeder selbst ein. Wer schon eigene Werte eingetragen hat, behält sie.
+
 ## Klasse (Orbit-Server)
 
 Mit einem eigenen kleinen Server, z. B. auf einem **Raspberry Pi**, kann eine Klasse Hausaufgaben und Schulaufgaben teilen. Einrichtung: [`orbit-server/ANLEITUNG.md`](orbit-server/ANLEITUNG.md). Die „Datenbank“ ist eine einzige JSON-Datei.

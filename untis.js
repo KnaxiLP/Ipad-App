@@ -6,7 +6,10 @@
 
 const UNTIS_SYNC_MS = 15 * 60 * 1000;
 const UNTIS_DAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
-let untisCfg = store.get('untisCfg', { server: '', school: '', user: '', proxy: '' });
+const untisBlank = () => ({ server: ORBIT_DEFAULTS.untisServer, school: ORBIT_DEFAULTS.untisSchool, user: '', proxy: ORBIT_DEFAULTS.untisProxy });
+let untisCfg = store.get('untisCfg', untisBlank());
+// leere Felder mit den Voreinstellungen der Schule füllen (nie Benutzer/Passwort)
+for (const [k, v] of Object.entries(untisBlank())) if (!untisCfg[k] && v) untisCfg[k] = v;
 let untisCache = store.get('untisCache', { weeks: {}, grid: null, subjects: {} });
 let untisMonday = untisMondayOf(new Date());
 let untisBusy = false;
@@ -440,7 +443,7 @@ function renderUntisSettings() {
   });
   $('#ut-clear').addEventListener('click', () => {
     if (!confirm('Untis-Zugangsdaten und gespeicherten Stundenplan von diesem Gerät löschen?')) return;
-    untisCfg = { server: '', school: '', user: '', proxy: '' };
+    untisCfg = untisBlank();
     untisCache = { weeks: {}, grid: null, subjects: {} };
     store.set('untisCfg', untisCfg);
     store.set('untisCache', untisCache);

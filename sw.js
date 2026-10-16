@@ -1,7 +1,7 @@
 // Service Worker: speichert alle App-Dateien, damit die App auch offline startet.
 // Strategie: sofort aus dem Speicher laden und im Hintergrund aktualisieren.
 // Neue Versionen erscheinen dadurch spätestens beim zweiten Öffnen.
-const CACHE = 'test-app-v50';
+const CACHE = 'test-app-v51';
 // Python (Pyodide) separat speichern – ändert sich nie, bleibt über App-Updates erhalten
 const PY_CACHE = 'pyodide-v0.26.4';
 const PY_HOST = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/';
@@ -12,6 +12,7 @@ const FILES = [
   './',
   'index.html',
   'style.css',
+  'config.js',
   'app.js',
   'grades.js',
   'notes.js',
