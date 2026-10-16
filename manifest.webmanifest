@@ -1,7 +1,7 @@
 {
-  "name": "Lernheft",
-  "short_name": "Lernheft",
-  "description": "Notizen, Noten und Werkzeuge für die Schule",
+  "name": "Orbit",
+  "short_name": "Orbit",
+  "description": "Deine Schul-App: Notizen, Stundenplan, Hausaufgaben und Schulaufgaben – mit deiner Klasse",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

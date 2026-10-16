@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-  <title>Lernheft</title>
+  <title>Orbit</title>
 
   <!-- Macht die Website auf iPad/iPhone zur "App" ohne Safari-Leisten -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Lernheft">
+  <meta name="apple-mobile-web-app-title" content="Orbit">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#1f3b6e">
 
@@ -20,10 +20,12 @@
 <body>
   <div class="app">
     <nav class="sidebar" aria-label="Navigation">
-      <h1 class="sidebar-title"><img src="icons/icon-192.png" alt="" class="brand-icon">Lernheft</h1>
+      <h1 class="sidebar-title"><img src="icons/icon-192.png" alt="" class="brand-icon">Orbit</h1>
       <button class="nav-item active" data-view="home"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/></svg></span><span>Start</span></button>
       <button class="nav-item" data-view="untis"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2"/></svg></span><span>Stundenplan</span></button>
       <button class="nav-item" data-view="homework"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3z"/><path d="M5 17a3 3 0 013-3h11"/><path d="M9 8h6"/></svg></span><span>Hausaufgaben</span></button>
+      <button class="nav-item" data-view="exams"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/><path d="M9 12l2 2 4-4M9 17h6"/></svg></span><span>Schulaufgaben</span></button>
+      <button class="nav-item" data-view="orbit"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.3"/><path d="M3.5 19c.6-3.3 2.8-5 5.5-5s4.9 1.7 5.5 5"/><path d="M14.5 14.6c.8-.4 1.6-.6 2.5-.6 2.2 0 3.8 1.4 4.3 4"/></svg></span><span>Klasse</span></button>
       <button class="nav-item" data-view="todos"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg></span><span>Aufgaben</span></button>
       <button class="nav-item" data-view="grades"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span><span>Noten</span></button>
       <button class="nav-item" data-view="notes"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/></svg></span><span>Notizen</span></button>
@@ -42,6 +44,7 @@
           <div class="card big-clock"><div id="clock">--:--</div><div class="muted">Aktuelle Uhrzeit</div></div>
           <div class="card ut-go" hidden><div class="stat" id="stat-untis">–</div><div class="muted" id="stat-untis-sub">Stundenplan</div></div>
           <div class="card ut-go" hidden><div class="stat" id="stat-hw">0</div><div class="muted" id="stat-hw-sub">Hausaufgaben</div></div>
+          <div class="card ut-go" hidden><div class="stat" id="stat-exam">–</div><div class="muted" id="stat-exam-sub">Schulaufgabe</div></div>
           <div class="card ut-go ut-alert" hidden><div class="stat" id="stat-changes">0</div><div class="muted">Änderungen im Plan</div></div>
           <div class="card"><div class="stat" id="stat-todos">0</div><div class="muted">offene Aufgaben</div></div>
           <div class="card"><div class="stat" id="stat-counter">0</div><div class="muted">Zählerstand</div></div>
@@ -73,11 +76,34 @@
           <div class="hw-form-row">
             <select id="hw-su" aria-label="Fach"></select>
             <label class="ut-due">fällig <input type="date" id="hw-due"></label>
+            <span id="hw-share-box"></span>
             <button type="submit" class="btn primary small">Eintragen</button>
           </div>
         </form>
         <div class="chips hw-chips" id="hw-chips"></div>
         <div id="hw-list"></div>
+      </section>
+
+      <!-- Schulaufgaben-Planer -->
+      <section class="view" id="view-exams">
+        <header class="view-header"><h2>Schulaufgaben</h2></header>
+        <form class="hw-form card ex-form" id="ex-form">
+          <div class="hw-form-row">
+            <select id="ex-su" aria-label="Fach"></select>
+            <select id="ex-kind" aria-label="Art"></select>
+            <input type="date" id="ex-date" aria-label="Datum">
+          </div>
+          <input id="ex-title" placeholder="Titel (optional), z. B. 1. Schulaufgabe" autocomplete="off" maxlength="80">
+          <textarea id="ex-topics" rows="2" placeholder="Stoff, z. B. Kapitel 3, Brüche, S. 40–58" maxlength="2000"></textarea>
+          <div class="hw-form-row"><span id="ex-share-box"></span><button type="submit" class="btn primary small">Eintragen</button></div>
+        </form>
+        <div id="ex-list"></div>
+      </section>
+
+      <!-- Klasse (Orbit-Server) -->
+      <section class="view" id="view-orbit">
+        <header class="view-header header-row"><h2>Klasse</h2><span class="muted small-text" id="orbit-status"></span></header>
+        <div id="orbit-body"></div>
       </section>
 
       <!-- Aufgaben -->
@@ -277,6 +303,7 @@
         <header class="view-header"><h2>Einstellungen</h2></header>
         <div id="settings-list"></div>
         <div id="untis-settings"></div>
+        <div id="orbit-settings"></div>
         <h3 class="set-title">Daten</h3>
         <div class="list-group">
           <button type="button" class="row set-link" id="settings-to-info"><span>Updates und Datensicherung</span><span class="muted">Info ›</span></button>
@@ -287,7 +314,7 @@
       <section class="view" id="view-info">
         <header class="view-header"><h2>Info</h2></header>
         <div class="list-group">
-          <div class="row"><span>Version</span><span class="muted">6.5</span></div>
+          <div class="row"><span>Version</span><span class="muted">7.0</span></div>
           <div class="row"><span>Als App gestartet</span><span class="muted" id="info-standalone">–</span></div>
           <div class="row"><span>Offline-Modus</span><span class="muted" id="info-sw">–</span></div>
           <div class="row"><span>Bildschirm</span><span class="muted" id="info-screen">–</span></div>
@@ -462,8 +489,22 @@
       <textarea id="hwe-text" rows="3"></textarea>
       <label>Fach <input id="hwe-su" autocomplete="off"></label>
       <label>Fällig <input type="date" id="hwe-due"></label>
+      <p class="muted small-text" id="hwe-note"></p>
     </div>
     <div class="dlg-actions"><button type="button" class="btn danger-text" id="hwe-del">Löschen</button><span class="spacer"></span><button type="button" class="btn" data-close>Abbrechen</button><button type="button" class="btn primary" id="hwe-save">Speichern</button></div>
+  </dialog>
+
+  <dialog id="ex-edit">
+    <h3>Prüfung</h3>
+    <div class="hw-edit-fields">
+      <label>Fach <select id="exe-su"></select></label>
+      <label>Art <select id="exe-kind"></select></label>
+      <label>Datum <input type="date" id="exe-date"></label>
+      <label>Titel <input id="exe-title" maxlength="80"></label>
+      <label>Stoff <textarea id="exe-topics" rows="4" maxlength="2000"></textarea></label>
+      <p class="muted small-text" id="exe-note"></p>
+    </div>
+    <div class="dlg-actions"><button type="button" class="btn danger-text" id="exe-del">Löschen</button><span class="spacer"></span><button type="button" class="btn" data-close>Abbrechen</button><button type="button" class="btn primary" id="exe-save">Speichern</button></div>
   </dialog>
 
   <dialog id="more-dialog">
@@ -514,5 +555,7 @@
   <script src="settings.js"></script>
   <script src="untis.js"></script>
   <script src="homework.js"></script>
+  <script src="exams.js"></script>
+  <script src="orbit.js"></script>
 </body>
 </html>

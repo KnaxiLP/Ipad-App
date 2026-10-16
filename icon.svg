@@ -1,6 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#1f3b6e"/>
-  <rect x="146" y="106" width="232" height="300" rx="18" fill="#fff"/>
-  <rect x="146" y="106" width="34" height="300" rx="10" fill="#c9d6ee"/>
-  <path d="M212 180h120M212 228h120M212 276h120M212 324h80" stroke="#1f3b6e" stroke-width="14" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#24467f"/><stop offset="1" stop-color="#162c55"/></linearGradient>
+    <linearGradient id="pl" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#c9d6ee"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <!-- hintere Hälfte der Umlaufbahn -->
+  <path d="M96 286 A176 70 -18 0 1 416 226" fill="none" stroke="#8fb0e8" stroke-width="18" stroke-linecap="round" opacity=".55"/>
+  <circle cx="256" cy="256" r="96" fill="url(#pl)"/>
+  <!-- vordere Hälfte -->
+  <path d="M416 226 A176 70 -18 0 1 96 286" fill="none" stroke="#8fb0e8" stroke-width="18" stroke-linecap="round"/>
+  <circle cx="128" cy="300" r="22" fill="#fbbf24"/>
 </svg>

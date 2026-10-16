@@ -57,6 +57,8 @@ function renderHomework() {
   const cur = sel.value;
   sel.innerHTML = '<option value="">Fach …</option>' + subs.map((s) => `<option value="${untisEsc(s.su)}">${untisEsc(s.long ? `${s.su} – ${s.long}` : s.su)}</option>`).join('') + '<option value="__new">Anderes Fach …</option>';
   sel.value = subs.some((s) => s.su === cur) ? cur : hwFilter !== 'all' ? hwFilter : '';
+  const share = $('#hw-share-box');
+  if (share && !share.contains(document.activeElement)) share.innerHTML = orbitShareSelect('hw-share');
   // Liste nach Fälligkeit
   const shown = all.filter((t) => hwFilter === 'all' || t.hw.su === hwFilter);
   const groups = new Map();
@@ -114,7 +116,8 @@ function hwItem(t, showDate) {
   li.querySelector('.hw-text').textContent = t.text;
   li.querySelector('.hw-meta b').textContent = t.hw.suLong ? `${t.hw.su} · ${t.hw.suLong}` : t.hw.su;
   li.querySelector('.hw-meta span').textContent = (showDate ? ` · fällig ${due.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric' })}` : '') +
-    (t.hw.assigned ? ` · aufgegeben ${new Date(t.hw.assigned + 'T00:00').toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' })}` : '');
+    (t.hw.assigned ? ` · aufgegeben ${new Date(t.hw.assigned + 'T00:00').toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' })}` : '') +
+    (t.shared ? ' · ' + orbitByline(t) : '');
   li.querySelector('.check').addEventListener('click', () => { t.done = !t.done; saveTodos(); renderHomework(); renderUntisHome(); });
   li.querySelector('.hw-main').addEventListener('click', () => hwOpenEdit(t));
   return li;
@@ -126,6 +129,11 @@ function hwOpenEdit(t) {
   $('#hwe-text').value = t.text;
   $('#hwe-su').value = t.hw.su;
   $('#hwe-due').value = t.hw.due;
+  const mine = orbitCanEdit(t);
+  ['#hwe-text', '#hwe-su', '#hwe-due'].forEach((s) => { $(s).disabled = !mine; });
+  $('#hwe-save').hidden = !mine;
+  $('#hwe-del').textContent = mine ? 'Löschen' : 'Ausblenden';
+  $('#hwe-note').textContent = t.shared ? orbitByline(t) + (mine ? '' : ' – ändern kann nur, wer es eingetragen hat') : '';
   $('#hw-edit').showModal();
 }
 $('#hwe-save').addEventListener('click', () => {
@@ -136,6 +144,7 @@ $('#hwe-save').addEventListener('click', () => {
   t.text = text;
   if (su !== t.hw.su) { t.hw.su = su; t.hw.suLong = (hwSubjects().find((s) => s.su === su) || {}).long || ''; }
   t.hw.due = $('#hwe-due').value;
+  orbitUpdate('homework', t);
   saveTodos();
   $('#hw-edit').close();
   renderHomework();
@@ -143,6 +152,8 @@ $('#hwe-save').addEventListener('click', () => {
 });
 $('#hwe-del').addEventListener('click', () => {
   if (!hwEdit) return;
+  if (hwEdit.shared && orbitCanEdit(hwEdit) && !confirm('Für die ganze Klasse löschen?')) return;
+  orbitRemove('homework', hwEdit);
   todos.splice(todos.indexOf(hwEdit), 1);
   saveTodos();
   $('#hw-edit').close();
@@ -184,7 +195,9 @@ $('#hw-form').addEventListener('submit', (e) => {
   if (!text) return;
   if (!su) return toast('Bitte ein Fach wählen');
   const due = $('#hw-due').value || hwAutoDue(su);
-  todos.push({ text, done: false, hw: { su, suLong: (hwSubjects().find((s) => s.su === su) || {}).long || '', assigned: untisIso(new Date()), due } });
+  const t = { text, done: false, hw: { su, suLong: (hwSubjects().find((s) => s.su === su) || {}).long || '', assigned: untisIso(new Date()), due } };
+  todos.push(t);
+  orbitAdd('homework', orbitShareValue('hw-share'), t);
   saveTodos();
   $('#hw-text').value = '';
   hwDueTouched = false;
@@ -195,4 +208,4 @@ $('#hw-form').addEventListener('submit', (e) => {
 });
 
 window.addEventListener('viewchange', (e) => { if (e.detail === 'homework') { if (!$('#hw-due').value) $('#hw-due').value = untisIso(untisAddDays(new Date(), 1)); renderHomework(); } });
-if (document.body.dataset.view === 'homework') renderHomework();
+setTimeout(() => { if (document.body.dataset.view === 'homework') renderHomework(); }, 0);

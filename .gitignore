@@ -1,3 +1,7 @@
 # Zugangsdaten nie hochladen
 untis_config.json
 *untis*config*.json
+# Daten des Orbit-Servers
+orbit-data.json
+orbit-data.json.tmp
+orbit-server/backups/

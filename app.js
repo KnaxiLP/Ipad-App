@@ -122,7 +122,12 @@ function renderTodos() {
     del.className = 'delete';
     del.textContent = '×';
     del.setAttribute('aria-label', 'Löschen');
-    del.onclick = () => { todos.splice(i, 1); saveTodos(); };
+    del.onclick = () => {
+      if (todo.shared && orbitCanEdit(todo) && !confirm('Für die ganze Klasse löschen?')) return;
+      if (todo.shared) orbitRemove('homework', todo);
+      todos.splice(i, 1);
+      saveTodos();
+    };
 
     li.append(check, text, del);
     list.append(li);
@@ -262,11 +267,11 @@ $('#backup-save').addEventListener('click', async () => {
   }
   let notes = [];
   try { notes = await noteDb.all(); } catch {}
-  const json = JSON.stringify({ app: 'Lernheft', backup: 1, date: new Date().toISOString(), local, notes },
+  const json = JSON.stringify({ app: 'Orbit', backup: 1, date: new Date().toISOString(), local, notes },
     (k, v) => (v instanceof Uint8Array ? { __u8: bytesToB64(v) } : v));
   const d = new Date();
-  const name = `Lernheft-Sicherung-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.json`;
-  shareFiles([new File([json], name, { type: 'application/json' })], 'Lernheft-Sicherung');
+  const name = `Orbit-Sicherung-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.json`;
+  shareFiles([new File([json], name, { type: 'application/json' })], 'Orbit-Sicherung');
 });
 
 $('#backup-load').addEventListener('click', () => $('#backup-file').click());
@@ -278,7 +283,7 @@ $('#backup-file').addEventListener('change', async (e) => {
   try {
     data = JSON.parse(await file.text(), (k, v) => (v && typeof v === 'object' && typeof v.__u8 === 'string' ? b64ToBytes(v.__u8) : v));
   } catch { data = null; }
-  if (!data || data.app !== 'Lernheft' || !data.local || !Array.isArray(data.notes)) return toast('Keine gültige Lernheft-Sicherung');
+  if (!data || !['Orbit', 'Lernheft'].includes(data.app) || !data.local || !Array.isArray(data.notes)) return toast('Keine gültige Orbit-Sicherung');
   const when = data.date ? new Date(data.date).toLocaleDateString('de-DE') : '?';
   if (!confirm(`Sicherung vom ${when} laden?\n${data.notes.length} Notizen. Deine jetzigen Daten werden dabei ersetzt.`)) return;
   try {

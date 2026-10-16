@@ -63,7 +63,7 @@ async function untisCall(method, params, sid) {
 
 // Anmelden → Aufruf → Abmelden (Sitzungen bleiben nicht offen)
 async function untisSession(fn) {
-  const auth = await untisCall('authenticate', { user: untisCfg.user.trim(), password: store.get('untisPass', ''), client: 'Lernheft' });
+  const auth = await untisCall('authenticate', { user: untisCfg.user.trim(), password: store.get('untisPass', ''), client: 'Orbit' });
   if (!auth || !auth.sessionId) throw new UntisError('Anmeldung fehlgeschlagen');
   try { return await fn(auth); } finally { untisCall('logout', {}, auth.sessionId).catch(() => {}); }
 }
@@ -248,8 +248,9 @@ function untisCard(l, now) {
   const ro = l.roOrg ? `<s>${untisEsc(l.roOrg)}</s> ${untisEsc(l.ro)}` : untisEsc(l.ro);
   const live = !cancelled && now >= `${l.date} ${l.start}` && now < `${l.date} ${l.end}`;
   const hw = untisHw().some((t) => !t.done && t.hw.due === l.date && t.hw.su === l.su);
+  const ex = typeof examOn === 'function' && !cancelled ? examOn(l.su, l.date) : null;
   return `<button type="button" class="ut-card${cancelled ? ' cancelled' : ''}${changed && !cancelled ? ' changed' : ''}${live ? ' live' : ''}" style="--c:${l.bg || 'var(--muted)'}" data-l="${untisEsc(JSON.stringify(l))}">` +
-    `<b>${untisEsc(l.su || '—')}${hw ? '<span class="ut-hw" title="Hausaufgabe fällig">HA</span>' : ''}</b>${cancelled ? '<span class="ut-tag">Entfall</span>' : changed ? '<span class="ut-tag">Änderung</span>' : ''}` +
+    `<b>${untisEsc(l.su || '—')}${hw ? '<span class="ut-hw" title="Hausaufgabe fällig">HA</span>' : ''}${ex ? `<span class="ut-hw ut-ex" title="${untisEsc(ex.kind)}">${untisEsc(examShort(ex.kind))}</span>` : ''}</b>${cancelled ? '<span class="ut-tag">Entfall</span>' : changed ? '<span class="ut-tag">Änderung</span>' : ''}` +
     `<span class="ut-meta">${[te, ro].filter(Boolean).join(' · ')}</span>` +
     (l.info ? `<span class="ut-info">${untisEsc(l.info)}</span>` : '') + '</button>';
 }
@@ -306,7 +307,7 @@ function untisShowDetail(l) {
     `<button type="button" class="btn small ut-note-btn" id="ut-note">📝 Notiz zu ${untisEsc(l.suLong || l.su)}</button>` +
     '<h4 class="ut-h4">Hausaufgaben</h4><ul class="ut-hwlist" id="ut-hwlist"></ul>' +
     '<form class="ut-hwform" id="ut-hwform"><input id="ut-hwtext" placeholder="Neue Hausaufgabe …" autocomplete="off">' +
-    '<label class="ut-due">fällig <input type="date" id="ut-hwdue"></label><button type="submit" class="btn primary small">Eintragen</button></form>' +
+    '<label class="ut-due">fällig <input type="date" id="ut-hwdue"></label>' + orbitShareSelect('ut-hwshare') + '<button type="submit" class="btn primary small">Eintragen</button></form>' +
     '<p class="muted small-text" id="ut-duehint"></p>';
   $('#ut-note').addEventListener('click', () => untisOpenNote(l));
   // Fälligkeit: nächste Stunde dieses Fachs (laut Untis), sonst eine Woche später
@@ -340,9 +341,13 @@ function untisShowDetail(l) {
       const li = document.createElement('li');
       li.className = t.done ? 'done' : '';
       li.innerHTML = `<button type="button" class="check">${t.done ? '✓' : ''}</button><span><span class="ut-hwt"></span><span class="muted small-text">${t.hw.due === l.date ? 'fällig in dieser Stunde' : 'fällig ' + untisEsc(untisDayLabel(t.hw.due).replace(/^(Heute|Morgen)$/, (m) => m.toLowerCase()))}</span></span><button type="button" class="delete" aria-label="Löschen">×</button>`;
-      li.querySelector('.ut-hwt').textContent = t.text;
+      li.querySelector('.ut-hwt').textContent = t.text + (t.shared ? '  ' + orbitByline(t) : '');
       li.querySelector('.check').addEventListener('click', () => { t.done = !t.done; saveTodos(); list(); renderUntis(); renderUntisHome(); });
-      li.querySelector('.delete').addEventListener('click', () => { todos.splice(todos.indexOf(t), 1); saveTodos(); list(); renderUntis(); renderUntisHome(); });
+      li.querySelector('.delete').addEventListener('click', () => {
+        if (t.shared && orbitCanEdit(t) && !confirm('Für die ganze Klasse löschen?')) return;
+        orbitRemove('homework', t);
+        todos.splice(todos.indexOf(t), 1); saveTodos(); list(); renderUntis(); renderUntisHome();
+      });
       ul.append(li);
     }
   };
@@ -351,7 +356,9 @@ function untisShowDetail(l) {
     e.preventDefault();
     const text = $('#ut-hwtext').value.trim();
     if (!text || !dueInput.value) return;
-    todos.push({ text, done: false, hw: { su: l.su, suLong: l.suLong, assigned: l.date, due: dueInput.value } });
+    const t = { text, done: false, hw: { su: l.su, suLong: l.suLong, assigned: l.date, due: dueInput.value } };
+    todos.push(t);
+    orbitAdd('homework', orbitShareValue('ut-hwshare'), t);
     saveTodos();
     $('#ut-hwtext').value = '';
     list();

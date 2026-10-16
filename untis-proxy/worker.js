@@ -1,4 +1,4 @@
-// Untis-Proxy für Lernheft (Cloudflare Worker, kostenlos)
+// Untis-Proxy für Orbit (Cloudflare Worker, kostenlos)
 //
 // Browser dürfen WebUntis nicht direkt abfragen (fehlende CORS-Freigabe). Dieser Worker
 // leitet die Anfragen der App an WebUntis weiter – und nur dorthin:
@@ -34,7 +34,7 @@ export default {
       return new Response('Ungültiges Ziel', { status: 400, headers: cors });
     }
 
-    const headers = { 'Content-Type': 'application/json', 'User-Agent': 'Lernheft' };
+    const headers = { 'Content-Type': 'application/json', 'User-Agent': 'Orbit' };
     const sid = request.headers.get('X-Untis-Session');
     if (sid && /^[A-Za-z0-9]+$/.test(sid)) headers.Cookie = `JSESSIONID=${sid}`;
 

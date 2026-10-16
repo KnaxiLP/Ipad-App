@@ -1,4 +1,4 @@
-# Lernheft – Web-App für iPad und Surface
+# Orbit – die Schul-App für iPad und Surface
 
 Eine einfache Website, die sich auf dem iPad wie eine echte App anfühlt
 (Progressive Web App): eigenes Icon auf dem Home-Bildschirm, Vollbild ohne
@@ -52,6 +52,26 @@ Jetzt startet die Seite vom Home-Bildschirm aus wie eine App.
 - Alles ist **Vektorgrafik (SVG)**: Schrift bleibt in jeder Größe gestochen scharf
 - Export als **PDF (Vektor)**, ideal zum Import in Goodnotes, oder als Bild (⋯ → Teilen). Am iPad öffnet sich das Teilen-Menü, am Surface/Windows ein „Speichern unter“-Fenster (sonst landet die Datei in „Downloads“)
 - Alles wird nur auf dem Gerät gespeichert
+
+## Klasse (Orbit-Server)
+
+Mit einem eigenen kleinen Server, z. B. auf einem **Raspberry Pi**, kann eine Klasse Hausaufgaben und Schulaufgaben teilen. Einrichtung: [`orbit-server/ANLEITUNG.md`](orbit-server/ANLEITUNG.md). Die „Datenbank“ ist eine einzige JSON-Datei.
+
+- **Klasse → Klasse erstellen:** Du bekommst einen 6-stelligen Code. Über **Einladen** schickst du ihn an die anderen.
+- **Klasse beitreten:** Code eingeben. Man kann in mehreren Klassen bzw. Kursen sein.
+- Beim Eintragen von Hausaufgaben (auch direkt im Stundenplan) und Schulaufgaben wählst du **👥 Klasse** oder **🔒 Nur für mich**.
+- Geteilte Einträge zeigen „👥 10b · von Max“. Ändern und löschen kann nur, wer es eingetragen hat (oder der Ersteller der Klasse). Alle anderen können fremde Einträge für sich ausblenden.
+- **Erledigt** ist immer persönlich: Wenn du abhakst, ändert sich bei den anderen nichts.
+- Abgleich alle 2 Minuten, beim Öffnen und beim Zurückkehren in die App. Ohne Internet wartet alles in einer Warteschlange und wird später gesendet.
+
+## Schulaufgaben-Planer
+
+Bereich **Schulaufgaben**: Fach, Art (Schulaufgabe, Kurzarbeit, Stegreifaufgabe, Test, Referat, Abgabe …), Datum, Titel und Stoff eintragen, privat oder mit der Klasse geteilt.
+
+- Nach Monaten sortiert, mit Countdown („in 5 Tagen“). Prüfungen in den nächsten 3 Tagen erscheinen rot.
+- Im **Stundenplan** trägt die Stunde des Fachs an dem Tag ein rotes Kürzel (SA, KA, Ex …).
+- Die Startseite zeigt die nächste Prüfung.
+- Vergangene Prüfungen liegen eingeklappt unten.
 
 ## Untis-Stundenplan
 
@@ -156,6 +176,10 @@ python3 -m http.server 8000
 | `notes.js` | Notizen mit Stift |
 | `goodnotes.js` | Import von `.goodnotes`-Dateien |
 | `untis.js` | Stundenplan aus WebUntis |
+| `homework.js` | Hausaufgaben-Übersicht |
+| `exams.js` | Schulaufgaben-Planer |
+| `orbit.js` | Klassen: Beitreten, Teilen, Abgleich mit dem Orbit-Server |
+| `orbit-server/` | Server für den Raspberry Pi (Python, eine JSON-Datei) + Anleitung |
 | `untis-proxy/worker.js` | Proxy für WebUntis (Cloudflare Worker) |
 | `braces.js` | Klammern-Generator zum Kopieren |
 | `python.js` | Python-Editor (Oberfläche) |
