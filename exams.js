@@ -1,7 +1,7 @@
 // ---------- Schulaufgaben-Planer ----------
 // Prüfungen mit Fach, Art, Datum und Stoff – privat oder mit der Klasse geteilt (orbit.js).
 
-const EXAM_KINDS = [['Schulaufgabe', 'SA'], ['Kurzarbeit', 'KA'], ['Stegreifaufgabe', 'Ex'], ['Test', 'Test'], ['Referat', 'Ref'], ['Abgabe', 'Abg'], ['Sonstiges', '!']];
+const EXAM_KINDS = [['Schulaufgabe', 'SA'], ['Kurzarbeit', 'KA'], ['Stegreifaufgabe', 'Ex'], ['Test', 'Test'], ['Referat', 'Ref'], ['Abgabe', 'Abg'], ['Sonstiges', '!'], ['KASL', 'KASL'];
 let exams = store.get('exams', []);
 let examEdit = null;
 let examShowPast = false;
