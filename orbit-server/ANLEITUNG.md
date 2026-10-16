@@ -12,10 +12,10 @@ Auf dem Pi ein Terminal öffnen (oder per `ssh pi@raspberrypi.local`):
 
 ```bash
 mkdir -p ~/orbit && cd ~/orbit
-curl -fsSLO https://raw.githubusercontent.com/KnaxiLP/Ipad-App/main/orbit-server/orbit_server.py
+curl -fsSLO https://raw.githubusercontent.com/KnaxiLP/Ipad-App/claude/exciting-cray-gdxnse/orbit-server/orbit_server.py
 ```
 
-Liegt die Datei noch nicht auf `main`, im Link `main` durch den Branch-Namen ersetzen. Alternativ die Datei per USB-Stick kopieren.
+Alternativ die Datei per USB-Stick kopieren.
 
 Kurz testen:
 
