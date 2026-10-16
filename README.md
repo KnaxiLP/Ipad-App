@@ -70,7 +70,7 @@ Mit einem eigenen kleinen Server, z. B. auf einem **Raspberry Pi**, kann eine Kl
 
 ## Schulaufgaben-Planer
 
-Bereich **Schulaufgaben**: Fach, Art (Schulaufgabe, Kurzarbeit, Stegreifaufgabe, Test, Referat, Abgabe …), Datum, Titel und Stoff eintragen, privat oder mit der Klasse geteilt.
+Bereich **Schulaufgaben**: Fach, Art (Schulaufgabe, Kurzarbeit, Stegreifaufgabe, Test, Referat, Abgabe, KASL …), Datum, Titel und Stoff eintragen, privat oder mit der Klasse geteilt.
 
 - Nach Monaten sortiert, mit Countdown („in 5 Tagen“). Prüfungen in den nächsten 3 Tagen erscheinen rot.
 - Im **Stundenplan** trägt die Stunde des Fachs an dem Tag ein rotes Kürzel (SA, KA, Ex …).
