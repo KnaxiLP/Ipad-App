@@ -68,6 +68,16 @@ Mit einem eigenen kleinen Server, z. B. auf einem **Raspberry Pi**, kann eine Kl
 - **Erledigt** ist immer persönlich: Wenn du abhakst, ändert sich bei den anderen nichts.
 - Abgleich alle 2 Minuten, beim Öffnen und beim Zurückkehren in die App. Ohne Internet wartet alles in einer Warteschlange und wird später gesendet.
 
+### Einladungslink (mit Installation)
+
+Unter **Klasse → Einladen** bzw. **Link kopieren** gibt es einen Link wie `…/Ipad-App/?install&klasse=K7XM2Q`. Wer ihn öffnet:
+
+- **iPad/iPhone:** bekommt eine Schritt-für-Schritt-Anleitung (Teilen → „Zum Home-Bildschirm“ → „Hinzufügen“). Die installierte App startet mit dem Code und tritt automatisch bei. Falls das einmal nicht klappt, ist der Code schon kopiert: in Orbit unter **Klasse** auf 📋 tippen.
+- **Surface/Windows, Android:** bekommt einen Knopf **„Orbit installieren“**. Nach dem Installieren tritt Orbit beim ersten Start der Klasse bei.
+- **Ohne Installieren beitreten** geht auch, dann einfach im Browser.
+
+Eine Webseite kann Apps nie ganz von selbst auf den Home-Bildschirm legen, auf iPad und iPhone erlaubt Apple das nicht. Den letzten Tipp macht man deshalb immer selbst.
+
 ## Schulaufgaben-Planer
 
 Bereich **Schulaufgaben**: Fach, Art (Schulaufgabe, Kurzarbeit, Stegreifaufgabe, Test, Referat, Abgabe, KASL …), Datum, Titel und Stoff eintragen, privat oder mit der Klasse geteilt.
@@ -183,6 +193,7 @@ python3 -m http.server 8000
 | `homework.js` | Hausaufgaben-Übersicht |
 | `exams.js` | Schulaufgaben-Planer |
 | `orbit.js` | Klassen: Beitreten, Teilen, Abgleich mit dem Orbit-Server |
+| `invite.js` | Einladungslink: Installations-Anleitung und automatisches Beitreten |
 | `orbit-server/` | Server für den Raspberry Pi (Python, eine JSON-Datei) + Anleitung |
 | `untis-proxy/worker.js` | Proxy für WebUntis (Cloudflare Worker) |
 | `braces.js` | Klammern-Generator zum Kopieren |

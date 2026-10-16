@@ -1037,3 +1037,19 @@ body[data-note-tool="graph"] .pages .page-live { cursor: crosshair; }
 .orbit-new form { display: flex; gap: 8px; margin-top: 10px; }
 .orbit-new input { flex: 1; min-width: 0; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: transparent; color: var(--text); font: inherit; }
 #orbit-code { text-transform: uppercase; letter-spacing: .1em; font-family: ui-monospace, monospace; }
+
+/* Einladung & Installation */
+#install-guide { width: min(460px, calc(100vw - 32px)); }
+.ig-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.ig-head h2 { margin: 0; font-size: 24px; }
+.ig-head p { margin: 2px 0 0; }
+.ig-icon { width: 64px; height: 64px; border-radius: 15px; flex: none; }
+.ig-class { padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 10%, transparent); margin-bottom: 14px; }
+.ig-class b { font-family: ui-monospace, monospace; letter-spacing: .1em; }
+.ig-steps { padding-left: 22px; margin: 0 0 12px; line-height: 1.5; }
+.ig-steps li { margin: 6px 0; }
+.ig-share { width: 20px; height: 20px; vertical-align: -4px; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ig-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.ig-actions .btn.primary { font-size: 18px; padding: 14px; }
+.ig-done { color: #16a34a; font-weight: 600; }
+.orbit-new form #orbit-paste { flex: none; }

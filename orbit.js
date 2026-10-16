@@ -199,12 +199,12 @@ function renderOrbit() {
     const owner = c.role === 'owner';
     html += `<div class="card orbit-class" data-c="${c.id}"><div class="orbit-head"><h3>${untisEsc(c.name)}</h3>${owner ? '<span class="orbit-badge">Ersteller</span>' : ''}</div>` +
       `<div class="orbit-code"><span class="muted small-text">Beitritts-Code</span><b>${untisEsc(c.code)}</b>` +
-      '<button type="button" class="btn small" data-a="share">Einladen</button>' + (owner ? '<button type="button" class="btn small link" data-a="code">Neuer Code</button>' : '') + '</div>' +
+      '<button type="button" class="btn small" data-a="share">Einladen</button><button type="button" class="btn small" data-a="link">Link kopieren</button>' + (owner ? '<button type="button" class="btn small link" data-a="code">Neuer Code</button>' : '') + '</div>' +
       `<p class="muted small-text">${(c.members || []).length} ${(c.members || []).length === 1 ? 'Mitglied' : 'Mitglieder'} · ${todos.filter((t) => t.shared && t.shared.cls === c.id).length} Hausaufgaben · ${exams.filter((x) => x.shared && x.shared.cls === c.id).length} Schulaufgaben</p>` +
       '<ul class="orbit-members">' + (c.members || []).map((m) => `<li><span>${untisEsc(m.name)}${m.id === orbitMe.id ? ' (du)' : ''}</span>${m.role === 'owner' ? '<span class="muted small-text">Ersteller</span>' : owner ? `<button type="button" class="btn small link" data-kick="${m.id}">Entfernen</button>` : ''}</li>`).join('') + '</ul>' +
       `<div class="orbit-actions">${owner ? '<button type="button" class="btn small" data-a="rename">Umbenennen</button>' : ''}<button type="button" class="btn small danger-text" data-a="leave">Verlassen</button></div></div>`;
   }
-  html += '<div class="orbit-new"><div class="card"><h3>Klasse beitreten</h3><p class="muted small-text">Code von jemandem aus der Klasse eingeben</p><form id="orbit-join"><input id="orbit-code" placeholder="z. B. K7XM2Q" autocomplete="off" autocapitalize="characters" maxlength="8"><button type="submit" class="btn primary small">Beitreten</button></form></div>' +
+  html += '<div class="orbit-new"><div class="card"><h3>Klasse beitreten</h3><p class="muted small-text">Code von jemandem aus der Klasse eingeben</p><form id="orbit-join"><input id="orbit-code" placeholder="z. B. K7XM2Q" autocomplete="off" autocapitalize="characters" maxlength="8"><button type="button" class="btn small" id="orbit-paste" title="Code aus der Zwischenablage">📋</button><button type="submit" class="btn primary small">Beitreten</button></form></div>' +
     '<div class="card"><h3>Klasse erstellen</h3><p class="muted small-text">Du bekommst einen Code für die anderen</p><form id="orbit-create"><input id="orbit-name" placeholder="z. B. 10b oder Chemie-Kurs" autocomplete="off" maxlength="40"><button type="submit" class="btn small">Erstellen</button></form></div></div>';
   box.innerHTML = html;
 
@@ -215,9 +215,11 @@ function renderOrbit() {
       if (!b) return;
       try {
         if (b.dataset.a === 'share') {
-          const txt = `Tritt unserer Klasse „${c.name}“ in Orbit bei: Code ${c.code}`;
-          if (navigator.share) navigator.share({ text: txt }).catch(() => {});
-          else { await navigator.clipboard.writeText(txt).catch(() => {}); toast('Einladung kopiert'); }
+          const txt = `Tritt unserer Klasse „${c.name}“ in Orbit bei (Code ${c.code}):`, url = orbitInviteLink(c);
+          if (navigator.share) navigator.share({ text: txt, url }).catch(() => {});
+          else { await navigator.clipboard.writeText(`${txt} ${url}`).catch(() => {}); toast('Einladungslink kopiert'); }
+        } else if (b.dataset.a === 'link') {
+          await navigator.clipboard.writeText(orbitInviteLink(c)).then(() => toast('Einladungslink kopiert'), () => prompt('Einladungslink:', orbitInviteLink(c)));
         } else if (b.dataset.a === 'code') {
           if (!confirm('Neuen Code erzeugen? Der alte funktioniert dann nicht mehr (wer schon drin ist, bleibt drin).')) return;
           Object.assign(c, await orbitApi('POST', `/classes/${c.id}/code`));
@@ -241,18 +243,39 @@ function renderOrbit() {
       } catch (err) { toast(err.message); }
     });
   });
-  const add = async (path, body) => {
-    if (!orbitAskName()) return;
-    try {
-      const c = await orbitApi('POST', path, { ...body, member: { ...orbitMe } });
-      if (!orbitClass(c.id)) orbitClasses.push({ ...c, since: 0 });
-      orbitSave();
-      toast(path === '/join' ? `Willkommen in „${c.name}“` : `„${c.name}“ erstellt – Code ${c.code}`);
-      await orbitSync();
-    } catch (err) { toast(err.message); }
-  };
-  $('#orbit-join').addEventListener('submit', (e) => { e.preventDefault(); const code = $('#orbit-code').value.trim(); if (code) add('/join', { code }); });
-  $('#orbit-create').addEventListener('submit', (e) => { e.preventDefault(); const name = $('#orbit-name').value.trim(); if (name) add('/classes', { name }); });
+  $('#orbit-join').addEventListener('submit', (e) => { e.preventDefault(); const code = $('#orbit-code').value.trim(); if (code) orbitEnter('/join', { code }); });
+  $('#orbit-create').addEventListener('submit', (e) => { e.preventDefault(); const name = $('#orbit-name').value.trim(); if (name) orbitEnter('/classes', { name }); });
+  // Code aus der Zwischenablage (z. B. aus der Einladung kopiert)
+  $('#orbit-paste').addEventListener('click', async () => {
+    let t = '';
+    try { t = await navigator.clipboard.readText(); } catch { return toast('Einfügen nicht erlaubt – Code bitte eintippen'); }
+    const code = orbitCodeIn(t);
+    if (!code) return toast('In der Zwischenablage ist kein Klassen-Code');
+    $('#orbit-code').value = code;
+    orbitEnter('/join', { code });
+  });
+}
+
+// Klassen-Code aus Text oder Link holen (6 Zeichen ohne 0/O/1/I)
+function orbitCodeIn(t) {
+  const s = String(t || '').toUpperCase(), C = '[A-HJ-NP-Z2-9]{6}';
+  const m = s.match(new RegExp(`KLASSE=(${C})(?![A-Z0-9])`)) || s.match(new RegExp(`CODE[\\s:]*(${C})(?![A-Z0-9])`)) || s.trim().match(new RegExp(`^(${C})$`));
+  return m ? m[1] : '';
+}
+// Einladungslink: öffnet Orbit, zeigt die Installation und tritt danach der Klasse bei
+const orbitInviteLink = (c) => `${location.origin}${location.pathname.replace(/index\.html$/, '')}?install&klasse=${c.code}`;
+
+// Klasse erstellen oder beitreten; gibt die Klasse zurück (oder null)
+async function orbitEnter(path, body) {
+  if (!orbitAskName()) return null;
+  try {
+    const c = await orbitApi('POST', path, { ...body, member: { ...orbitMe } });
+    if (!orbitClass(c.id)) orbitClasses.push({ ...c, since: 0 });
+    orbitSave();
+    toast(path === '/join' ? `Willkommen in „${c.name}“` : `„${c.name}“ erstellt – Code ${c.code}`);
+    await orbitSync();
+    return c;
+  } catch (err) { toast(err.message); return null; }
 }
 
 // ---- Einstellungen ----
