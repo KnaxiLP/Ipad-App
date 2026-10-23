@@ -106,6 +106,18 @@ function pointRadius(s, p) {
   return w * (0.5 + 1.2 * Math.pow(p, 0.8));
 }
 
+// Punkt auf der zentripetalen Catmull-Rom-Kurve zwischen p1 und p2 (k = 0 … 1); Druck linear
+function catmull(p0, p1, p2, p3, k) {
+  const d = (a, b) => Math.max(1e-6, Math.sqrt(Math.hypot(b[0] - a[0], b[1] - a[1])));
+  const t0 = 0, t1 = t0 + d(p0, p1), t2 = t1 + d(p1, p2), t3 = t2 + d(p2, p3);
+  const t = t1 + (t2 - t1) * k;
+  const lerp = (a, b, ta, tb) => { const u = (t - ta) / (tb - ta); return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u]; };
+  const A1 = p0 === p1 ? p1 : lerp(p0, p1, t0, t1), A2 = lerp(p1, p2, t1, t2), A3 = p2 === p3 ? p2 : lerp(p2, p3, t2, t3);
+  const B1 = p0 === p1 ? A2 : lerp(A1, A2, t0, t2), B2 = p2 === p3 ? A2 : lerp(A2, A3, t1, t3);
+  const C = lerp(B1, B2, t1, t2);
+  return [C[0], C[1], p1[2] + (p2[2] - p1[2]) * k];
+}
+
 // Berechnet den Umriss eines Strichs (wie bei Goodnotes):
 // 1. Zittern herausfiltern  2. Punkte in gleichmäßigem Abstand neu verteilen
 // 3. Linie sanft glätten    4. links/rechts im Abstand des Radius den Rand bilden
@@ -113,6 +125,10 @@ const RESAMPLE_STEP = 1.5; // Abstand der Punkte in Seiten-Einheiten (≈ 0,3 mm
 
 function strokeOutline(s) {
   const p = s.pts, n = p.length / 3;
+  const zk = 1 / Math.max(0.3, s.z || 1), STEP = RESAMPLE_STEP * zk, NEAR = 2 * zk;
+  // Fenster und Glätt-Durchgänge in Punkten: bei feinerem Raster mehr Punkte bzw. Durchgänge,
+  // damit dieselbe Strecke auf dem Papier geglättet wird (Diffusion ~ Durchgänge × Schritt²)
+  const zf = 1 / zk, WIN = Math.max(1, Math.round(2 * zf));
 
   // 1. Rohpunkte übernehmen, der Druck wird leicht geglättet
   const raw = [];
@@ -127,9 +143,9 @@ function strokeOutline(s) {
   // Punkt abgeschnitten: der Strich "zuckt" bei schnellen Richtungswechseln zurück.
   const sharp = new Uint8Array(raw.length);
   for (let i = 1, j = 0, k = 1; i < raw.length - 1; i++) {
-    while (j < i - 1 && Math.hypot(raw[i][0] - raw[j + 1][0], raw[i][1] - raw[j + 1][1]) >= 2) j++;
+    while (j < i - 1 && Math.hypot(raw[i][0] - raw[j + 1][0], raw[i][1] - raw[j + 1][1]) >= NEAR) j++;
     if (k <= i) k = i + 1;
-    while (k < raw.length - 1 && Math.hypot(raw[k][0] - raw[i][0], raw[k][1] - raw[i][1]) < 2) k++;
+    while (k < raw.length - 1 && Math.hypot(raw[k][0] - raw[i][0], raw[k][1] - raw[i][1]) < NEAR) k++;
     const ax = raw[i][0] - raw[j][0], ay = raw[i][1] - raw[j][1];
     const bx = raw[k][0] - raw[i][0], by = raw[k][1] - raw[i][1];
     if ((ax * bx + ay * by) / ((Math.hypot(ax, ay) * Math.hypot(bx, by)) || 1) < 0.3) sharp[i] = 1;
@@ -137,29 +153,35 @@ function strokeOutline(s) {
 
   // 2. Gleichmäßig verteilen – ZUERST, damit die Glättung danach unabhängig von der
   //    Schreibgeschwindigkeit ist (schnell = wenige, weit entfernte Punkte, langsam = viele dichte).
+  //    Zwischen den Stiftpunkten wird eine runde Kurve gelegt (Catmull-Rom, zentripetal) statt einer
+  //    Geraden: Das iPad liefert bei schneller Schrift nur ~60 Punkte/s, gerade Verbindungen ergeben
+  //    sonst sichtbare Ecken („Vieleck“). An echten Spitzen (sharp) bleibt es gerade.
   const pts = [raw[0].slice()];
+  const smoothSeg = !s.shape && raw.length > 2;
   let carry = 0;
   for (let i = 1; i < raw.length; i++) {
     const a = raw[i - 1], b = raw[i];
     const seg = Math.hypot(b[0] - a[0], b[1] - a[1]);
     if (!seg) continue;
-    let t = RESAMPLE_STEP - carry;
+    const curve = smoothSeg && seg > STEP && !sharp[i - 1] && !sharp[i];
+    const p0 = raw[Math.max(0, i - 2)], p3 = raw[Math.min(raw.length - 1, i + 1)];
+    let t = STEP - carry;
     while (t <= seg) {
       const k = t / seg;
-      pts.push([a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k]);
-      t += RESAMPLE_STEP;
+      pts.push(curve ? catmull(p0, a, b, p3, k) : [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k]);
+      t += STEP;
     }
-    carry = seg - (t - RESAMPLE_STEP);
-    if (sharp[i] && carry > RESAMPLE_STEP * 0.2) { pts.push(b.slice()); carry = 0; }
+    carry = seg - (t - STEP);
+    if (sharp[i] && carry > STEP * 0.2) { pts.push(b.slice()); carry = 0; }
   }
   const end = raw[raw.length - 1], lastP = pts[pts.length - 1];
-  if (Math.hypot(end[0] - lastP[0], end[1] - lastP[1]) > RESAMPLE_STEP * 0.3) pts.push(end.slice());
+  if (Math.hypot(end[0] - lastP[0], end[1] - lastP[1]) > STEP * 0.3) pts.push(end.slice());
 
   // 3. Scharfe Kehren finden (m, n, u, h …) – die werden NICHT geglättet, sonst verschmelzen
   //    Auf- und Abstrich. Erkannte Formen (Linie, Rechteck …) werden gar nicht geglättet.
   const keep = new Uint8Array(pts.length);
   keep[0] = keep[pts.length - 1] = 1;
-  const W = 3;
+  const W = Math.max(3, Math.round(3 * zf));
   for (let i = W; i < pts.length - W; i++) {
     const ax = pts[i][0] - pts[i - W][0], ay = pts[i][1] - pts[i - W][1];
     const bx = pts[i + W][0] - pts[i][0], by = pts[i + W][1] - pts[i][1];
@@ -168,7 +190,8 @@ function strokeOutline(s) {
   }
 
   // 4. Sanft glätten (nur das Zittern, gleich stark bei jeder Geschwindigkeit)
-  for (let pass = 0; pass < (s.shape ? 0 : penSmooth); pass++) {
+  const passes = s.shape ? 0 : Math.min(40, Math.round(penSmooth * zf * zf));
+  for (let pass = 0; pass < passes; pass++) {
     for (let i = pts.length - 2; i >= 1; i--) {
       if (keep[i]) continue;
       pts[i][0] = pts[i - 1][0] * 0.25 + pts[i][0] * 0.5 + pts[i + 1][0] * 0.25;
@@ -178,14 +201,14 @@ function strokeOutline(s) {
 
   // Radien berechnen und glätten, damit die Dicke weich verläuft
   const r = pts.map((q) => pointRadius(s, q[2]));
-  for (let pass = 0; pass < 3; pass++) {
+  for (let pass = 0; pass < Math.min(40, Math.round(3 * zf * zf)); pass++) {
     for (let i = 1; i < r.length - 1; i++) r[i] = r[i - 1] * 0.25 + r[i] * 0.5 + r[i + 1] * 0.25;
   }
 
   // 4. Rand bilden. Die Richtung wird über mehrere Punkte bestimmt (ruhiger).
   const left = [], right = [], angles = [], corners = [], dirs = [];
   for (let i = 0; i < pts.length; i++) {
-    const a = pts[Math.max(0, i - 2)], b = pts[Math.min(pts.length - 1, i + 2)];
+    const a = pts[Math.max(0, i - WIN)], b = pts[Math.min(pts.length - 1, i + WIN)];
     let dx = b[0] - a[0], dy = b[1] - a[1];
     const len = Math.hypot(dx, dy) || 1;
     dx /= len; dy /= len;
@@ -195,9 +218,9 @@ function strokeOutline(s) {
     right.push([pts[i][0] - nx * r[i], pts[i][1] - ny * r[i]]);
     angles.push(Math.atan2(ny, nx));
     // scharfe Kehren (z. B. bei m, n, u) bekommen einen runden Punkt, sonst entstehen Kerben
-    if (i > 1 && i < pts.length - 2) {
-      const ax = pts[i][0] - pts[i - 2][0], ay = pts[i][1] - pts[i - 2][1];
-      const bx = pts[i + 2][0] - pts[i][0], by = pts[i + 2][1] - pts[i][1];
+    if (i >= WIN && i < pts.length - WIN) {
+      const ax = pts[i][0] - pts[i - WIN][0], ay = pts[i][1] - pts[i - WIN][1];
+      const bx = pts[i + WIN][0] - pts[i][0], by = pts[i + WIN][1] - pts[i][1];
       const dot = (ax * bx + ay * by) / ((Math.hypot(ax, ay) * Math.hypot(bx, by)) || 1);
       if (dot < 0.2) corners.push(i);
     }
@@ -1787,6 +1810,8 @@ function onDown(e) {
       active.pressure = active.stroke.pts[active.stroke.pts.length - 1];
     } else {
       active.stroke = { tool: active.strokeTool, color: active.color, size, pts: [x, y, p] };
+      // beim Reinzoomen ist ein Buchstabe in Seiten-Einheiten kleiner – Abstände/Glättung passen sich an
+      if (Math.abs(zoom - 1) > 0.05) active.stroke.z = Math.round(zoom * 100) / 100;
       if (tool === 'ball') active.stroke.style = 'ball';
       if (active.edge) active.stroke.shape = true;     // am Lineal: exakt gerade, nicht glätten
       active.pressure = p;
@@ -1856,10 +1881,10 @@ function onMove(e) {
     } else {
       const pts = active.stroke.pts;
       const n = pts.length;
-      if (Math.hypot(x - pts[n - 3], y - pts[n - 2]) < 0.6) continue;
+      if (Math.hypot(x - pts[n - 3], y - pts[n - 2]) < 0.6 / (active.stroke.z || 1)) continue;
       // Druck leicht glätten, sonst wird die Linie "perlig" (dick-dünn-dick)
       active.pressure = active.pressure * 0.65 + p * 0.35;
-      pts.push(Math.round(x * 10) / 10, Math.round(y * 10) / 10, Math.round(active.pressure * 100) / 100);
+      pts.push(Math.round(x * 100) / 100, Math.round(y * 100) / 100, Math.round(active.pressure * 100) / 100);
       // Stift bleibt kurz still → Form erkennen
       if (!active.hold || Math.hypot(x - active.hold[0], y - active.hold[1]) > 3) {
         active.hold = [x, y];

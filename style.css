@@ -618,11 +618,12 @@ dialog h3 { margin: 0 0 16px; font-size: 22px; }
   font-size: 15px;
   font-weight: 600;
   z-index: 10;
-  transition: transform .3s ease;
+  transition: transform .3s ease, opacity .3s, visibility .3s;
   pointer-events: none;
   max-width: calc(100% - 32px);
   text-align: center;
 }
+.toast:not(.show) { opacity: 0; visibility: hidden; pointer-events: none; }   /* sonst schaut sie unter der Statusleiste hervor */
 .toast.show { transform: translate(-50%, 0); }
 
 /* ---------- Install-Banner ---------- */

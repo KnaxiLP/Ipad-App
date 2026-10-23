@@ -275,7 +275,7 @@ async function orbitEnter(path, body) {
     toast(path === '/join' ? `Willkommen in „${c.name}“` : `„${c.name}“ erstellt – Code ${c.code}`);
     await orbitSync();
     return c;
-  } catch (err) { toast(err.message); return null; }
+  } catch (err) { orbitEnter.lastError = err; toast(err.message); return null; }
 }
 
 // ---- Einstellungen ----

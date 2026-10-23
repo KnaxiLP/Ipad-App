@@ -41,9 +41,12 @@ async function inviteJoin() {
   const code = store.get('orbitPendingCode', '');
   if (!code || !orbitReady()) return;
   if (orbitClasses.some((c) => c.code === code)) { store.set('orbitPendingCode', ''); return; }
-  showView('orbit');
+  orbitEnter.lastError = null;
   const c = await orbitEnter('/join', { code });
-  if (c) store.set('orbitPendingCode', '');      // bei Fehler bleibt er für den nächsten Versuch
+  const err = orbitEnter.lastError;
+  // geschafft, oder den Code gibt es nicht (mehr) → vergessen; nur bei Netzproblemen später nochmal
+  if (c || (err && err.status >= 400 && err.status < 500)) store.set('orbitPendingCode', '');
+  if (c) showView('orbit');
 }
 
 const SHARE_ICON = '<svg viewBox="0 0 24 24" class="ig-share" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5v10h14V11h-1"/></svg>';
