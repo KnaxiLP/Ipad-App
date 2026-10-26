@@ -287,6 +287,9 @@ input[type="range"] { width: 100%; accent-color: var(--accent); margin: 10px 0 4
 body[data-view="notes"] .sidebar { display: none; }
 body[data-view="notes"] .content { padding: 0; overflow: hidden; }
 body[data-view="notes"] .app { padding-top: 0; }
+/* Was am iPad über/unter der App durchscheint (Statusleiste, Home-Leiste), soll nicht schwarz sein:
+   oben in der Farbe der Leiste, unten in der Farbe der Schreibfläche */
+html:has(body[data-view="notes"]), body[data-view="notes"] { background: linear-gradient(var(--bar-bg) 50%, var(--canvas-bg) 50%); }
 #view-notes { max-width: none; }
 #view-notes.active { display: flex; flex-direction: column; height: 100%; background: var(--canvas-bg); animation: none; }
 :root { --canvas-bg: #e8e8ed; --bar-bg: #f9f9fb; --ink-active: var(--accent); }
