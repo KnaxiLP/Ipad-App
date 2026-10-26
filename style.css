@@ -52,6 +52,9 @@ input { -webkit-user-select: text; user-select: text; }
   /* Platz für Statusleiste / Home-Indikator */
   padding-top: env(safe-area-inset-top);
 }
+/* Notizen: die Leiste oben reicht selbst unter die Statusleiste (sonst doppelter Abstand
+   und ein schwarzer Streifen über der Leiste) */
+body[data-view="notes"] .app { padding-top: 0; }
 
 /* ---------- Sidebar (iPad) ---------- */
 .sidebar {
