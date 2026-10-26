@@ -48,6 +48,20 @@ document.querySelectorAll('dialog').forEach((d) => {
   });
 });
 
+// ---------- Farbe für Statusleiste / Home-Leiste (iPad) ----------
+// Das iPad färbt die Ränder mit theme-color. Die muss zur Farbe passen, die die App gerade
+// zeigt – nach Orbits eigenem Design (nicht nach der Systemeinstellung) und je nach Ansicht.
+function updateThemeColor() {
+  const css = getComputedStyle(document.documentElement);
+  const v = document.body.dataset.view === 'notes' ? '--bar-bg' : '--bg';
+  const c = css.getPropertyValue(v).trim();
+  const m = document.getElementById('theme-color');
+  if (c && m && m.content !== c) m.content = c;
+}
+new MutationObserver(updateThemeColor).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+new MutationObserver(updateThemeColor).observe(document.body, { attributes: true, attributeFilter: ['data-view'] });
+if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateThemeColor);
+
 // ---------- Navigation ----------
 function showView(name) {
   document.querySelectorAll('.nav-item').forEach((b) =>
@@ -313,3 +327,4 @@ setInterval(updateClock, 1000);
   const start = store.get('startView', 'last');
   showView(start === 'last' ? store.get('view', 'home') : start);
 }
+updateThemeColor();
