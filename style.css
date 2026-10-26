@@ -293,8 +293,9 @@ html:has(body[data-view="notes"]), body[data-view="notes"] { background: var(--b
 #view-notes { max-width: none; }
 #view-notes.active { display: flex; flex-direction: column; height: 100%; background: var(--canvas-bg); animation: none; }
 :root { --canvas-bg: #e8e8ed; --bar-bg: #f9f9fb; --ink-active: var(--accent); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --canvas-bg: #121214; --bar-bg: #1c1c1e; } }
-:root[data-theme="dark"] { --canvas-bg: #121214; --bar-bg: #1c1c1e; }
+/* dunkel: Fläche um das Blatt = Farbe der Leiste, damit der Rand unten am iPad (Home-Leiste) nicht absticht */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --canvas-bg: #1c1c1e; --bar-bg: #1c1c1e; } }
+:root[data-theme="dark"] { --canvas-bg: #1c1c1e; --bar-bg: #1c1c1e; }
 
 .gn-top {
   display: flex; align-items: center; gap: 4px;
