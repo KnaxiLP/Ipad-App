@@ -624,7 +624,7 @@ function buildPages() {
     wrap.className = 'page';
     const svg = svgEl('svg', { viewBox: `0 0 ${PAGE_W} ${PAGE_H}`, class: 'page-live', 'data-page': i });
     const paper = svgEl('g');
-    const ink = svgEl('g');
+    const ink = svgEl('g', { class: 'ink' });    // Berührungen gehen durch die Striche aufs Blatt (Radieren löscht sie sonst unterm Finger weg)
     const notes = svgEl('g');                   // Side-Notes-Markierungen
     const live = svgEl('path');                 // der Strich, der gerade geschrieben wird
     const liveDots = svgEl('path');             // seine runden Punkte an Kehren
@@ -1969,7 +1969,11 @@ pagesBox.addEventListener('lostpointercapture', (e) => {
 });
 // Apple Pencil soll nie scrollen – nur der Finger (wenn "Finger zeichnet" aus ist)
 const blockScroll = (e) => {
-  if (!e.target.closest || !e.target.closest('.page-live')) return;
+  // Läuft gerade ein Stift-Strich, nie scrollen. Wichtig beim Radieren: Der Strich unter dem Stift
+  // (= Ziel der Berührung) wird gelöscht und hängt dann nicht mehr im Blatt – closest() findet
+  // .page-live nicht mehr, und das iPad hat sonst das Blatt verschoben.
+  if (active && active.pointerType === 'pen') { if (e.cancelable) e.preventDefault(); return; }
+  if (!e.target.closest || !(e.target.closest('.page-live') || (!e.target.isConnected && [...e.touches].some((t) => t.touchType === 'stylus')))) return;
   // Stift oder Handballen (Stift schreibt gerade / war eben noch da) dürfen nicht scrollen
   if (fingerDraw || penNear() || [...e.touches].some((t) => t.touchType === 'stylus')) e.preventDefault();
 };

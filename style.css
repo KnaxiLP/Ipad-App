@@ -362,6 +362,7 @@ html:has(body[data-view="notes"]), body[data-view="notes"] { background: var(--b
 }
 .page svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .page-live { touch-action: pan-x pan-y; }
+.page-live .ink { pointer-events: none; }
 /* Surface & Co.: App scrollt/zoomt selbst, der Browser darf mit dem Stift nicht scrollen */
 body.manual-touch .page-live { touch-action: none; }
 /* Schnelle Vorschau-Ebene (nicht iPad): liegt über den Seiten, fängt aber keine Eingaben ab */
