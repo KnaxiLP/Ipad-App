@@ -35,7 +35,7 @@ const SETTINGS = [
     { label: 'Mit dem Finger zeichnen', hint: 'Aus: nur der Stift schreibt, der Finger scrollt', get: () => fingerDraw, set: (v) => setFingerDraw(v) },
     { label: 'Handballen-Erkennung', hint: 'Stark: Hand wird länger und früher ignoriert', key: 'palm', def: 'normal', opts: [['off', 'Aus'], ['normal', 'Normal'], ['strong', 'Stark']], apply: (v) => { [PALM_MS, PALM_SIZE] = PALM_LEVELS[v]; } },
     { label: 'Formerkennung', hint: 'Am Ende des Strichs kurz halten → saubere Form', get: () => shapeRecog, set: (v) => { shapeRecog = v; store.set('shapeRecog', v); renderShapeToggle(); } },
-    { label: 'Haltedauer für Formen', key: 'holdMs', def: 550, opts: [[400, 'Kurz'], [550, 'Normal'], [800, 'Lang']], apply: (v) => { HOLD_MS = v; } },
+    { label: 'Haltedauer für Formen', key: 'holdMs', def: 450, opts: [[300, 'Kurz'], [450, 'Normal'], [700, 'Lang']], apply: (v) => { HOLD_MS = v; } },
     { label: 'Radierer', get: () => eraserMode, set: (v) => { eraserMode = v; store.set('eraserMode', v); renderColors(); }, opts: [['stroke', 'Ganzer Strich'], ['part', 'Teil']] }
   ] },
   { title: 'Papier & Lineal', items: [

@@ -908,7 +908,8 @@ function erasePart(page, cx, cy, r) {
 }
 
 // ---------- Formen erkennen (wie in Goodnotes: am Ende kurz stillhalten) ----------
-let HOLD_MS = store.get('holdMs', 550);
+let HOLD_MS = store.get('holdMs', 450);
+{ const old = { 400: 300, 550: 450, 800: 700 }[HOLD_MS]; if (old) { HOLD_MS = old; store.set('holdMs', old); } }   // frühere Stufen
 let shapeRecog = store.get('shapeRecog', true);
 // Wie weit der Stift beim Halten zittern darf (≈ 6 Bildschirmpunkte, unabhängig vom Zoom)
 const holdTol = () => 8 / (active && active.stroke && active.stroke.z || 1);
@@ -1899,6 +1900,7 @@ function onMove(e) {
       // Stift bleibt kurz still → Form erkennen
       if (!active.hold || Math.hypot(x - active.hold[0], y - active.hold[1]) > holdTol()) {
         active.hold = [x, y];
+        active.holdAt = performance.now();
         clearTimeout(active.holdTimer);
         active.holdTimer = setTimeout(recognizeShape, HOLD_MS);
       }
@@ -1935,7 +1937,20 @@ function onUp(e) {
   // Bricht iOS einen Stift-Strich ab, wird er trotzdem behalten – bisher verschwand er dann.
   // Nur Finger-Striche werden bei einem Abbruch verworfen (dann war es meist eine Geste).
   if (e.type === 'pointercancel' && active.pointerType !== 'pen') cancelActive();
-  else finishActive(e.type !== 'pointerup');   // pointercancel = vom System abgebrochen
+  else {
+    if (e.type !== 'pointerup') holdBeforeCancel();
+    finishActive(e.type !== 'pointerup');   // pointercancel = vom System abgebrochen
+  }
+}
+
+// Das iPad bricht einen still gehaltenen Stift nach etwa einer halben Sekunde selbst ab
+// (pointercancel, „langes Drücken“) – oft bevor die Haltezeit um ist. Wurde schon eine Weile
+// stillgehalten, gilt das als Halten: Form jetzt erkennen statt den Strich nur zu beenden.
+function holdBeforeCancel() {
+  if (!active || active.shaped || !active.holdAt || active.tool === 'eraser') return;
+  if (performance.now() - active.holdAt < Math.min(250, HOLD_MS * 0.5)) return;
+  clearTimeout(active.holdTimer);
+  recognizeShape();
 }
 
 pagesBox.addEventListener('pointerdown', onDown);
@@ -1950,7 +1965,7 @@ pagesBox.addEventListener('scroll', () => {
 // Langes Drücken mit dem Stift öffnet unter Windows sonst das Rechtsklick-Menü
 pagesBox.addEventListener('contextmenu', (e) => e.preventDefault());
 pagesBox.addEventListener('lostpointercapture', (e) => {
-  if (active && e.pointerId === active.id) finishActive(true);
+  if (active && e.pointerId === active.id) { holdBeforeCancel(); finishActive(true); }
 });
 // Apple Pencil soll nie scrollen – nur der Finger (wenn "Finger zeichnet" aus ist)
 const blockScroll = (e) => {

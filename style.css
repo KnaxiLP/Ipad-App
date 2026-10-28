@@ -1062,10 +1062,17 @@ body[data-note-tool="graph"] .pages .page-live { cursor: crosshair; }
 .ig-done { color: #16a34a; font-weight: 600; }
 .orbit-new form #orbit-paste { flex: none; }
 
-/* iPad: Notizen ein Stück über den unteren Rand hinaus ziehen, damit unter der Home-Leiste
-   kein abstechender Streifen bleibt. Der überstehende Teil wird innen wieder ausgeglichen. */
+/* iPad (Home-Bildschirm-App): Ab iPadOS 26 malt das System über/unter der App einen
+   Unschärfe-Verlauf – außer es findet am Rand ein festes, deckendes Element über (fast) die ganze
+   Breite und höher als 10px. Dann nimmt es dessen Farbe. Diese Streifen sind genau das. */
 @supports (-webkit-touch-callout: none) {
-  body[data-view="notes"] .app { position: fixed; top: 0; left: 0; right: 0; bottom: -40px; height: auto; }
-  body[data-view="notes"] .pages { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
-  body[data-view="notes"] .page-overview { bottom: 40px; }
+  @media (display-mode: standalone) {
+    body::before, body[data-view="notes"]::after {
+      content: ''; position: fixed; left: 0; right: 0; z-index: 50; pointer-events: none;
+    }
+    body::before { top: 0; height: max(12px, env(safe-area-inset-top)); background: var(--bg); }
+    body[data-view="notes"]::before { background: var(--bar-bg); }
+    body[data-view="notes"]::after { bottom: 0; height: max(12px, env(safe-area-inset-bottom)); background: var(--canvas-bg); }
+    body[data-view="notes"] .pages { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  }
 }
