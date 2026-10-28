@@ -910,6 +910,8 @@ function erasePart(page, cx, cy, r) {
 // ---------- Formen erkennen (wie in Goodnotes: am Ende kurz stillhalten) ----------
 let HOLD_MS = store.get('holdMs', 550);
 let shapeRecog = store.get('shapeRecog', true);
+// Wie weit der Stift beim Halten zittern darf (≈ 6 Bildschirmpunkte, unabhängig vom Zoom)
+const holdTol = () => 8 / (active && active.stroke && active.stroke.z || 1);
 
 function rdp(points, eps) {
   // Ramer-Douglas-Peucker: vereinfacht eine Linie auf ihre wichtigsten Eckpunkte
@@ -955,8 +957,14 @@ function fitShape(P) {
   const a = P[0], b = P[n - 1];
   const chord = Math.hypot(b[0] - a[0], b[1] - a[1]);
 
-  // gerade Linie – fast waagerecht/senkrecht wird ganz gerade ausgerichtet
-  if (chord > 0.8 * len && maxDistToPoly(P, [a, b]) < Math.max(3, chord * 0.05)) {
+  // gerade Linie – fast waagerecht/senkrecht wird ganz gerade ausgerichtet.
+  // Kleine Haken beim Aufsetzen/Anhalten (die ersten/letzten 6 %) zählen nicht.
+  const inner = [];
+  for (let i = 1, d = 0; i < n - 1; i++) {
+    d += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]);
+    if (d > len * 0.06 && d < len * 0.94) inner.push(P[i]);
+  }
+  if (chord > 0.75 * len && maxDistToPoly(inner, [a, b]) < Math.max(4, chord * 0.07)) {
     const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
     const snap = Math.round(ang / (Math.PI / 2)) * (Math.PI / 2);
     if (Math.abs(ang - snap) < (5 * Math.PI) / 180) {
@@ -1027,6 +1035,9 @@ function recognizeShape() {
   const s = active.stroke, p = s.pts, P = [];
   let pr = 0;
   for (let i = 0; i < p.length; i += 3) { P.push([p[i], p[i + 1]]); pr += p[i + 2]; }
+  // Das Zittern beim Stillhalten gehört nicht zur Form: Punkte rund um die Halteposition weglassen
+  const [hx, hy] = active.hold;
+  while (P.length > 2 && Math.hypot(P[P.length - 2][0] - hx, P[P.length - 2][1] - hy) <= holdTol()) P.pop();
   const shape = fitShape(P);
   if (!shape) return;
   pr = Math.round((pr / P.length) * 100) / 100;
@@ -1886,7 +1897,7 @@ function onMove(e) {
       active.pressure = active.pressure * 0.65 + p * 0.35;
       pts.push(Math.round(x * 100) / 100, Math.round(y * 100) / 100, Math.round(active.pressure * 100) / 100);
       // Stift bleibt kurz still → Form erkennen
-      if (!active.hold || Math.hypot(x - active.hold[0], y - active.hold[1]) > 3) {
+      if (!active.hold || Math.hypot(x - active.hold[0], y - active.hold[1]) > holdTol()) {
         active.hold = [x, y];
         clearTimeout(active.holdTimer);
         active.holdTimer = setTimeout(recognizeShape, HOLD_MS);
