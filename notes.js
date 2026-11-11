@@ -59,7 +59,7 @@ let pageEls = [];
 let active = null;     // aktueller Strich / Radiervorgang
 let saveTimer = null;
 
-const isEmpty = (n) => !n.title && n.pages.every((p) => p.strokes.length === 0 && !p.bg);
+const isEmpty = (n) => !n.title && (n.kind === 'kmap' ? !(n.kmap && n.kmap.persons.length) : n.pages.every((p) => p.strokes.length === 0 && !p.bg));
 
 // Gespeichert wird spätestens 1 s nach einer Änderung – auch beim Dauerschreiben.
 // (Nicht bei jedem Strich sofort, weil das Speichern die ganze Notiz kopiert.)
@@ -2214,6 +2214,7 @@ async function openNote(n) {
   buildPages();
   $('#pages').scrollTop = 0;
   $('#pages').scrollLeft = 0;
+  window.dispatchEvent(new CustomEvent('noteopen', { detail: n }));   // z. B. Personenkonstellation (konstellation.js)
 }
 
 async function createNote(folder) {
@@ -2224,7 +2225,7 @@ async function createNote(folder) {
 }
 
 function noteName(n) {
-  return n.title || 'Unbenannte Notiz';
+  return n.title || (n.kind === 'kmap' ? 'Unbenannte Konstellation' : 'Unbenannte Notiz');
 }
 
 async function showNotesList() {
@@ -2301,7 +2302,7 @@ function renderNotesList() {
     meta.className = 'muted small-text';
     const date = new Date(n.updated).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' });
     const fname = folderName(n.folder);
-    meta.textContent = `${n.pages.length} S. · ${date}` + (fname && folderFilter === 'all' ? ` · ${fname}` : '');
+    meta.textContent = (n.kind === 'kmap' ? `👥 Konstellation · ${(n.kmap && n.kmap.persons.length) || 0} Personen · ${date}` : `${n.pages.length} S. · ${date}`) + (fname && folderFilter === 'all' ? ` · ${fname}` : '');
     text.append(title, meta);
     const move = document.createElement('button');
     move.type = 'button';

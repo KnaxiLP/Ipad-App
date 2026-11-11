@@ -1080,3 +1080,50 @@ body[data-note-tool="graph"] .pages .page-live { cursor: crosshair; }
     body[data-view="notes"] .pages { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
   }
 }
+
+/* ---------- Personenkonstellation (konstellation.js) ---------- */
+#km-wrap { display: none; flex: 1; min-height: 0; flex-direction: column; }
+body.kmap-mode #km-wrap { display: flex; }
+body.kmap-mode #view-notes > .toolbar:not(.km-bar), body.kmap-mode #view-notes .pages, body.kmap-mode #page-overview-btn,
+body.kmap-mode .text-bar, body.kmap-mode .sn-addbar, body.kmap-mode .graph-bar, body.kmap-mode .sn-panel, body.kmap-mode .fast-ink, body.kmap-mode .ruler-layer,
+body.kmap-mode #more-dialog > .muted.small-text, body.kmap-mode #paper-group, body.kmap-mode #note-insert-image, body.kmap-mode #note-import,
+body.kmap-mode .sn-pdf-row, body.kmap-mode #note-export-pdf, body.kmap-mode #note-clear-page { display: none !important; }
+.km-bar .tool.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.km-bar .km-txt { width: auto; padding: 0 12px; font-size: 15px; font-weight: 600; color: var(--accent); }
+.km-main { flex: 1; min-height: 0; display: flex; position: relative; }
+.km-stage { flex: 1; min-width: 0; position: relative; overflow: hidden; touch-action: none; background: var(--canvas-bg); -webkit-user-select: none; user-select: none; }
+#km-svg { position: absolute; inset: 0; width: 100%; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif; }
+.km-stage .km-person, .km-stage [data-l], .km-stage .km-gtitle, .km-stage .km-knob { cursor: pointer; }
+.km-stage .km-gbox { pointer-events: none; }
+.km-empty { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: 360px; text-align: center; pointer-events: none; }
+.km-empty p { line-height: 1.6; margin: 8px 0 0; }
+.km-legend { position: absolute; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; font-size: 13px; display: grid; gap: 4px; pointer-events: none; box-shadow: 0 4px 14px rgba(0, 0, 0, .08); }
+.km-legend div { display: flex; align-items: center; gap: 8px; }
+.km-panel { width: 310px; flex: none; overflow-y: auto; background: var(--card); color: var(--text); border-left: 1px solid var(--border); padding: 12px 14px calc(16px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 12px; -webkit-overflow-scrolling: touch; }
+.km-panel[hidden] { display: none; }
+.km-ph { display: flex; justify-content: space-between; align-items: center; }
+.km-ph b { font-size: 17px; }
+.km-f { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.km-f > span:first-child { color: var(--muted); font-weight: 600; }
+.km-f input:not([type=checkbox]), .km-f select, .km-f textarea { font: inherit; font-size: 16px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text); width: 100%; box-sizing: border-box; -webkit-user-select: text; user-select: text; }
+.km-f textarea { resize: vertical; }
+.km-row { flex-direction: row; align-items: center; justify-content: space-between; }
+.km-sws { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.km-sw { width: 28px; height: 28px; border-radius: 50%; border: 0; background: var(--c); cursor: pointer; }
+.km-sw.on { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--c); }
+.km-seg { display: flex; }
+.km-seg button { flex: 1; }
+.km-types, .km-chips, .km-rels { display: flex; flex-wrap: wrap; gap: 6px; }
+.km-type, .km-rel { border: 1.5px solid var(--c); color: var(--c); background: none; border-radius: 999px; padding: 5px 10px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.km-type.on { background: var(--c); color: #fff; }
+.km-rel { text-align: left; }
+.km-chips .chip { font-size: 13px; padding: 4px 10px; }
+.km-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.km-between b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.km-between b:last-child { text-align: right; }
+.km-member { display: flex; align-items: center; gap: 6px; width: 100%; font-size: 15px; }
+.km-actions { display: flex; gap: 8px; justify-content: space-between; margin-top: 4px; }
+/* schmal (iPhone, geteilter Bildschirm): Feld als Blatt von unten */
+@media (max-width: 700px) {
+  .km-panel { position: absolute; left: 0; right: 0; bottom: 0; width: auto; max-height: 55%; border-left: 0; border-top: 1px solid var(--border); border-radius: 18px 18px 0 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, .15); z-index: 6; }
+}
