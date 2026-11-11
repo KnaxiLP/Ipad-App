@@ -1069,7 +1069,7 @@ body[data-note-tool="graph"] .pages .page-live { cursor: crosshair; }
 @supports (-webkit-touch-callout: none) {
   @media (display-mode: standalone) {
     body::before, body[data-view="notes"]::after {
-      content: ''; position: fixed; left: 0; right: 0; z-index: 50; pointer-events: none;
+      content: ''; position: fixed; left: 0; right: 0; z-index: 5; pointer-events: none;   /* unter Side-Note-Blatt & Co. */
     }
     body::before { top: 0; height: max(12px, env(safe-area-inset-top)); background: var(--bg); }
     body[data-view="notes"]::before { background: var(--bar-bg); }

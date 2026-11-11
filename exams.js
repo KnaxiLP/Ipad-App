@@ -40,7 +40,9 @@ function renderExams() {
   const keep = { su: $('#ex-su') && $('#ex-su').value, kind: $('#ex-kind') && $('#ex-kind').value };
   $('#ex-su').innerHTML = examSubjectOptions(keep.su);
   $('#ex-kind').innerHTML = examKindOptions(keep.kind || 'Schulaufgabe');
+  const shareWas = $('#ex-share') && $('#ex-share').value;
   $('#ex-share-box').innerHTML = orbitShareSelect('ex-share');
+  if (shareWas != null && $('#ex-share') && [...$('#ex-share').options].some((o) => o.value === shareWas)) $('#ex-share').value = shareWas;
   f.classList.toggle('has-share', !!$('#ex-share'));
   const today = untisIso(new Date());
   const up = exams.filter((x) => x.date >= today).sort((a, b) => a.date.localeCompare(b.date));
@@ -126,7 +128,7 @@ $('#exe-del').addEventListener('click', () => {
   if (!x) return;
   if (x.shared && orbitCanEdit(x) && !confirm('Für die ganze Klasse löschen?')) return;
   orbitRemove('exams', x);
-  exams.splice(exams.indexOf(x), 1);
+  listRemove(exams, x);
   saveExams();
   $('#ex-edit').close();
   examsChanged();

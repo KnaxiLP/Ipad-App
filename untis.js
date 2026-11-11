@@ -142,6 +142,8 @@ async function untisSync(force, monday = untisMonday, maxAge = UNTIS_SYNC_MS / 2
   untisBusy = false;
   renderUntis();
   renderUntisHome();
+  // inzwischen eine andere Woche angezeigt, die noch fehlt? (Klick kam, während geladen wurde)
+  if (monday !== untisMonday && document.body.dataset.view === 'untis' && !untisCache.weeks[untisIso(untisMonday)] && !untisError) untisSync();
 }
 
 // ---- Änderungen (Entfall, Vertretung, Raum, Hinweis) gegenüber dem letzten Stand ----
@@ -349,7 +351,7 @@ function untisShowDetail(l) {
       li.querySelector('.delete').addEventListener('click', () => {
         if (t.shared && orbitCanEdit(t) && !confirm('Für die ganze Klasse löschen?')) return;
         orbitRemove('homework', t);
-        todos.splice(todos.indexOf(t), 1); saveTodos(); list(); renderUntis(); renderUntisHome();
+        listRemove(todos, t); saveTodos(); list(); renderUntis(); renderUntisHome();
       });
       ul.append(li);
     }

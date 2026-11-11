@@ -11,6 +11,7 @@ let orbitClasses = store.get('orbitClasses', []);
 let orbitOutbox = store.get('orbitOutbox', []);
 let orbitHidden = new Set(store.get('orbitHidden', []));
 let orbitBusy = false;
+let orbitAgain = false;          // während des Abgleichs kam eine Änderung → danach gleich nochmal
 let orbitStatus = '';
 
 const orbitRand = (n) => { const a = new Uint8Array(n); crypto.getRandomValues(a); return [...a].map((b) => 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b % 57]).join(''); };
@@ -86,7 +87,8 @@ async function orbitFlush() {
 }
 
 async function orbitSync(quiet) {
-  if (!orbitReady() || orbitBusy || !orbitClasses.length) return;
+  if (orbitBusy) { orbitAgain = true; return; }
+  if (!orbitReady() || !orbitClasses.length) return;
   orbitBusy = true;
   orbitStatus = 'Abgleich …';
   renderOrbit();
@@ -113,6 +115,7 @@ async function orbitSync(quiet) {
   saveExams();
   orbitBusy = false;
   orbitRefreshViews();
+  if (orbitAgain) { orbitAgain = false; orbitSync(true); }
 }
 
 // Klasse weg (verlassen, entfernt, gelöscht): geteilte Einträge dieser Klasse lokal entfernen
@@ -204,7 +207,7 @@ function renderOrbit() {
       '<ul class="orbit-members">' + (c.members || []).map((m) => `<li><span>${untisEsc(m.name)}${m.id === orbitMe.id ? ' (du)' : ''}</span>${m.role === 'owner' ? '<span class="muted small-text">Ersteller</span>' : owner ? `<button type="button" class="btn small link" data-kick="${m.id}">Entfernen</button>` : ''}</li>`).join('') + '</ul>' +
       `<div class="orbit-actions">${owner ? '<button type="button" class="btn small" data-a="rename">Umbenennen</button>' : ''}<button type="button" class="btn small danger-text" data-a="leave">Verlassen</button></div></div>`;
   }
-  html += '<div class="orbit-new"><div class="card"><h3>Klasse beitreten</h3><p class="muted small-text">Code von jemandem aus der Klasse eingeben</p><form id="orbit-join"><input id="orbit-code" placeholder="z. B. K7XM2Q" autocomplete="off" autocapitalize="characters" maxlength="8"><button type="button" class="btn small" id="orbit-paste" title="Code aus der Zwischenablage">📋</button><button type="submit" class="btn primary small">Beitreten</button></form></div>' +
+  html += '<div class="orbit-new"><div class="card"><h3>Klasse beitreten</h3><p class="muted small-text">Code von jemandem aus der Klasse eingeben</p><form id="orbit-join"><input id="orbit-code" placeholder="z. B. K7XM2Q" autocomplete="off" autocapitalize="characters" maxlength="300"><button type="button" class="btn small" id="orbit-paste" title="Code aus der Zwischenablage">📋</button><button type="submit" class="btn primary small">Beitreten</button></form></div>' +
     '<div class="card"><h3>Klasse erstellen</h3><p class="muted small-text">Du bekommst einen Code für die anderen</p><form id="orbit-create"><input id="orbit-name" placeholder="z. B. 10b oder Chemie-Kurs" autocomplete="off" maxlength="40"><button type="submit" class="btn small">Erstellen</button></form></div></div>';
   box.innerHTML = html;
 
@@ -243,7 +246,7 @@ function renderOrbit() {
       } catch (err) { toast(err.message); }
     });
   });
-  $('#orbit-join').addEventListener('submit', (e) => { e.preventDefault(); const code = $('#orbit-code').value.trim(); if (code) orbitEnter('/join', { code }); });
+  $('#orbit-join').addEventListener('submit', (e) => { e.preventDefault(); const v = $('#orbit-code').value.trim(), code = orbitCodeIn(v) || v; if (code) orbitEnter('/join', { code }); });
   $('#orbit-create').addEventListener('submit', (e) => { e.preventDefault(); const name = $('#orbit-name').value.trim(); if (name) orbitEnter('/classes', { name }); });
   // Code aus der Zwischenablage (z. B. aus der Einladung kopiert)
   $('#orbit-paste').addEventListener('click', async () => {

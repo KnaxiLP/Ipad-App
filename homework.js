@@ -97,7 +97,11 @@ function renderHomework() {
       clear.textContent = 'Erledigte löschen';
       clear.addEventListener('click', () => {
         if (!confirm(`${done.length} erledigte Hausaufgaben löschen?`)) return;
-        todos = todos.filter((x) => !(x.hw && x.done && (hwFilter === 'all' || x.hw.su === hwFilter)));
+        const gone = (x) => x.hw && x.done && (hwFilter === 'all' || x.hw.su === hwFilter);
+        // geteilte nur für mich ausblenden – nicht für die ganze Klasse löschen
+        todos.filter((x) => gone(x) && x.shared).forEach((x) => orbitHidden.add(x.shared.cls + '/' + x.shared.id));
+        orbitSave();
+        todos = todos.filter((x) => !gone(x));
         saveTodos();
         renderHomework();
       });
@@ -154,7 +158,7 @@ $('#hwe-del').addEventListener('click', () => {
   if (!hwEdit) return;
   if (hwEdit.shared && orbitCanEdit(hwEdit) && !confirm('Für die ganze Klasse löschen?')) return;
   orbitRemove('homework', hwEdit);
-  todos.splice(todos.indexOf(hwEdit), 1);
+  listRemove(todos, hwEdit);
   saveTodos();
   $('#hw-edit').close();
   renderHomework();

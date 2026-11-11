@@ -8,6 +8,9 @@ try {
 window.appFlush = [];
 
 // ---------- Speicher (bleibt auf dem Gerät erhalten) ----------
+// Eintrag aus einer Liste nehmen – nur wenn er noch drin ist (sonst würde splice(-1) den letzten löschen)
+const listRemove = (list, it) => { const i = list.indexOf(it); if (i >= 0) list.splice(i, 1); };
+
 const store = {
   get(key, fallback) {
     try {
@@ -106,7 +109,7 @@ let todos = store.get('todos', []);
 function renderTodos() {
   const list = $('#todo-list');
   list.innerHTML = '';
-  todos.forEach((todo, i) => {
+  todos.forEach((todo) => {
     const li = document.createElement('li');
     if (todo.done) li.classList.add('done');
 
@@ -114,7 +117,7 @@ function renderTodos() {
     check.className = 'check';
     check.textContent = todo.done ? '✓' : '';
     check.setAttribute('aria-label', 'Erledigt');
-    check.onclick = () => { todos[i].done = !todos[i].done; saveTodos(); };
+    check.onclick = () => { todo.done = !todo.done; saveTodos(); };
 
     const text = document.createElement('span');
     text.className = 'todo-text';
@@ -139,7 +142,7 @@ function renderTodos() {
     del.onclick = () => {
       if (todo.shared && orbitCanEdit(todo) && !confirm('Für die ganze Klasse löschen?')) return;
       if (todo.shared) orbitRemove('homework', todo);
-      todos.splice(i, 1);
+      listRemove(todos, todo);
       saveTodos();
     };
 

@@ -170,7 +170,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self): self.handle_api('DELETE')
 
     def body(self):
-        n = int(self.headers.get('Content-Length') or 0)
+        try:
+            n = int(self.headers.get('Content-Length') or 0)
+        except ValueError:
+            raise ApiError(400, 'Content-Length ungültig')
         if n > LIMITS['body']:
             raise ApiError(413, 'Zu groß')
         if not n:
@@ -226,7 +229,10 @@ class Handler(BaseHTTPRequestHandler):
 
         # POST /api/join  – mit Code beitreten
         if p == ['join'] and method == 'POST':
-            ip = self.headers.get('X-Forwarded-For', self.client_address[0]).split(',')[0].strip()
+            # letzter Eintrag = vom eigenen Proxy gesetzt; den ersten könnte jeder selbst mitschicken (Sperre umgehen)
+            ip = self.headers.get('X-Forwarded-For', self.client_address[0]).split(',')[-1].strip()
+            for k in [k for k, v in join_tries.items() if not v or v[-1] < time.time() - 60]:
+                del join_tries[k]          # alte Einträge wegräumen, sonst wächst die Liste ewig
             t = [x for x in join_tries.get(ip, []) if x > time.time() - 60]
             if len(t) >= 10:
                 raise ApiError(429, 'Zu viele Versuche – kurz warten')
@@ -259,7 +265,10 @@ class Handler(BaseHTTPRequestHandler):
 
         # GET /api/classes/:id/sync?since=  – alles seit dem letzten Abgleich
         if rest == ['sync'] and method == 'GET':
-            since = int((query.get('since') or ['0'])[0] or 0)
+            try:
+                since = int((query.get('since') or ['0'])[0] or 0)
+            except ValueError:
+                raise ApiError(400, 'since ungültig')
             out = public_class(c, mid)
             for kind in KINDS:
                 out[kind] = [it for it in c[kind].values() if it['updated'] > since]
