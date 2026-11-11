@@ -1127,3 +1127,9 @@ body.kmap-mode .sn-pdf-row, body.kmap-mode #note-export-pdf, body.kmap-mode #not
 @media (max-width: 700px) {
   .km-panel { position: absolute; left: 0; right: 0; bottom: 0; width: auto; max-height: 55%; border-left: 0; border-top: 1px solid var(--border); border-radius: 18px 18px 0 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, .15); z-index: 6; }
 }
+.km-inkbar[hidden] { display: none; }
+.km-bar #km-erase.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.km-stage.drawing { cursor: crosshair; }
+.km-stage .km-ink { pointer-events: none; }
+.km-stage .km-ftitle, .km-stage .km-fresize { cursor: grab; }
+.km-pick-list { max-height: 55vh; overflow-y: auto; }
