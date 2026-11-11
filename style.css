@@ -352,6 +352,7 @@ html:has(body[data-view="notes"]), body[data-view="notes"] { background: var(--b
   -webkit-touch-callout: none;
   flex: 1; min-height: 0; overflow: auto; -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain; padding-bottom: env(safe-area-inset-bottom);
+  overflow-anchor: none;   /* Neuzeichnen beim Radieren soll die Seite nicht verschieben */
 }
 .pages-inner { width: 100%; max-width: 900px; margin: 0 auto; padding: 20px 20px 0; box-sizing: border-box; }
 .page-row { position: relative; margin-bottom: 20px; }

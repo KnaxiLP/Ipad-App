@@ -848,7 +848,9 @@ function eraseAt(x, y) {
   }
   active.lx = x;
   active.ly = y;
-  if (changed) drawPage(active.page);
+  // beim Radieren nur die Striche neu zeichnen – Papier und Side-Note-Spalte erst beim Absetzen
+  // (deren Neuaufbau hat die Seite kurz kürzer gemacht → das Blatt ist gesprungen)
+  if (changed) { pageEls[active.page].ink.innerHTML = note.pages[active.page].strokes.map(strokeSvg).join(''); active.erased = true; }
 
   const c = pageEls[active.page].eraser;
   c.setAttribute('cx', num(x));
@@ -1713,6 +1715,7 @@ function finishActive(abnormal = false) {
   const page = note.pages[active.page];
   if (active.tool === 'eraser') {
     clearLive(pe);
+    if (active.erased) drawPage(active.page);
     if (page.strokes.length !== active.before.length || page.strokes.some((s, i) => s !== active.before[i])) {
       pushHistory([{ page: active.page, before: active.before, after: page.strokes.slice() }]);
       saveNote();
