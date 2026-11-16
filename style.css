@@ -1133,3 +1133,18 @@ body.kmap-mode .sn-pdf-row, body.kmap-mode #note-export-pdf, body.kmap-mode #not
 .km-stage .km-ink { pointer-events: none; }
 .km-stage .km-ftitle, .km-stage .km-fresize { cursor: grab; }
 .km-pick-list { max-height: 55vh; overflow-y: auto; }
+.km-stage .km-tab { cursor: pointer; }
+.km-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.km-stackbox { border-top: 1px solid var(--border); padding-top: 10px; }
+.km-ref { display: inline-flex; align-items: center; gap: 2px; }
+.km-ref-x { border: 0; background: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 0 4px; }
+.km-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--c); margin: 0 9px; }
+.km-tpl { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.km-floatbar { position: fixed; left: 50%; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-radius: 999px; background: #1c1c1e; color: #fff; font-size: 15px; box-shadow: 0 8px 24px rgba(0, 0, 0, .25); }
+.km-floatbar[hidden] { display: none; }
+#km-pickbar { top: calc(110px + env(safe-area-inset-top)); }
+.km-backpill { bottom: calc(24px + env(safe-area-inset-bottom)); border: 0; font: inherit; font-weight: 600; cursor: pointer; }
+body:not([data-view="notes"]) .km-floatbar { display: none; }
+.km-spot { position: absolute; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; border: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); pointer-events: none; animation: km-spot 1.3s ease-out 2; z-index: 3; }
+@keyframes km-spot { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
+.km-empty button { pointer-events: auto; margin-top: 10px; }
