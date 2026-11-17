@@ -314,7 +314,7 @@
       <section class="view" id="view-info">
         <header class="view-header"><h2>Info</h2></header>
         <div class="list-group">
-          <div class="row"><span>Version</span><span class="muted">9.3</span></div>
+          <div class="row"><span>Version</span><span class="muted">9.4</span></div>
           <div class="row"><span>Als App gestartet</span><span class="muted" id="info-standalone">–</span></div>
           <div class="row"><span>Offline-Modus</span><span class="muted" id="info-sw">–</span></div>
           <div class="row"><span>Bildschirm</span><span class="muted" id="info-screen">–</span></div>
@@ -395,11 +395,13 @@
       <button type="button" class="btn link" id="folder-rename">Ordner umbenennen</button>
       <button type="button" class="btn link danger-text" id="folder-delete">Ordner löschen</button>
     </div>
+    <div class="new-kinds">
+      <button type="button" class="new-kind primary" id="notes-dialog-new"><b>＋ Notiz</b><span>Schreiben, PDF, Bilder</span></button>
+      <button type="button" class="new-kind" id="notes-dialog-kmap"><b>👥 Konstellation</b><span>Figuren, Beziehungen, Akte</span></button>
+      <button type="button" class="new-kind" id="notes-dialog-cmp"><b>⚖️ Vergleich</b><span>Tabelle, z. B. Wirtschaftsordnungen</span></button>
+    </div>
     <div class="dlg-actions">
       <button type="button" class="btn" data-close>Schließen</button>
-      <button type="button" class="btn" id="notes-dialog-kmap">＋ Personenkonstellation</button>
-      <button type="button" class="btn" id="notes-dialog-cmp">＋ Vergleich</button>
-      <button type="button" class="btn primary" id="notes-dialog-new">＋ Neue Notiz</button>
     </div>
   </dialog>
 
