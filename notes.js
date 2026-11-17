@@ -781,6 +781,51 @@ function pagesChange(fn) {
   saveNote();
 }
 
+// Seite um 90° drehen (dir 1 = im Uhrzeigersinn, -1 = gegen): das eingefügte PDF/Bild wird gedreht und
+// wieder passend auf die Seite gelegt; Geschriebenes dreht sich mit, damit es auf dem PDF bleibt.
+async function rotatePage(i, dir = 1) {
+  const page = note.pages[i];
+  if (!page) return;
+  const old = page.bg ? { x: page.bg.x, y: page.bg.y, w: page.bg.width, h: page.bg.height } : { x: 0, y: 0, w: PAGE_W, h: PAGE_H };
+  let nbg = null, rect;
+  if (page.bg) {
+    const img = new Image();
+    img.src = bgUrl(page.bg);
+    try { await img.decode(); } catch { return toast('Bild konnte nicht gedreht werden'); }
+    const c = document.createElement('canvas');
+    c.width = img.naturalHeight; c.height = img.naturalWidth;
+    const ctx = c.getContext('2d');
+    ctx.translate(c.width / 2, c.height / 2);
+    ctx.rotate((dir * Math.PI) / 2);
+    ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+    nbg = await canvasToBg(c);
+    rect = { x: nbg.x, y: nbg.y, w: nbg.width, h: nbg.height };
+  } else {
+    const p = placeOnPage(PAGE_H, PAGE_W);
+    rect = { x: p.x, y: p.y, w: p.width, h: p.height };
+  }
+  // Punkt auf dem alten Bild → gleiche Stelle auf dem gedrehten Bild
+  const map = (x, y) => {
+    const u = (x - old.x) / old.w, v = (y - old.y) / old.h;
+    const [u2, v2] = dir > 0 ? [1 - v, u] : [v, 1 - u];
+    return [rect.x + u2 * rect.w, rect.y + v2 * rect.h];
+  };
+  const k = rect.w / old.h, r2 = (v) => Math.round(v * 100) / 100;
+  pagesChange(() => {
+    if (nbg) page.bg = nbg;
+    page.strokes = page.strokes.map((s) => {
+      if (s.pts) {
+        const pts = s.pts.slice();
+        for (let j = 0; j < pts.length; j += 3) { const [x, y] = map(pts[j], pts[j + 1]); pts[j] = r2(x); pts[j + 1] = r2(y); }
+        return { ...s, pts };
+      }
+      if (s.tool === 'image') { const [cx, cy] = map(s.x + s.w / 2, s.y + s.h / 2), w = s.w * k, h = s.h * k; return { ...s, x: cx - w / 2, y: cy - h / 2, w, h }; }
+      if (s.x != null && s.y != null) { const [x, y] = map(s.x, s.y); return { ...s, x, y }; }
+      return s;
+    });
+  });
+}
+
 function applyHistory(from, to, key) {
   lastEnd = null;
   const changes = from.pop();
@@ -2437,6 +2482,13 @@ document.querySelectorAll('[data-paper]').forEach((b) =>
     saveNote();
   })
 );
+
+$('#note-rotate-page').addEventListener('click', async () => {
+  $('#more-dialog').close();
+  const i = viewCenter().page;
+  await rotatePage(i, 1);
+  toast(`Seite ${i + 1} gedreht – nochmal für weitere 90°, Rückgängig geht`);
+});
 
 $('#note-clear-page').addEventListener('click', () => {
   if (!confirm('Alle Seiten dieser Notiz leeren? (Rückgängig geht danach noch)')) return;
@@ -4838,11 +4890,16 @@ function renderPageOverview() {
     const bar = document.createElement('div');
     bar.className = 'po-bar';
     bar.innerHTML = `<span class="po-no">${i + 1}</span>` +
+      '<button type="button" data-a="rot" title="Um 90° drehen">↻</button>' +
       '<button type="button" data-a="dup" title="Doppeln">⧉</button>' +
       '<button type="button" data-a="add" title="Leere Seite danach">＋</button>' +
       `<button type="button" data-a="del" title="Löschen"${note.pages.length < 2 ? ' disabled' : ''}>🗑</button>`;
     item.append(c, bar);
     bar.addEventListener('pointerdown', (e) => e.stopPropagation());
+    bar.querySelector('[data-a="rot"]').addEventListener('click', async () => {
+      await rotatePage(i, 1);
+      renderPageOverview();
+    });
     bar.querySelector('[data-a="dup"]').addEventListener('click', () => {
       if (note.pages.length >= MAX_PAGES) return toast('Maximale Seitenzahl erreicht');
       pagesChange(() => note.pages.splice(i + 1, 0, copyPages([page])[0]));
