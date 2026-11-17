@@ -22,8 +22,15 @@ const KM_TYPES = [
   { id: 'conflict', name: 'Konflikt', color: '#dc2626', dash: 'dashed', labels: ['hasst', 'Feind', 'Rivale', 'streitet mit', 'misstraut', 'eifersüchtig auf'] },
   { id: 'power', name: 'Macht', color: '#d97706', dash: 'solid', labels: ['abhängig von', 'befiehlt', 'unterdrückt', 'erpresst', 'Vorgesetzter von'] },
   { id: 'work', name: 'Beruf', color: '#7c3aed', dash: 'dotted', labels: ['arbeitet für', 'Kollege', 'Lehrer von', 'Schüler von', 'Partner'] },
+  { id: 'plot', name: 'Handlung', color: '#475569', dash: 'solid', labels: ['macht', 'erfährt', 'plant', 'verursacht', 'führt zu', 'will', 'verhindert', 'erhält'] },
   { id: 'neutral', name: 'Sonstige', color: '#6b7280', dash: 'solid', labels: ['kennt', 'trifft', 'beeinflusst', 'beobachtet'] }
 ];
+// Bausteine: Figuren und – für die Handlung – Ereignisse, Orte, Gegenstände (gestrichelt, mit Zeichen)
+const KM_KINDS = { figure: ['Figur', ''], event: ['Handlung', '⚡'], place: ['Ort', '📍'], thing: ['Gegenstand', '◆'] };
+const kmKind = (p) => (KM_KINDS[p.kind] ? p.kind : 'figure');
+const kmIsFig = (p) => kmKind(p) === 'figure';
+const kmLabel = (p) => { const ic = p.emoji || KM_KINDS[kmKind(p)][1]; return (ic ? ic + ' ' : '') + (p.name || '?'); };
+const kmNorm = (n) => String(n || '').trim().toLowerCase();
 const KM_DASH = { solid: '', dashed: '9 6', dotted: '1.5 6' };
 const KM_FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif';
 const KM_NEW = '#16a34a', KM_CHG = '#d97706', KM_GONE = '#9ca3af';   // Markierungen: neu, geändert, weggefallen
@@ -200,7 +207,7 @@ function kmMeasure(text, font) {
 }
 function kmBox(p) {
   const big = !!p.big, fs = big ? 17 : 15;
-  const nameW = kmMeasure((p.emoji ? p.emoji + ' ' : '') + (p.name || '?'), `${big ? 700 : 600} ${fs}px ${KM_FONT}`);
+  const nameW = kmMeasure(kmLabel(p), `${big ? 700 : 600} ${fs}px ${KM_FONT}`);
   const roleW = p.role ? kmMeasure(p.role, `12px ${KM_FONT}`) : 0;
   let w = Math.max(78, Math.max(nameW, roleW) + 28), h = (p.role ? 44 : 32) + (big ? 8 : 0);
   if (p.shape === 'ellipse') { w = w * 1.25 + 8; h += 14; }
@@ -363,13 +370,17 @@ function kmRender() {
   for (const T of sc.stacks) {
     const s = T.s;
     if (!s.open) {
-      let x = T.x;
+      const pv = kmPill(T.x, T.y + 6, '◀', 'var(--card)', 'var(--accent)', `data-sprev="${s.id}" class="km-tab"`, 13);
+      h += pv.svg;
+      let x = T.x + pv.w + 6;
       for (const F of T.fs) {
         const on = F.id === s.active, c = F.color || '#6b7280';
         const p = kmPill(x, T.y + 6, F.name || 'Akt', on ? c : 'var(--card)', on ? '#fff' : c, `data-tab="${F.id}" class="km-tab"`, 13);
         h += p.svg; x += p.w + 6;
       }
-      h += kmPill(x + 6, T.y + 6, '⇆ ausfächern', 'var(--card)', 'var(--accent)', `data-fan="${s.id}" class="km-tab"`, 13).svg;
+      const nx = kmPill(x, T.y + 6, '▶', 'var(--card)', 'var(--accent)', `data-snext="${s.id}" class="km-tab"`, 13);
+      h += nx.svg;
+      h += kmPill(x + nx.w + 12, T.y + 6, '⇆ ausfächern', 'var(--card)', 'var(--accent)', `data-fan="${s.id}" class="km-tab"`, 13).svg;
     } else {
       h += `<path d="M${T.x} ${T.y + 30}v-8h${T.w}v8" stroke="var(--muted)" stroke-width="1.5" fill="none"/>`;
       const t = kmPill(T.x + 10, T.y + 6, `${s.name || 'Stapel'} · ⇲ zusammenlegen`, 'var(--card)', 'var(--accent)', `data-col="${s.id}" class="km-tab"`, 13);
@@ -378,10 +389,16 @@ function kmRender() {
   }
   for (const F of sc.frames) {
     const sel = kmIsSel('f', F.id), c = F.color || '#6b7280';
-    const tw = kmMeasure(F.name || 'Akt', `700 16px ${KM_FONT}`) + 40;
+    const title = (F.name || 'Akt') + (F.turn ? ' ★' : '');
+    const tw = kmMeasure(title, `700 16px ${KM_FONT}`) + 40, meta = [F.place, F.time].filter(Boolean).join(' · ');
+    const pb = kmPlotBox(F);
     h += `<g data-f="${F.id}"><rect x="${F.x}" y="${F.y}" width="${F.w}" height="${F.h}" rx="18" fill="${c}" fill-opacity="0.04" stroke="${c}" stroke-opacity="${sel ? 1 : 0.55}" stroke-width="${sel ? 3 : 2}" class="km-gbox"/>` +
       `<g data-ft="${F.id}" class="km-ftitle"><rect x="${F.x}" y="${F.y}" width="${tw}" height="34" rx="16" fill="${c}"/><rect x="${F.x}" y="${F.y + 17}" width="${tw}" height="17" fill="${c}"/>` +
-      `<text x="${F.x + 14}" y="${F.y + 23}" fill="#fff" font-weight="700" font-size="16">${kmEsc(F.name || 'Akt')}  ⠿</text></g>` +
+      `<text x="${F.x + 14}" y="${F.y + 23}" fill="#fff" font-weight="700" font-size="16">${kmEsc(title)}  ⠿</text></g>` +
+      (meta ? `<text x="${F.x + tw + 10}" y="${F.y + 23}" fill="${c}" font-size="13" font-weight="600">${kmEsc(meta)}</text>` : '') +
+      (pb ? `<g data-ft="${F.id}" class="km-ftitle"><rect x="${pb.x}" y="${pb.y}" width="${pb.w}" height="${pb.h}" rx="12" fill="var(--card)" fill-opacity="0.94" stroke="${c}" stroke-opacity="0.6"/>` +
+        `<text x="${pb.x + 12}" y="${pb.y + 20}" fill="${c}" font-size="12" font-weight="700">HANDLUNG</text>` +
+        pb.lines.map((l, i) => `<text x="${pb.x + 12}" y="${pb.y + 40 + i * 18}" fill="var(--text)" font-size="14">${kmEsc(l)}</text>`).join('') + '</g>' : '') +
       (sel ? `<g data-fr="${F.id}" class="km-fresize"><circle cx="${F.x + F.w}" cy="${F.y + F.h}" r="14" fill="${c}"/><path d="M${F.x + F.w - 5} ${F.y + F.h + 5}l10 -10M${F.x + F.w + 1} ${F.y + F.h - 5}h4v4M${F.x + F.w - 5} ${F.y + F.h + 1}v4h4" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></g>` : '') + '</g>';
   }
   for (const G of sc.groups) {
@@ -409,8 +426,8 @@ function kmRender() {
     const isNew = sc.diff.newP.has(p.id), chg = sc.diff.chgP.get(p.id);
     h += `<g data-p="${p.id}" class="km-person"${dim(nb && !nb.has(p.id))}>` +
       (sel ? `${kmPersonPath(p, { x: b.x - 5, y: b.y - 5, w: b.w + 10, h: b.h + 10 })} fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="5 4"/>` : '') +
-      `${kmPersonPath(p, b)} fill="${kmTint(c, 0.86)}" stroke="${c}" stroke-width="${b.big ? 3.2 : 1.8}"/>` +
-      `<text x="${p.x}" y="${p.role ? b.y + b.h / 2 - 3 : p.y + b.fs * 0.36}" text-anchor="middle" font-size="${b.fs}" font-weight="${b.big ? 700 : 600}" fill="#1c1c1e">${kmEsc((p.emoji ? p.emoji + ' ' : '') + (p.name || '?'))}</text>` +
+      `${kmPersonPath(p, b)} fill="${kmTint(c, kmIsFig(p) ? 0.86 : 0.93)}" stroke="${c}" stroke-width="${b.big ? 3.2 : 1.8}"${kmIsFig(p) ? '' : ' stroke-dasharray="6 4"'}/>` +
+      `<text x="${p.x}" y="${p.role ? b.y + b.h / 2 - 3 : p.y + b.fs * 0.36}" text-anchor="middle" font-size="${b.fs}" font-weight="${b.big ? 700 : 600}" fill="#1c1c1e">${kmEsc(kmLabel(p))}</text>` +
       (p.role ? `<text x="${p.x}" y="${b.y + b.h / 2 + 14}" text-anchor="middle" font-size="12" fill="#55555c">${kmEsc(p.role)}</text>` : '') +
       (p.desc || (p.refs && p.refs.length) || p.cite || kmSbFilled(p).length ? `<circle cx="${b.x + b.w - 2}" cy="${b.y + 2}" r="4.5" fill="${c}"/>` : '') +
       (isNew ? kmPill(b.x - 8, b.y - 16, 'neu', KM_NEW, '#fff', '', 11).svg : chg ? kmPill(b.x - 8, b.y - 16, 'geändert', KM_CHG, '#fff', '', 11).svg : '') + '</g>';
@@ -426,7 +443,8 @@ function kmRender() {
   // weggefallene Personen: Hinweis unten im Kasten
   for (const g of sc.diff.gone) {
     if (!sc.frames.includes(g.F)) continue;
-    h += kmPill(g.F.x + 12, g.F.y + g.F.h - 34, '✕ nicht mehr dabei: ' + g.names.join(', '), '#f3f4f6', '#6b7280').svg;
+    const t = '✕ nicht mehr dabei: ' + g.names.join(', ');
+    h += kmPill(g.F.x + g.F.w - kmMeasure(t, `600 12px ${KM_FONT}`) - 30, g.F.y + 44, t, '#f3f4f6', '#6b7280').svg;
   }
   // freie Striche (Stift) – oben drauf, wie Notizen auf einem Blatt
   if (sc.ink.length || (kmAct && kmAct.type === 'ink')) {
@@ -487,7 +505,7 @@ function kmWorld(e) {
 }
 function kmHit(e) {
   const el = document.elementFromPoint(e.clientX, e.clientY);
-  const g = el && el.closest && el.closest('[data-knob],[data-p],[data-l],[data-gt],[data-ft],[data-fr],[data-tab],[data-fan],[data-col]');
+  const g = el && el.closest && el.closest('[data-knob],[data-p],[data-l],[data-gt],[data-ft],[data-fr],[data-tab],[data-fan],[data-col],[data-sprev],[data-snext]');
   if (!g || !kmEl('#km-svg').contains(g)) return null;
   const d = g.dataset;
   if (d.knob) return { t: 'knob', id: d.knob };
@@ -498,6 +516,8 @@ function kmHit(e) {
   if (d.tab) return { t: 'tab', id: d.tab };
   if (d.fan) return { t: 'fan', id: d.fan };
   if (d.col) return { t: 'col', id: d.col };
+  if (d.sprev) return { t: 'sstep', id: d.sprev, d: -1 };
+  if (d.snext) return { t: 'sstep', id: d.snext, d: 1 };
   return { t: 'g', id: d.gt };
 }
 function kmPersonAt(x, y, except) {
@@ -553,6 +573,7 @@ function kmDown(e) {
     else if (kmSel && kmSel.t !== 'f' && kmSel.t !== 'g') kmSel = null;
     kmSaved(); kmPanel(); return;
   }
+  if (hit && hit.t === 'sstep') { kmStackStep(km.stacks.find((x) => x.id === hit.id), hit.d); return; }
   if (hit && hit.t === 'fan') { kmChange(() => kmFan(km.stacks.find((s) => s.id === hit.id))); kmFit(); return; }
   if (hit && hit.t === 'col') { kmChange(() => kmCollapse(km.stacks.find((s) => s.id === hit.id))); kmFit(); return; }
   if (hit && hit.t === 'knob') {
@@ -575,13 +596,13 @@ function kmDown(e) {
     const ms = kmScene().persons.filter((p) => kmIn(p, hit.id));
     kmAct = { ...base, type: 'move', ids: ms.map((p) => p.id), start: ms.map((p) => [p.x, p.y]), retag: true, before: kmSnap() };
   } else if (hit && hit.t === 'f') {
-    // Akt-Kasten am Titel ziehen: Kasten mit allem, was darin liegt (zusammengelegt: der ganze Stapel)
+    // Akt-Kasten am Titel ziehen: Kasten mit allem, was darin liegt – auch Kästen darin und ganze Stapel
     const F = kmFrame(hit.id), s = kmStackOf(F.id);
     kmSelect({ t: 'f', id: F.id });
-    const fs = s && !s.open ? s.frames.map(kmFrame) : [F];
-    const ps = [], inks = [];
-    fs.forEach((x) => { const c = kmFrameContent(x); ps.push(...c.persons); inks.push(...c.ink); });
-    kmAct = { ...base, type: 'move', frames: fs.map((x) => [x.id, x.x, x.y]), ids: ps.map((p) => p.id), start: ps.map((p) => [p.x, p.y]), ink: inks.map((st) => [st, st.pts.slice()]), before: kmSnap() };
+    const fs = kmFrameFamily(F);
+    const ps = new Set(), inks = new Set();
+    fs.forEach((x) => { const c = kmFrameContent(x); c.persons.forEach((p) => ps.add(p)); c.ink.forEach((st) => inks.add(st)); });
+    kmAct = { ...base, type: 'move', frames: fs.map((x) => [x.id, x.x, x.y]), ids: [...ps].map((p) => p.id), start: [...ps].map((p) => [p.x, p.y]), ink: [...inks].map((st) => [st, st.pts.slice()]), before: kmSnap() };
   } else if (hit && hit.t === 'fr') {
     const F = kmFrame(hit.id);
     kmAct = { ...base, type: 'resize', frame: F.id, start: [F.w, F.h], before: kmSnap() };
@@ -799,13 +820,13 @@ function kmNewPerson(x, y, props) {
   km.persons.push(p);
   return p.id;
 }
-function kmAddPerson(x, y) {
+function kmAddPerson(x, y, props) {
   if (x == null) {
     const r = kmStage().getBoundingClientRect();
     x = (r.width / 2 - kmView.x) / kmView.z; y = (r.height / 2 - kmView.y) / kmView.z;
   }
   let id;
-  kmChange(() => { id = kmNewPerson(x, y); });
+  kmChange(() => { id = kmNewPerson(x, y, props); });
   kmSelect({ t: 'p', id }, true);
 }
 function kmAddLink(a, b, noUndo) {
@@ -1183,6 +1204,216 @@ function kmPickAt(svg, cx, cy) {
   kmPickDone(Number(svg.dataset.page), ((cx - r.left) / r.width) * PAGE_W, ((cy - r.top) / r.height) * PAGE_H);
 }
 
+// ---- Handlung: Text im Kasten, Kästen in Kästen, Verlauf, Figurenmatrix ----
+function kmWrap(text, maxW, font, maxLines) {
+  const out = [];
+  for (const para of String(text).split('\n')) {
+    let line = '';
+    for (const w of para.split(/\s+/).filter(Boolean)) {
+      const t = line ? line + ' ' + w : w;
+      if (kmMeasure(t, font) > maxW && line) { out.push(line); line = w; } else line = t;
+    }
+    out.push(line);
+  }
+  if (out.length > maxLines) { out.length = maxLines; out[maxLines - 1] += ' …'; }
+  return out;
+}
+// Handlungs-Kasten unten im Akt/Auftritt
+function kmPlotBox(F) {
+  if (!(F.plot || '').trim()) return null;
+  const w = Math.max(160, F.w - 32), lines = kmWrap(F.plot.trim(), w - 24, `14px ${KM_FONT}`, 4), h = 30 + lines.length * 18;
+  return { x: F.x + 16, y: F.y + F.h - h - 14, w, h, lines };
+}
+const kmInside = (G, P) => G.x >= P.x - 2 && G.y >= P.y - 2 && G.x + G.w <= P.x + P.w + 2 && G.y + G.h <= P.y + P.h + 2;
+// Kasten + alle Kästen darin (rekursiv) + ganze zusammengelegte Stapel
+function kmFrameFamily(F) {
+  const out = new Set([F]);
+  let added = true;
+  while (added) {
+    added = false;
+    for (const G of km.frames) if (!out.has(G) && [...out].some((P) => P !== G && kmInside(G, P))) { out.add(G); added = true; }
+    for (const G of [...out]) {
+      const st = kmStackOf(G.id);
+      if (st && !st.open) st.frames.forEach((id) => { const H = kmFrame(id); if (H && !out.has(H)) { out.add(H); added = true; } });
+    }
+  }
+  return [...out];
+}
+// Reihenfolge aller Kästen: oben→unten, links→rechts; Stapel in ihrer Reihenfolge; Kästen in Kästen eingerückt
+function kmFrameOrder() {
+  const fr = km.frames, parent = new Map();
+  for (const G of fr) {
+    let best = null;
+    for (const P of fr) {
+      if (P === G) continue;
+      const sp = kmStackOf(P.id);
+      if (sp && sp === kmStackOf(G.id)) continue;
+      if (kmInside(G, P) && !(kmInside(P, G) && fr.indexOf(P) > fr.indexOf(G)) && (!best || P.w * P.h < best.w * best.h)) best = P;
+    }
+    parent.set(G.id, best ? best.id : null);
+  }
+  const key = (G) => { const st = kmStackOf(G.id), first = st ? kmFrame(st.frames[0]) : G; return [Math.round(first.y / 150), first.x, st ? st.frames.indexOf(G.id) : 0]; };
+  const kids = (pid) => fr.filter((G) => parent.get(G.id) === pid).sort((a, b) => { const A = key(a), B = key(b); return A[0] - B[0] || A[1] - B[1] || A[2] - B[2]; });
+  const out = [];
+  const walk = (pid, depth, path) => kids(pid).forEach((G) => {
+    const ch = kids(G.id);
+    out.push({ F: G, depth, leaf: !ch.length, path });
+    walk(G.id, depth + 1, path.concat(G.name || 'Kasten'));
+  });
+  walk(null, 0, []);
+  return out;
+}
+// Figuren eines Kastens (Figuren gleichen Namens gelten als dieselbe Figur)
+const kmFigs = (F) => kmFrameContent(F).persons.filter(kmIsFig);
+function kmMatrix() {
+  const order = kmFrameOrder(), cols = order.filter((o) => o.leaf);
+  const rows = new Map();
+  cols.forEach((o, ci) => kmFigs(o.F).forEach((p) => {
+    const k = kmNorm(p.name);
+    if (!k) return;
+    if (!rows.has(k)) rows.set(k, { name: p.name, color: p.color || KM_COLORS[0], on: new Set() });
+    rows.get(k).on.add(ci);
+  }));
+  return { order, cols, rows: [...rows.values()] };
+}
+function kmGoFrame(id) {
+  const F = kmFrame(id);
+  if (!F) return;
+  const st = kmStackOf(id);
+  if (st && !st.open) st.active = id;
+  kmSel = { t: 'f', id };
+  kmSaved();
+  kmShow(F);
+  kmPanel();
+}
+function kmStackStep(st, d) {
+  if (!st) return;
+  const i = st.frames.indexOf(st.active) + d;
+  if (i < 0 || i >= st.frames.length) return toast(d < 0 ? 'Das ist der erste' : 'Das ist der letzte');
+  st.active = st.frames[i];
+  if (kmSel && kmSel.t === 'f' && st.frames.includes(kmSel.id)) kmSel = { t: 'f', id: st.active };
+  else if (kmSel && kmSel.t !== 'f' && kmSel.t !== 'g') kmSel = null;
+  kmSaved();
+  kmPanel();
+}
+function kmSbAppear(p) {
+  const k = kmNorm(p.name), m = kmMatrix(), at = m.cols.filter((o) => kmFigs(o.F).some((q) => kmNorm(q.name) === k));
+  if (!m.cols.length) return '';
+  return `<div class="km-f"><span>Tritt auf in (${at.length} von ${m.cols.length})</span><div class="km-rels">` +
+    (at.map((o) => `<button type="button" class="km-rel" data-goto="${o.F.id}" style="--c:${o.F.color || '#6b7280'}">${kmEsc((o.path.length ? o.path[o.path.length - 1] + ' · ' : '') + o.F.name)}</button>`).join('') || '<span class="muted small-text">in keinem Kasten</span>') + '</div></div>';
+}
+// Figuren, die sich nie auf der Bühne begegnen
+function kmNeverMet(m) {
+  const out = [];
+  for (let i = 0; i < m.rows.length; i++) for (let j = i + 1; j < m.rows.length; j++) {
+    if (![...m.rows[i].on].some((c) => m.rows[j].on.has(c))) out.push(`${m.rows[i].name} – ${m.rows[j].name}`);
+  }
+  return out;
+}
+let kmOvTab = 'plot';
+function kmOverview() {
+  let dlg = kmEl('#km-ov');
+  if (!dlg) {
+    dlg = document.createElement('dialog');
+    dlg.id = 'km-ov';
+    document.body.append(dlg);
+    dlg.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-ovtab],[data-goto],[data-ovx]');
+      if (!b) return;
+      if (b.dataset.ovtab) { kmOvTab = b.dataset.ovtab; return kmOverviewRender(); }
+      if (b.dataset.goto) { dlg.close(); return kmGoFrame(b.dataset.goto); }
+      const x = b.dataset.ovx;
+      if (x === 'close') return dlg.close();
+      if (x === 'text') return navigator.clipboard.writeText(kmPlotText()).then(() => toast('Handlungsverlauf kopiert'), () => toast('Kopieren nicht erlaubt'));
+      const file = kmMatrixImage();
+      if (!file) return;
+      if (x === 'share') shareFiles([file], 'Figurenmatrix');
+      if (x === 'note') { dlg.close(); kmToNote(file); }
+    });
+  }
+  kmOverviewRender();
+  if (!dlg.open) dlg.showModal();
+}
+function kmPlotText() {
+  return kmFrameOrder().map((o) => {
+    const F = o.F, ind = '  '.repeat(o.depth), meta = [F.place, F.time].filter(Boolean).join(', ');
+    const figs = o.leaf ? kmFigs(F).map((p) => p.name).join(', ') : '';
+    return `${ind}${F.name}${F.turn ? ' ★' : ''}${meta ? ` (${meta})` : ''}` + (F.plot ? `\n${ind}  ${F.plot.trim().replace(/\n/g, `\n${ind}  `)}` : '') + (figs ? `\n${ind}  Figuren: ${figs}` : '');
+  }).join('\n');
+}
+function kmOverviewRender() {
+  const dlg = kmEl('#km-ov'), m = kmMatrix();
+  let body = '';
+  if (!m.order.length) body = '<p class="muted">Noch keine Kästen. Lege für jeden Akt bzw. Auftritt einen Kasten an (Rahmen-Knopf oder Vorlage) – dann entsteht hier der Verlauf.</p>';
+  else if (kmOvTab === 'plot') {
+    body = '<div class="km-tl">' + m.order.map((o) => {
+      const F = o.F, c = F.color || '#6b7280', meta = [F.place, F.time].filter(Boolean).join(' · ');
+      const figs = o.leaf ? kmFigs(F) : [];
+      return `<button type="button" class="km-tl-item${o.leaf ? '' : ' parent'}" data-goto="${F.id}" style="--c:${c};margin-left:${o.depth * 22}px">` +
+        `<b>${kmEsc(F.name || 'Kasten')}${F.turn ? ' <span class="km-star">★ Wendepunkt</span>' : ''}</b>${meta ? `<span class="muted small-text">${kmEsc(meta)}</span>` : ''}` +
+        (F.plot ? `<span class="km-tl-plot">${kmEsc(F.plot)}</span>` : o.leaf ? '<span class="muted small-text">– noch keine Handlung eingetragen –</span>' : '') +
+        (figs.length ? `<span class="km-tl-figs">${figs.map((p) => `<i style="--c:${p.color || KM_COLORS[0]}">${kmEsc(p.name)}</i>`).join('')}</span>` : '') + '</button>';
+    }).join('') + '</div>';
+  } else {
+    if (!m.cols.length || !m.rows.length) body = '<p class="muted">Noch keine Figuren in den Kästen.</p>';
+    else {
+      body = '<div class="km-mx-wrap"><table class="km-mx"><thead><tr><th></th>' +
+        m.cols.map((o) => `<th><button type="button" data-goto="${o.F.id}" style="--c:${o.F.color || '#6b7280'}">${o.path.length ? `<small>${kmEsc(o.path[o.path.length - 1])}</small>` : ''}${kmEsc(o.F.name)}${o.F.turn ? ' ★' : ''}</button></th>`).join('') + '<th>Σ</th></tr></thead><tbody>' +
+        m.rows.map((r) => `<tr><th style="--c:${r.color}">${kmEsc(r.name)}</th>` + m.cols.map((_, i) => `<td>${r.on.has(i) ? `<i style="--c:${r.color}"></i>` : ''}</td>`).join('') + `<td class="km-mx-n">${r.on.size}</td></tr>`).join('') +
+        '<tr class="km-mx-sum"><th>Figuren</th>' + m.cols.map((_, i) => `<td>${m.rows.filter((r) => r.on.has(i)).length}</td>`).join('') + '<td></td></tr></tbody></table></div>';
+      const nm = kmNeverMet(m);
+      body += `<p class="muted small-text">● = auf der Bühne. Figuren mit gleichem Namen zählen als eine Figur.</p>` +
+        (nm.length ? `<div class="km-f"><span>Begegnen sich nie auf der Bühne (${nm.length})</span><p class="small-text">${kmEsc(nm.slice(0, 20).join(' · '))}${nm.length > 20 ? ' …' : ''}</p></div>` : '');
+    }
+  }
+  dlg.innerHTML = '<div class="km-ov-head"><h3>Handlung</h3><span class="segmented small-seg">' +
+    `<button type="button" data-ovtab="plot" class="${kmOvTab === 'plot' ? 'active' : ''}">Verlauf</button><button type="button" data-ovtab="matrix" class="${kmOvTab === 'matrix' ? 'active' : ''}">Figurenmatrix</button></span></div>` +
+    body + '<div class="dlg-actions">' +
+    (kmOvTab === 'plot' ? '<button type="button" class="btn" data-ovx="text">Als Text kopieren</button>' : '<button type="button" class="btn" data-ovx="share">Als Bild teilen</button><button type="button" class="btn" data-ovx="note">In Notiz einfügen</button>') +
+    '<span class="spacer"></span><button type="button" class="btn primary" data-ovx="close">Fertig</button></div>';
+}
+// Figurenmatrix als Bild (Canvas – gleich teilbar bzw. in eine Notiz einfügbar)
+function kmMatrixImage() {
+  const m = kmMatrix();
+  if (!m.cols.length || !m.rows.length) { toast('Noch keine Figuren in den Kästen'); return null; }
+  const font = `600 14px ${KM_FONT}`, small = `12px ${KM_FONT}`;
+  const nameW = Math.max(120, ...m.rows.map((r) => kmMeasure(r.name, font))) + 24;
+  const colW = Math.max(46, ...m.cols.map((o) => Math.min(130, kmMeasure(o.F.name, small) + 16)));
+  const headH = 64, rowH = 30, pad = 30, title = (note.title || 'Figurenmatrix');
+  const W = pad * 2 + nameW + colW * m.cols.length + 50, H = pad * 2 + 40 + headH + rowH * (m.rows.length + 1);
+  const scale = Math.min(2, 4000 / Math.max(W, H));
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(W * scale); cv.height = Math.round(H * scale);
+  const ctx = cv.getContext('2d');
+  ctx.scale(scale, scale);
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#1c1c1e'; ctx.font = `700 20px ${KM_FONT}`; ctx.textAlign = 'left'; ctx.fillText(title + ' – Figurenmatrix', pad, pad + 14);
+  const x0 = pad + nameW, y0 = pad + 40;
+  m.cols.forEach((o, i) => {
+    const x = x0 + i * colW;
+    ctx.fillStyle = o.F.color || '#6b7280'; ctx.font = `700 ${12}px ${KM_FONT}`; ctx.textAlign = 'center';
+    const lines = kmWrap(o.F.name + (o.F.turn ? ' ★' : ''), colW - 6, `700 12px ${KM_FONT}`, 2);
+    if (o.path.length) { ctx.fillStyle = '#8e8e93'; ctx.font = small; ctx.fillText(kmWrap(o.path[o.path.length - 1], colW - 6, small, 1)[0], x + colW / 2, y0 + 14); ctx.fillStyle = o.F.color || '#6b7280'; ctx.font = `700 12px ${KM_FONT}`; }
+    lines.forEach((l, j) => ctx.fillText(l, x + colW / 2, y0 + 32 + j * 15));
+  });
+  ctx.fillStyle = '#1c1c1e'; ctx.font = `700 12px ${KM_FONT}`; ctx.fillText('Σ', x0 + m.cols.length * colW + 25, y0 + 40);
+  m.rows.forEach((r, ri) => {
+    const y = y0 + headH + ri * rowH;
+    if (ri % 2 === 0) { ctx.fillStyle = '#f4f4f6'; ctx.fillRect(pad, y, nameW + colW * m.cols.length + 50, rowH); }
+    ctx.fillStyle = r.color; ctx.fillRect(pad, y + 6, 4, rowH - 12);
+    ctx.fillStyle = '#1c1c1e'; ctx.font = font; ctx.textAlign = 'left'; ctx.fillText(r.name, pad + 12, y + 20);
+    m.cols.forEach((_, ci) => { if (r.on.has(ci)) { ctx.beginPath(); ctx.arc(x0 + ci * colW + colW / 2, y + rowH / 2, 7, 0, Math.PI * 2); ctx.fillStyle = r.color; ctx.fill(); } });
+    ctx.fillStyle = '#55555c'; ctx.textAlign = 'center'; ctx.font = small; ctx.fillText(String(r.on.size), x0 + m.cols.length * colW + 25, y + 20);
+  });
+  const ys = y0 + headH + m.rows.length * rowH;
+  ctx.fillStyle = '#55555c'; ctx.font = small; ctx.textAlign = 'left'; ctx.fillText('Figuren', pad + 12, ys + 20);
+  ctx.textAlign = 'center';
+  m.cols.forEach((_, ci) => ctx.fillText(String(m.rows.filter((r) => r.on.has(ci)).length), x0 + ci * colW + colW / 2, ys + 20));
+  ctx.strokeStyle = '#d1d1d6'; ctx.lineWidth = 1;
+  for (let i = 0; i <= m.cols.length; i++) { ctx.beginPath(); ctx.moveTo(x0 + i * colW, y0 + headH - 4); ctx.lineTo(x0 + i * colW, ys + rowH); ctx.stroke(); }
+  return dataUrlToFile(cv.toDataURL('image/png'), `${title.replace(/[\\/:*?"<>|]/g, '_')} – Figurenmatrix.png`);
+}
+
 // ---- Steckbrief (ausführliche Angaben zu einer Figur) ----
 const KM_SB = [
   ['age', 'Alter', 'z. B. 14, Mitte 50'],
@@ -1245,6 +1476,7 @@ function kmSbRender() {
   const traits = (i.traits || '').split(',').map((t) => t.trim()).filter(Boolean);
   dlg.innerHTML = `<div class="km-sb-head" style="--c:${p.color || KM_COLORS[0]}"><input class="km-sb-name" data-top="name" value="${kmEsc(p.name)}" maxlength="40" autocomplete="off" aria-label="Name">` +
     `<input class="km-sb-role" data-top="role" value="${kmEsc(p.role || '')}" maxlength="50" placeholder="Rolle, z. B. Hauptfigur" autocomplete="off" aria-label="Rolle"></div>` +
+    kmSbAppear(p) +
     '<div class="km-sb-grid">' + KM_SB.slice(0, 3).map(field).join('') + '</div>' +
     field(KM_SB[3]) + field(KM_SB[4]) +
     `<div class="km-traits" id="km-sb-traits">${traits.map((t) => `<span>${kmEsc(t)}</span>`).join('')}</div>` +
@@ -1281,6 +1513,7 @@ function kmSbClick(e) {
   kmTyping = null;
   const d = b.dataset, edit = (fn) => { kmChange(() => { p.info = p.info || {}; fn(p.info); }); kmSbRender(); };
   if (d.x === 'sbclose') return kmEl('#km-sb').close();
+  if (d.goto) { kmEl('#km-sb').close(); return kmGoFrame(d.goto); }
   if (d.x === 'sbcopy') return navigator.clipboard.writeText(kmSbText(p)).then(() => toast('Steckbrief kopiert'), () => toast('Kopieren nicht erlaubt'));
   if (d.x === 'qadd') { edit((i) => { i.quotes = (i.quotes || []).concat({ t: '', c: '' }); }); const q = kmEl('#km-sb').querySelectorAll('[data-qf="t"]'); return q[q.length - 1].focus(); }
   if (d.x === 'cadd') { edit((i) => { i.custom = (i.custom || []).concat({ k: '', v: '' }); }); const c = kmEl('#km-sb').querySelectorAll('[data-cf="k"]'); return c[c.length - 1].focus(); }
@@ -1336,15 +1569,16 @@ function kmPanel(focusName) {
       '<div class="km-actions"><span></span><button type="button" class="btn small danger-text" data-x="del">Alle löschen</button></div>';
   } else if (kmSel.t === 'p') {
     const rel = km.links.filter((l) => l.a === o.id || l.b === o.id);
-    h = head('Person') +
-      `<label class="km-f"><span>Name</span><input id="km-name" value="${kmEsc(o.name)}" maxlength="40" autocomplete="off"></label>` +
+    h = head(KM_KINDS[kmKind(o)][0]) +
+      `<div class="km-f"><span>Art</span>${seg('kind', kmKind(o), [['figure', 'Figur'], ['event', 'Handlung'], ['place', 'Ort'], ['thing', 'Gegenstand']])}</div>` +
+      `<label class="km-f"><span>${kmIsFig(o) ? 'Name' : 'Bezeichnung'}</span><input id="km-name" value="${kmEsc(o.name)}" maxlength="40" autocomplete="off"></label>` +
       `<label class="km-f"><span>Rolle / kurz</span><input id="km-role" value="${kmEsc(o.role)}" maxlength="50" placeholder="z. B. Hauptfigur, Vater, 17 J." autocomplete="off"></label>` +
       `<div class="km-f"><span>Farbe</span><div class="km-sws">${sw(o.color, 'data-pc')}</div></div>` +
       `<div class="km-f"><span>Form</span>${seg('shape', o.shape || 'rect', [['rect', 'Karte'], ['pill', 'Pille'], ['ellipse', 'Oval']])}</div>` +
       `<label class="km-f km-row"><span>Hauptfigur (groß)</span><label class="switch"><input type="checkbox" id="km-big"${o.big ? ' checked' : ''}><span></span></label></label>` +
       `<label class="km-f"><span>Symbol</span><input id="km-emoji" value="${kmEsc(o.emoji || '')}" maxlength="4" placeholder="z. B. 👑 🗡️ ❤️" autocomplete="off"></label>` +
       `<div class="km-f"><span>Gruppen (mehrere möglich)</span><div class="km-types">${km.groups.map((g) => `<button type="button" class="km-type${kmIn(o, g.id) ? ' on' : ''}" data-pg="${g.id}" style="--c:${g.color}">${kmEsc(g.name)}</button>`).join('')}<button type="button" class="chip" data-pgnew="1">＋ Neue Gruppe</button></div></div>` +
-      `<div class="km-f km-sbbox"><span>Steckbrief</span>${kmSbSummary(o)}<button type="button" class="btn primary small" data-x="sb">📋 Steckbrief öffnen</button></div>` +
+      (kmIsFig(o) ? `<div class="km-f km-sbbox"><span>Steckbrief</span>${kmSbSummary(o)}<button type="button" class="btn primary small" data-x="sb">📋 Steckbrief öffnen</button></div>` : '') +
       `<label class="km-f"><span>Notizen</span><textarea id="km-desc" rows="3">${kmEsc(o.desc || '')}</textarea></label>` +
       kmRefsHtml(o) +
       `<div class="km-f"><span>Beziehungen (${rel.length})</span><div class="km-rels">${rel.map((l) => { const other = kmPerson(l.a === o.id ? l.b : l.a); return `<button type="button" class="km-rel" data-rel="${l.id}" style="--c:${l.color || kmType(l.type).color}">${kmEsc(l.label || kmType(l.type).name)} · ${kmEsc(other ? other.name : '?')}</button>`; }).join('') || '<span class="muted small-text">Am ⊕ neben der Person ziehen</span>'}</div></div>` +
@@ -1372,6 +1606,12 @@ function kmPanel(focusName) {
       `<div class="km-f"><span>Farbe</span><div class="km-sws">${sw(o.color, 'data-fc')}</div></div>` +
       `<p class="muted small-text">Darin: ${c.persons.length} Personen${c.ink.length ? `, ${c.ink.length} Striche` : ''}.${src ? ` Kopie von „${kmEsc(src.name)}“ – Änderungen werden markiert.` : ''} Am Titel ziehen = verschieben, Kreis unten rechts = Größe.</p>` +
       '<button type="button" class="btn primary small" data-x="fdup">Als nächsten Akt kopieren →</button>' +
+      `<div class="km-f km-stackbox"><span>Handlung</span>` +
+      `<div class="km-two"><input id="km-fplace" value="${kmEsc(o.place || '')}" maxlength="60" placeholder="Ort, z. B. Kabinett des Prinzen" autocomplete="off"><input id="km-ftime" value="${kmEsc(o.time || '')}" maxlength="40" placeholder="Zeit, z. B. Morgen" autocomplete="off"></div>` +
+      `<textarea id="km-fplot" rows="4" placeholder="Was passiert in diesem Auftritt?">${kmEsc(o.plot || '')}</textarea>` +
+      `<label class="km-row"><span>★ Wendepunkt</span><label class="switch"><input type="checkbox" id="km-fturn"${o.turn ? ' checked' : ''}><span></span></label></label>` +
+      `<p class="muted small-text">Auf der Bühne: ${kmEsc(c.persons.filter(kmIsFig).map((p) => p.name).join(', ') || '–')}</p>` +
+      '<button type="button" class="btn small" data-x="ov">📜 Handlungsverlauf & Figurenmatrix</button></div>' +
       (s ? `<div class="km-f km-stackbox"><span>Stapel</span><label class="km-f"><input id="km-sname" value="${kmEsc(s.name || '')}" maxlength="40" placeholder="Name des Stapels" autocomplete="off"></label>` +
         `<div class="km-btns">${s.open ? '<button type="button" class="btn small" data-x="scol">⇲ Zusammenlegen</button>' : '<button type="button" class="btn small" data-x="sfan">⇆ Ausfächern</button>'}` +
         '<button type="button" class="btn small" data-x="sleft">◀ früher</button><button type="button" class="btn small" data-x="sright">später ▶</button>' +
@@ -1399,7 +1639,7 @@ function kmField(e) {
   if (!o || kmSel.t === 'm') return;
   const id = e.target.id;
   if (id === 'km-sname') { const s = kmStackOf(o.id); if (s) { s.name = e.target.value.trimStart(); kmSaved(); } return; }
-  const map = { 'km-name': 'name', 'km-role': 'role', 'km-emoji': 'emoji', 'km-desc': 'desc', 'km-label': 'label', 'km-ldesc': 'desc', 'km-gname': 'name', 'km-fname': 'name', 'km-fdesc': 'desc', 'km-cite': 'cite' };
+  const map = { 'km-fplace': 'place', 'km-ftime': 'time', 'km-fplot': 'plot', 'km-name': 'name', 'km-role': 'role', 'km-emoji': 'emoji', 'km-desc': 'desc', 'km-label': 'label', 'km-ldesc': 'desc', 'km-gname': 'name', 'km-fname': 'name', 'km-fdesc': 'desc', 'km-cite': 'cite' };
   if (!map[id]) return;
   if (kmTyping !== id + o.id) { kmUndo.push(kmSnap()); kmRedo = []; kmTyping = id + o.id; }
   o[map[id]] = /desc$/.test(id) ? e.target.value : e.target.value.trimStart();
@@ -1436,6 +1676,7 @@ function kmPanelClick(e) {
   if (d.gc) return set(() => { o.color = d.gc; });
   if (d.lc != null) return set(() => { if (d.lc) o.color = d.lc; else delete o.color; });
   if (d.shape) return set(() => { o.shape = d.shape; });
+  if (d.kind) return set(() => { if (d.kind === 'figure') delete o.kind; else { o.kind = d.kind; if (d.kind === 'event' && (o.shape || 'rect') === 'rect') o.shape = 'pill'; } });
   if (d.type) { kmLastType = d.type; store.set('kmLastType', d.type); return set(() => { o.type = d.type; delete o.dash; }); }
   if (d.lab != null) return set(() => { o.label = d.lab; });
   if (d.dir) return set(() => { o.dir = d.dir; });
@@ -1477,6 +1718,8 @@ function kmPanelClick(e) {
     });
   }
   if (b.id === 'km-big') return set(() => { o.big = b.checked; });
+  if (b.id === 'km-fturn') return set(() => { o.turn = b.checked; });
+  if (d.x === 'ov') return kmOverview();
 }
 
 // ---- Export als Bild (Canvas, ohne Umweg – damit das iPad das Teilen-Menü erlaubt) ----
@@ -1508,9 +1751,16 @@ function kmDrawScene(ctx, sc) {
     rr(F.x, F.y, F.w, F.h, 18);
     ctx.globalAlpha = 0.04; ctx.fillStyle = c; ctx.fill(); ctx.globalAlpha = 0.55; ctx.strokeStyle = c; ctx.lineWidth = 2; ctx.stroke(); ctx.globalAlpha = 1;
     ctx.font = `700 16px ${KM_FONT}`;
-    const tw = ctx.measureText(F.name || 'Akt').width + 28;
+    const title = (F.name || 'Akt') + (F.turn ? ' ★' : ''), tw = ctx.measureText(title).width + 28, meta = [F.place, F.time].filter(Boolean).join(' · ');
     rr(F.x, F.y, tw, 34, 16); ctx.fillStyle = c; ctx.fill(); ctx.fillRect(F.x, F.y + 17, tw, 17);
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.fillText(F.name || 'Akt', F.x + 14, F.y + 23);
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.fillText(title, F.x + 14, F.y + 23);
+    if (meta) { ctx.fillStyle = c; ctx.font = `600 13px ${KM_FONT}`; ctx.fillText(meta, F.x + tw + 10, F.y + 23); }
+    const pb = kmPlotBox(F);
+    if (pb) {
+      rr(pb.x, pb.y, pb.w, pb.h, 12); ctx.fillStyle = '#fff'; ctx.fill(); ctx.globalAlpha = 0.6; ctx.strokeStyle = c; ctx.lineWidth = 1; ctx.stroke(); ctx.globalAlpha = 1;
+      ctx.fillStyle = c; ctx.font = `700 12px ${KM_FONT}`; ctx.fillText('HANDLUNG', pb.x + 12, pb.y + 20);
+      ctx.fillStyle = '#1c1c1e'; ctx.font = `14px ${KM_FONT}`; pb.lines.forEach((l, i) => ctx.fillText(l, pb.x + 12, pb.y + 40 + i * 18));
+    }
   }
   for (const G of sc.groups) {
     const c = G.g.color || KM_COLORS[7];
@@ -1537,9 +1787,10 @@ function kmDrawScene(ctx, sc) {
   for (const p of sc.persons) {
     const b = sc.boxes.get(p.id), c = p.color || KM_COLORS[0];
     if (p.shape === 'ellipse') { ctx.beginPath(); ctx.ellipse(p.x, p.y, b.w / 2, b.h / 2, 0, 0, Math.PI * 2); } else rr(b.x, b.y, b.w, b.h, p.shape === 'pill' ? b.h / 2 : 10);
-    ctx.fillStyle = kmTint(c, 0.86); ctx.fill(); ctx.strokeStyle = c; ctx.lineWidth = b.big ? 3.2 : 1.8; ctx.stroke();
+    ctx.fillStyle = kmTint(c, kmIsFig(p) ? 0.86 : 0.93); ctx.fill(); ctx.strokeStyle = c; ctx.lineWidth = b.big ? 3.2 : 1.8;
+    ctx.setLineDash(kmIsFig(p) ? [] : [6, 4]); ctx.stroke(); ctx.setLineDash([]);
     ctx.textAlign = 'center'; ctx.fillStyle = '#1c1c1e'; ctx.font = `${b.big ? 700 : 600} ${b.fs}px ${KM_FONT}`;
-    ctx.fillText((p.emoji ? p.emoji + ' ' : '') + (p.name || '?'), p.x, p.role ? b.y + b.h / 2 - 3 : p.y + b.fs * 0.36);
+    ctx.fillText(kmLabel(p), p.x, p.role ? b.y + b.h / 2 - 3 : p.y + b.fs * 0.36);
     if (p.role) { ctx.fillStyle = '#55555c'; ctx.font = `12px ${KM_FONT}`; ctx.fillText(p.role, p.x, b.y + b.h / 2 + 14); }
     if (sc.diff.newP.has(p.id)) kmPillCanvas(ctx, b.x - 8, b.y - 16, 'neu', KM_NEW, '#fff', 11);
     else if (sc.diff.chgP.has(p.id)) kmPillCanvas(ctx, b.x - 8, b.y - 16, 'geändert', KM_CHG, '#fff', 11);
@@ -1553,7 +1804,12 @@ function kmDrawScene(ctx, sc) {
     ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = col; ctx.lineWidth = k.mark ? 2 : 1.2; ctx.stroke();
     ctx.fillStyle = k.color; ctx.textAlign = 'center'; ctx.fillText(k.label.text, k.label.x, k.label.y + 4);
   }
-  for (const g of sc.diff.gone) if (sc.frames.includes(g.F)) kmPillCanvas(ctx, g.F.x + 12, g.F.y + g.F.h - 34, '✕ nicht mehr dabei: ' + g.names.join(', '), '#f3f4f6', '#6b7280');
+  for (const g of sc.diff.gone) {
+    if (!sc.frames.includes(g.F)) continue;
+    const t = '✕ nicht mehr dabei: ' + g.names.join(', ');
+    ctx.font = `600 12px ${KM_FONT}`;
+    kmPillCanvas(ctx, g.F.x + g.F.w - ctx.measureText(t).width - 30, g.F.y + 44, t, '#f3f4f6', '#6b7280');
+  }
   for (const st of sc.ink) drawStroke(ctx, st);
 }
 function kmImageFile() {
@@ -1591,8 +1847,8 @@ function kmExport() {
 }
 
 // ---- In eine normale Notiz einfügen (als Bild, dort verschieben/skalieren/beschriften) ----
-async function kmToNote() {
-  const file = kmImageFile();
+async function kmToNote(img) {
+  const file = img instanceof File ? img : kmImageFile();
   if (!file) return;
   const from = note;
   const target = await kmNotePicker('In welche Notiz einfügen?', '＋ Neue Notiz');
@@ -1650,7 +1906,7 @@ function kmBuild() {
   const ico = (d) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
   wrap.innerHTML = '<div class="toolbar km-bar" id="km-bar">' +
     `<div class="tool-group"><button class="tool" id="km-undo" aria-label="Rückgängig">${ico('<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/>')}</button><button class="tool" id="km-redo" aria-label="Wiederholen">${ico('<path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/>')}</button></div>` +
-    '<div class="tool-group"><button class="tool km-txt" id="km-add">＋ Person</button>' +
+    '<div class="tool-group"><button class="tool km-txt" id="km-add">＋ Person</button><button class="tool km-txt km-txt2" id="km-add-ev">＋ Handlung</button>' +
     `<button class="tool" id="km-linkmode" aria-label="Verbinden (von Person zu Person ziehen)">${ico('<circle cx="6" cy="12" r="3"/><circle cx="18" cy="12" r="3"/><path d="M9 12h6"/>')}</button>` +
     `<button class="tool" id="km-selmode" aria-label="Auswahlrahmen (auch mit dem Finger)">${ico('<rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3"/><path d="M13 13l6 6M13 13v5M13 13h5"/>')}</button>` +
     `<button class="tool" id="km-group-add" aria-label="Gruppe um die Auswahl">${ico('<rect x="3" y="5" width="18" height="14" rx="3" stroke-dasharray="3 2.5"/><circle cx="9" cy="12" r="2"/><circle cx="15" cy="12" r="2"/>')}</button>` +
@@ -1659,6 +1915,7 @@ function kmBuild() {
     `<button class="tool" id="km-paste" aria-label="Einfügen">${ico('<rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M9 11h6M9 15h4"/>')}</button>` +
     `<button class="tool" id="km-tpl" aria-label="Vorlage einfügen">${ico('<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><path d="M17 14v6M14 17h6"/>')}</button></div>` +
     '<div class="tool-group">' +
+    `<button class="tool" id="km-plot" aria-label="Handlungsverlauf und Figurenmatrix">${ico('<path d="M4 6h16M4 12h10M4 18h13"/><circle cx="18" cy="12" r="2"/>')}</button>` +
     `<button class="tool" id="km-layout" aria-label="Automatisch anordnen">${ico('<circle cx="12" cy="5" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="M11 7l-5 9M13 7l5 9M7 18h10"/>')}</button>` +
     `<button class="tool" id="km-focus" aria-label="Fokus: nur Beziehungen der ausgewählten Person">${ico('<circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8" stroke-dasharray="3 3"/>')}</button>` +
     `<button class="tool" id="km-grid" aria-label="Am Raster ausrichten">${ico('<path d="M4 4v16M10 4v16M16 4v16M4 4h16M4 10h16M4 16h16" stroke-width="1.4"/><circle cx="16" cy="16" r="2.5" fill="currentColor"/>')}</button>` +
@@ -1708,6 +1965,8 @@ function kmBuild() {
   on('#km-undo', () => kmRestore(kmUndo, kmRedo));
   on('#km-redo', () => kmRestore(kmRedo, kmUndo));
   on('#km-add', () => kmAddPerson());
+  on('#km-add-ev', () => kmAddPerson(null, null, { kind: 'event', name: 'Was passiert?', shape: 'pill', color: '#475569' }));
+  on('#km-plot', kmOverview);
   on('#km-linkmode', () => kmSetLinkMode(!kmLinkMode));
   on('#km-selmode', () => { kmSelMode = !kmSelMode; kmBarState(); if (kmSelMode) toast('Auswahl: mit dem Finger einen Rahmen ziehen · zwei Finger = verschieben'); });
   on('#km-group-add', kmAddGroup);
@@ -1748,6 +2007,10 @@ function kmBuild() {
     const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
     if ((e.key === 'Delete' || e.key === 'Backspace') && kmSel) { e.preventDefault(); kmDelete(); }
     else if (e.key === 'Escape') kmSelect(null);
+    else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !mod) {
+      const f = kmSel && kmSel.t === 'f' ? kmStackOf(kmSel.id) : null, st = f && !f.open ? f : km.stacks.filter((x) => !x.open).length === 1 ? km.stacks.find((x) => !x.open) : null;
+      if (st) { e.preventDefault(); kmStackStep(st, e.key === 'ArrowLeft' ? -1 : 1); }
+    }
     else if (mod && k === 'z') { e.preventDefault(); e.shiftKey ? kmRestore(kmRedo, kmUndo) : kmRestore(kmUndo, kmRedo); }
     else if (mod && k === 'y') { e.preventDefault(); kmRestore(kmRedo, kmUndo); }
     else if (mod && k === 'c') { e.preventDefault(); kmCopy(); }

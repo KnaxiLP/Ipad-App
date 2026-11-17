@@ -1169,3 +1169,27 @@ body:not([data-view="notes"]) .km-floatbar { display: none; }
 #km-sb .km-sb-name { font-size: 24px; }
 #km-sb textarea { resize: vertical; }
 @media (max-width: 600px) { .km-sb-grid { grid-template-columns: 1fr; } .km-sb-quote, .km-sb-custom { grid-template-columns: 1fr auto; } }
+.km-bar .km-txt2 { color: #475569; }
+.km-two { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.km-stackbox input, .km-stackbox textarea { font: inherit; font-size: 16px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text); width: 100%; box-sizing: border-box; -webkit-user-select: text; user-select: text; }
+.km-stackbox textarea { resize: vertical; }
+#km-ov { width: min(900px, 95vw); max-height: 88vh; overflow-y: auto; }
+.km-ov-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.km-ov-head h3 { margin: 0; }
+.km-tl { display: flex; flex-direction: column; gap: 8px; }
+.km-tl-item { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; border: 1px solid var(--border); border-left: 5px solid var(--c); border-radius: 12px; padding: 10px 12px; background: var(--card); color: var(--text); font: inherit; cursor: pointer; }
+.km-tl-item.parent { background: color-mix(in srgb, var(--c) 10%, var(--card)); }
+.km-tl-item b { font-size: 16px; }
+.km-star { color: #d97706; font-size: 13px; }
+.km-tl-plot { white-space: pre-wrap; font-size: 15px; line-height: 1.4; }
+.km-tl-figs { display: flex; flex-wrap: wrap; gap: 5px; }
+.km-tl-figs i { font-style: normal; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1.5px solid var(--c); color: var(--c); }
+.km-mx-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.km-mx { border-collapse: collapse; font-size: 14px; }
+.km-mx th, .km-mx td { padding: 6px 8px; text-align: center; border-bottom: 1px solid var(--border); }
+.km-mx tbody th { text-align: left; white-space: nowrap; border-left: 4px solid var(--c); }
+.km-mx thead th { vertical-align: bottom; }
+.km-mx thead button { border: 0; background: none; color: var(--c); font: inherit; font-weight: 700; font-size: 12px; cursor: pointer; max-width: 120px; display: flex; flex-direction: column; align-items: center; }
+.km-mx thead small { color: var(--muted); font-weight: 400; }
+.km-mx td i { display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: var(--c); }
+.km-mx-n, .km-mx-sum td, .km-mx-sum th { color: var(--muted); font-size: 12px; }
