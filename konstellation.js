@@ -1112,7 +1112,7 @@ function kmEraseAt(x, y) {
 async function kmNotePicker(title, extra) {
   let all = [];
   try { all = await noteDb.all(); } catch {}
-  const list = all.filter((n) => n.kind !== 'kmap').sort((a, b) => b.updated - a.updated);
+  const list = all.filter((n) => !n.kind).sort((a, b) => b.updated - a.updated);
   let dlg = kmEl('#km-pick');
   if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'km-pick'; document.body.append(dlg); }
   dlg.innerHTML = `<h3>${kmEsc(title)}</h3><div class="menu-list km-pick-list">` + (extra ? `<button type="button" class="menu-item" data-n="__new"><b>${kmEsc(extra)}</b></button>` : '') +

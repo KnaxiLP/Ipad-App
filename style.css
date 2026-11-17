@@ -1193,3 +1193,50 @@ body:not([data-view="notes"]) .km-floatbar { display: none; }
 .km-mx thead small { color: var(--muted); font-weight: 400; }
 .km-mx td i { display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: var(--c); }
 .km-mx-n, .km-mx-sum td, .km-mx-sum th { color: var(--muted); font-size: 12px; }
+
+/* ---------- Vergleich (vergleich.js) ---------- */
+#cm-wrap { display: none; flex: 1; min-height: 0; flex-direction: column; }
+body.cmp-mode #cm-wrap { display: flex; }
+body.cmp-mode #view-notes > .toolbar:not(.km-bar), body.cmp-mode #view-notes .pages, body.cmp-mode #page-overview-btn,
+body.cmp-mode .text-bar, body.cmp-mode .sn-addbar, body.cmp-mode .graph-bar, body.cmp-mode .sn-panel, body.cmp-mode .fast-ink, body.cmp-mode .ruler-layer,
+body.cmp-mode #more-dialog > .muted.small-text, body.cmp-mode #paper-group, body.cmp-mode #note-insert-image, body.cmp-mode #note-import,
+body.cmp-mode .sn-pdf-row, body.cmp-mode #note-export-pdf, body.cmp-mode #note-clear-page { display: none !important; }
+.cm-bar #cm-quiz.active { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.cm-bar .segmented button.active { background: var(--card); }
+.cm-body { flex: 1; min-height: 0; overflow: auto; -webkit-overflow-scrolling: touch; padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); background: var(--canvas-bg); }
+.cm-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.cm-table { border-collapse: separate; border-spacing: 6px; width: 100%; min-width: 560px; table-layout: fixed; }
+.cm-table th, .cm-table td { vertical-align: top; background: var(--card); border-radius: 12px; padding: 8px; position: relative; }
+.cm-table thead th { background: var(--c); }
+.cm-table thead th.cm-crit { background: none; color: var(--muted); font-size: 13px; text-align: left; vertical-align: bottom; }
+.cm-table th.cm-crit { width: 24%; }
+.cm-table td { border-left: 4px solid var(--c); }
+.cm-colhead { display: flex; align-items: center; gap: 4px; }
+.cm-colhead input { flex: 1; min-width: 0; font: inherit; font-size: 16px; font-weight: 700; color: #fff; background: none; border: 0; padding: 4px; }
+.cm-colhead input:focus { outline: 2px solid rgba(255, 255, 255, .6); border-radius: 6px; }
+.cm-colbtns, .cm-rowbtns { display: flex; gap: 2px; }
+.cm-colbtns button { border: 0; background: rgba(255, 255, 255, .2); color: #fff; border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-size: 13px; }
+.cm-colbtns .cm-dot { background: rgba(255, 255, 255, .85); border-radius: 50%; width: 18px; height: 18px; margin: 0 4px; }
+.cm-rowbtns { position: absolute; right: 4px; bottom: 4px; opacity: .55; }
+.cm-rowbtns button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 2px 4px; }
+.cm-table textarea { width: 100%; box-sizing: border-box; border: 0; background: none; color: var(--text); font: inherit; font-size: 15px; line-height: 1.4; resize: none; overflow: hidden; padding: 2px 26px 2px 2px; -webkit-user-select: text; user-select: text; }
+.cm-table th textarea { font-weight: 700; padding-bottom: 18px; }
+.cm-table textarea:focus { outline: none; }
+.cm-mark { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--m); background: none; color: var(--m); font-weight: 800; font-size: 14px; cursor: pointer; opacity: .45; }
+.cm-mark.on { opacity: 1; background: color-mix(in srgb, var(--m) 14%, transparent); }
+.cm-add { display: flex; gap: 8px; margin: 8px 6px 18px; }
+.cm-extra { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0 6px; }
+.cm-extra textarea { font: inherit; font-size: 15px; padding: 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); color: var(--text); width: 100%; box-sizing: border-box; resize: vertical; -webkit-user-select: text; user-select: text; }
+@media (max-width: 700px) { .cm-extra { grid-template-columns: 1fr; } }
+/* Abfragen: Inhalte verdeckt, antippen deckt auf */
+#cm-wrap.quiz td.hid textarea, #cm-wrap.quiz .cm-q.hid { filter: blur(7px); pointer-events: none; -webkit-user-select: none; user-select: none; }
+#cm-wrap.quiz td.hid { cursor: pointer; }
+#cm-wrap.quiz .cm-q.hid { cursor: pointer; pointer-events: auto; }
+/* Venn */
+.cm-venn { position: relative; display: grid; grid-template-columns: 1fr 0.8fr 1fr; gap: 8px; min-height: 460px; padding: 30px 20px; margin-bottom: 18px; }
+.cm-circle { position: absolute; top: 0; bottom: 0; width: 62%; border-radius: 50%; background: color-mix(in srgb, var(--c) 12%, transparent); border: 2px solid var(--c); pointer-events: none; }
+.cm-vcol { position: relative; z-index: 1; padding: 30px 10px; }
+.cm-vcol h3 { margin: 0 0 8px; font-size: 17px; text-align: center; }
+.cm-vcol.mid h3 { color: var(--muted); }
+.cm-vcol ul { margin: 0; padding-left: 16px; font-size: 14px; line-height: 1.45; display: flex; flex-direction: column; gap: 6px; }
+.cm-vcol:first-of-type, .cm-venn .cm-vcol:nth-of-type(3) { }
