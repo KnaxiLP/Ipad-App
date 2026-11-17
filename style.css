@@ -1148,3 +1148,24 @@ body:not([data-view="notes"]) .km-floatbar { display: none; }
 .km-spot { position: absolute; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; border: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); pointer-events: none; animation: km-spot 1.3s ease-out 2; z-index: 3; }
 @keyframes km-spot { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
 .km-empty button { pointer-events: auto; margin-top: 10px; }
+.km-stage.grid { background-image: radial-gradient(circle, color-mix(in srgb, var(--muted) 55%, transparent) 1px, transparent 1.4px); }
+.km-sbbox { border: 1px solid var(--border); border-radius: 12px; padding: 10px; gap: 8px; }
+.km-sbbox p { margin: 0; }
+.km-traits { display: flex; flex-wrap: wrap; gap: 5px; }
+.km-traits:empty { display: none; }
+.km-traits span { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); border-radius: 999px; padding: 3px 10px; font-size: 13px; font-weight: 600; }
+#km-sb { width: min(720px, 94vw); max-height: 88vh; overflow-y: auto; display: none; flex-direction: column; gap: 12px; }
+#km-sb[open] { display: flex; }
+.km-sb-head { display: flex; flex-direction: column; gap: 4px; border-left: 5px solid var(--c); padding-left: 12px; }
+.km-sb-name { font: inherit; font-size: 24px; font-weight: 700; border: 0; background: none; color: var(--text); padding: 2px 0; }
+.km-sb-role { font: inherit; font-size: 15px; border: 0; background: none; color: var(--muted); padding: 2px 0; }
+.km-sb-name:focus, .km-sb-role:focus { outline: none; border-bottom: 1px solid var(--border); }
+.km-sb-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.km-sb-list { display: flex; flex-direction: column; gap: 8px; }
+.km-sb-quote { display: grid; grid-template-columns: 1fr 130px auto; gap: 6px; align-items: start; }
+.km-sb-custom { display: grid; grid-template-columns: 160px 1fr auto; gap: 6px; align-items: center; }
+#km-sb input, #km-sb textarea { font: inherit; font-size: 16px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text); width: 100%; box-sizing: border-box; -webkit-user-select: text; user-select: text; }
+#km-sb .km-sb-name, #km-sb .km-sb-role { border: 0; background: none; padding: 2px 0; }
+#km-sb .km-sb-name { font-size: 24px; }
+#km-sb textarea { resize: vertical; }
+@media (max-width: 600px) { .km-sb-grid { grid-template-columns: 1fr; } .km-sb-quote, .km-sb-custom { grid-template-columns: 1fr auto; } }

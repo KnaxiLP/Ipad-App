@@ -42,6 +42,9 @@ let kmView = { x: 0, y: 0, z: 1 };   // Bildschirm = Welt * z + (x, y)
 let kmUndo = [], kmRedo = [];
 let kmFocus = false, kmLegend = store.get('kmLegend', true), kmLinkMode = false;
 let kmDiff = store.get('kmDiff', true);   // Änderungen zum vorigen Akt markieren
+let kmGrid = store.get('kmGrid', false);  // am Raster ausrichten
+const KM_GRID = 20;
+const kmGridV = (v) => (kmGrid ? Math.round(v / KM_GRID) * KM_GRID : Math.round(v));
 let kmSelMode = false;      // Auswahlrahmen auch mit dem Finger
 let kmAct = null;           // laufende Geste
 const kmPtrs = new Map();   // aktive Finger/Stifte (für Zwei-Finger-Zoom)
@@ -409,7 +412,7 @@ function kmRender() {
       `${kmPersonPath(p, b)} fill="${kmTint(c, 0.86)}" stroke="${c}" stroke-width="${b.big ? 3.2 : 1.8}"/>` +
       `<text x="${p.x}" y="${p.role ? b.y + b.h / 2 - 3 : p.y + b.fs * 0.36}" text-anchor="middle" font-size="${b.fs}" font-weight="${b.big ? 700 : 600}" fill="#1c1c1e">${kmEsc((p.emoji ? p.emoji + ' ' : '') + (p.name || '?'))}</text>` +
       (p.role ? `<text x="${p.x}" y="${b.y + b.h / 2 + 14}" text-anchor="middle" font-size="12" fill="#55555c">${kmEsc(p.role)}</text>` : '') +
-      (p.desc || (p.refs && p.refs.length) || p.cite ? `<circle cx="${b.x + b.w - 2}" cy="${b.y + 2}" r="4.5" fill="${c}"/>` : '') +
+      (p.desc || (p.refs && p.refs.length) || p.cite || kmSbFilled(p).length ? `<circle cx="${b.x + b.w - 2}" cy="${b.y + 2}" r="4.5" fill="${c}"/>` : '') +
       (isNew ? kmPill(b.x - 8, b.y - 16, 'neu', KM_NEW, '#fff', '', 11).svg : chg ? kmPill(b.x - 8, b.y - 16, 'geändert', KM_CHG, '#fff', '', 11).svg : '') + '</g>';
   }
   for (const k of sc.links) {
@@ -449,6 +452,14 @@ function kmRender() {
   }
   h += '</g>';
   svg.innerHTML = h;
+  const st = kmStage();
+  st.classList.toggle('grid', kmGrid);
+  if (kmGrid) {
+    let g = KM_GRID * kmView.z;
+    while (g < 12) g *= 2;
+    st.style.backgroundSize = `${g}px ${g}px`;
+    st.style.backgroundPosition = `${kmView.x - g / 2}px ${kmView.y - g / 2}px`;
+  }
   kmEl('#km-empty').hidden = km.persons.length > 0 || km.frames.length > 0;
   kmEl('#km-zoom').textContent = Math.round(kmView.z * 100) + '%';
   kmRenderLegend(sc);
@@ -617,10 +628,15 @@ function kmMove(e) {
   } else if (A.type === 'erase') { const [x, y] = kmWorld(e); kmEraseAt(x, y); }
   else if (A.type === 'resize') {
     const F = kmFrame(A.frame);
-    F.w = Math.max(220, Math.round(A.start[0] + dx / kmView.z)); F.h = Math.max(160, Math.round(A.start[1] + dy / kmView.z));
+    F.w = Math.max(220, kmGridV(A.start[0] + dx / kmView.z)); F.h = Math.max(160, kmGridV(A.start[1] + dy / kmView.z));
     kmRenderSoon();
   } else if (A.type === 'move') {
-    const mx = dx / kmView.z, my = dy / kmView.z;
+    let mx = dx / kmView.z, my = dy / kmView.z;
+    if (kmGrid) {
+      // am Raster: der Kasten (bzw. die erste Person) rastet ein, alles andere geht um denselben Betrag mit
+      const [bx, by] = A.frames && A.frames.length ? [A.frames[0][1], A.frames[0][2]] : A.start[0] || [0, 0];
+      mx = kmGridV(bx + mx) - bx; my = kmGridV(by + my) - by;
+    }
     A.ids.forEach((id, i) => { const p = kmPerson(id); if (p) { p.x = Math.round(A.start[i][0] + mx); p.y = Math.round(A.start[i][1] + my); } });
     (A.frames || []).forEach(([id, x, y]) => { const F = kmFrame(id); F.x = Math.round(x + mx); F.y = Math.round(y + my); });
     // Striche: neues Objekt, damit die gespeicherte Darstellung (Cache) nicht veraltet
@@ -778,7 +794,7 @@ function kmNewPerson(x, y, props) {
   let n = 0;
   while (kmPersonAt(x, y) && n++ < 12) { x += 34; y += 26; }
   const used = new Set(km.persons.map((p) => p.color));
-  const p = { id: kmId('p'), x: Math.round(x), y: Math.round(y), name: 'Person ' + (km.persons.length + 1), role: '', color: KM_COLORS.find((c) => !used.has(c)) || KM_COLORS[km.persons.length % 8], shape: 'rect', ...props };
+  const p = { id: kmId('p'), x: kmGridV(x), y: kmGridV(y), name: 'Person ' + (km.persons.length + 1), role: '', color: KM_COLORS.find((c) => !used.has(c)) || KM_COLORS[km.persons.length % 8], shape: 'rect', ...props };
   kmRetag(p);
   km.persons.push(p);
   return p.id;
@@ -1167,6 +1183,111 @@ function kmPickAt(svg, cx, cy) {
   kmPickDone(Number(svg.dataset.page), ((cx - r.left) / r.width) * PAGE_W, ((cy - r.top) / r.height) * PAGE_H);
 }
 
+// ---- Steckbrief (ausführliche Angaben zu einer Figur) ----
+const KM_SB = [
+  ['age', 'Alter', 'z. B. 14, Mitte 50'],
+  ['origin', 'Herkunft / Stand', 'z. B. Bürgertum, Adel, Dorf'],
+  ['job', 'Beruf / Stellung', 'z. B. Gelehrter, Dienstmädchen'],
+  ['looks', 'Aussehen', '', 2],
+  ['traits', 'Charakter / Eigenschaften', 'mit Komma trennen: naiv, gläubig, mutig'],
+  ['motives', 'Ziele & Motive', 'Was will die Figur? Warum?', 3],
+  ['conflicts', 'Konflikte', 'innere und äußere Konflikte', 3],
+  ['development', 'Entwicklung im Verlauf', 'Wie verändert sich die Figur?', 3],
+  ['scenes', 'Schlüsselszenen', 'z. B. Gartenszene, Kerker', 2],
+  ['meaning', 'Bedeutung / Funktion', 'z. B. Gegenspieler, Spiegelfigur', 2]
+];
+const kmSbFilled = (p) => {
+  const i = p.info || {};
+  return KM_SB.filter(([k]) => (i[k] || '').trim()).map(([, l]) => l)
+    .concat((i.quotes || []).some((q) => (q.t || '').trim()) ? ['Zitate'] : [])
+    .concat((i.custom || []).some((c) => (c.k || '').trim() || (c.v || '').trim()) ? ['eigene Felder'] : []);
+};
+function kmSbSummary(p) {
+  const i = p.info || {}, traits = (i.traits || '').split(',').map((t) => t.trim()).filter(Boolean);
+  const filled = kmSbFilled(p);
+  return (traits.length ? `<div class="km-traits">${traits.map((t) => `<span>${kmEsc(t)}</span>`).join('')}</div>` : '') +
+    `<p class="muted small-text">${filled.length ? kmEsc(filled.join(' · ')) : 'Alter, Herkunft, Charakter, Motive, Entwicklung, Zitate …'}</p>`;
+}
+function kmSbText(p) {
+  const i = p.info || {}, out = [`${p.emoji ? p.emoji + ' ' : ''}${p.name}${p.role ? ` (${p.role})` : ''}`];
+  KM_SB.forEach(([k, l]) => { if ((i[k] || '').trim()) out.push(`${l}: ${i[k].trim()}`); });
+  (i.custom || []).forEach((c) => { if ((c.k || c.v || '').trim()) out.push(`${(c.k || 'Feld').trim()}: ${(c.v || '').trim()}`); });
+  const qs = (i.quotes || []).filter((q) => (q.t || '').trim());
+  if (qs.length) { out.push('Zitate:'); qs.forEach((q) => out.push(`  „${q.t.trim()}“${q.c ? ` (${q.c.trim()})` : ''}`)); }
+  if ((p.desc || '').trim()) out.push(`Notizen: ${p.desc.trim()}`);
+  if (p.cite) out.push(`Belegstelle: ${p.cite}`);
+  const rel = km.links.filter((l) => l.a === p.id || l.b === p.id).map((l) => { const o = kmPerson(l.a === p.id ? l.b : l.a); return `${kmLinkText(l)} – ${o ? o.name : '?'}`; });
+  if (rel.length) out.push('Beziehungen: ' + rel.join('; '));
+  return out.join('\n');
+}
+let kmSbP = null;
+function kmSbOpen(p) {
+  kmSbP = p.id;
+  let dlg = kmEl('#km-sb');
+  if (!dlg) {
+    dlg = document.createElement('dialog');
+    dlg.id = 'km-sb';
+    document.body.append(dlg);
+    dlg.addEventListener('input', kmSbInput);
+    dlg.addEventListener('click', kmSbClick);
+    dlg.addEventListener('close', () => { kmTyping = null; kmSbP = null; kmPanel(); });
+  }
+  kmSbRender();
+  if (!dlg.open) dlg.showModal();
+}
+function kmSbRender() {
+  const p = kmPerson(kmSbP), dlg = kmEl('#km-sb');
+  if (!p) return dlg && dlg.open && dlg.close();
+  const i = p.info || {};
+  const field = ([k, l, ph, rows]) => `<label class="km-f"><span>${l}</span>` + (rows
+    ? `<textarea data-k="${k}" rows="${rows}" placeholder="${kmEsc(ph)}">${kmEsc(i[k] || '')}</textarea>`
+    : `<input data-k="${k}" value="${kmEsc(i[k] || '')}" placeholder="${kmEsc(ph)}" autocomplete="off">`) + '</label>';
+  const traits = (i.traits || '').split(',').map((t) => t.trim()).filter(Boolean);
+  dlg.innerHTML = `<div class="km-sb-head" style="--c:${p.color || KM_COLORS[0]}"><input class="km-sb-name" data-top="name" value="${kmEsc(p.name)}" maxlength="40" autocomplete="off" aria-label="Name">` +
+    `<input class="km-sb-role" data-top="role" value="${kmEsc(p.role || '')}" maxlength="50" placeholder="Rolle, z. B. Hauptfigur" autocomplete="off" aria-label="Rolle"></div>` +
+    '<div class="km-sb-grid">' + KM_SB.slice(0, 3).map(field).join('') + '</div>' +
+    field(KM_SB[3]) + field(KM_SB[4]) +
+    `<div class="km-traits" id="km-sb-traits">${traits.map((t) => `<span>${kmEsc(t)}</span>`).join('')}</div>` +
+    KM_SB.slice(5).map(field).join('') +
+    '<div class="km-f"><span>Wichtige Zitate</span><div class="km-sb-list">' +
+    (i.quotes || []).map((q, j) => `<div class="km-sb-quote"><textarea data-q="${j}" data-qf="t" rows="2" placeholder="„Zitat …“">${kmEsc(q.t || '')}</textarea><input data-q="${j}" data-qf="c" value="${kmEsc(q.c || '')}" placeholder="V. / S. / Szene" autocomplete="off"><button type="button" class="km-ref-x" data-qx="${j}" aria-label="Zitat löschen">×</button></div>`).join('') +
+    '</div><button type="button" class="chip" data-x="qadd">＋ Zitat</button></div>' +
+    '<div class="km-f"><span>Eigene Felder (z. B. Lieblingsort, Symbol, Familie)</span><div class="km-sb-list">' +
+    (i.custom || []).map((c, j) => `<div class="km-sb-custom"><input data-c="${j}" data-cf="k" value="${kmEsc(c.k || '')}" placeholder="Feld" autocomplete="off"><input data-c="${j}" data-cf="v" value="${kmEsc(c.v || '')}" placeholder="Inhalt" autocomplete="off"><button type="button" class="km-ref-x" data-cx="${j}" aria-label="Feld löschen">×</button></div>`).join('') +
+    '</div><button type="button" class="chip" data-x="cadd">＋ eigenes Feld</button></div>' +
+    `<label class="km-f"><span>Notizen</span><textarea data-top="desc" rows="3">${kmEsc(p.desc || '')}</textarea></label>` +
+    `<label class="km-f"><span>Belegstelle (Buch)</span><input data-top="cite" value="${kmEsc(p.cite || '')}" maxlength="80" autocomplete="off"></label>` +
+    '<div class="dlg-actions"><button type="button" class="btn" data-x="sbcopy">Als Text kopieren</button><span class="spacer"></span><button type="button" class="btn primary" data-x="sbclose">Fertig</button></div>';
+}
+function kmSbInput(e) {
+  const p = kmPerson(kmSbP), t = e.target, d = t.dataset;
+  if (!p) return;
+  const key = (d.top || d.k || '') + (d.q != null ? 'q' + d.q + d.qf : '') + (d.c != null ? 'c' + d.c + d.cf : '');
+  if (!key) return;
+  if (kmTyping !== 'sb' + key + p.id) { kmUndo.push(kmSnap()); kmRedo = []; kmTyping = 'sb' + key + p.id; }
+  p.info = p.info || {};
+  if (d.top) p[d.top] = t.value;
+  else if (d.k) {
+    p.info[d.k] = t.value;
+    if (d.k === 'traits') kmEl('#km-sb-traits').innerHTML = t.value.split(',').map((x) => x.trim()).filter(Boolean).map((x) => `<span>${kmEsc(x)}</span>`).join('');
+  } else if (d.q != null) p.info.quotes[Number(d.q)][d.qf] = t.value;
+  else if (d.c != null) p.info.custom[Number(d.c)][d.cf] = t.value;
+  kmSaved();
+}
+function kmSbClick(e) {
+  const b = e.target.closest('button');
+  const p = kmPerson(kmSbP);
+  if (!b || !p) return;
+  kmTyping = null;
+  const d = b.dataset, edit = (fn) => { kmChange(() => { p.info = p.info || {}; fn(p.info); }); kmSbRender(); };
+  if (d.x === 'sbclose') return kmEl('#km-sb').close();
+  if (d.x === 'sbcopy') return navigator.clipboard.writeText(kmSbText(p)).then(() => toast('Steckbrief kopiert'), () => toast('Kopieren nicht erlaubt'));
+  if (d.x === 'qadd') { edit((i) => { i.quotes = (i.quotes || []).concat({ t: '', c: '' }); }); const q = kmEl('#km-sb').querySelectorAll('[data-qf="t"]'); return q[q.length - 1].focus(); }
+  if (d.x === 'cadd') { edit((i) => { i.custom = (i.custom || []).concat({ k: '', v: '' }); }); const c = kmEl('#km-sb').querySelectorAll('[data-cf="k"]'); return c[c.length - 1].focus(); }
+  if (d.qx != null) return edit((i) => i.quotes.splice(Number(d.qx), 1));
+  if (d.cx != null) return edit((i) => i.custom.splice(Number(d.cx), 1));
+}
+
 // ---- Ansicht ----
 function kmFit() {
   const st = kmStage();
@@ -1223,7 +1344,8 @@ function kmPanel(focusName) {
       `<label class="km-f km-row"><span>Hauptfigur (groß)</span><label class="switch"><input type="checkbox" id="km-big"${o.big ? ' checked' : ''}><span></span></label></label>` +
       `<label class="km-f"><span>Symbol</span><input id="km-emoji" value="${kmEsc(o.emoji || '')}" maxlength="4" placeholder="z. B. 👑 🗡️ ❤️" autocomplete="off"></label>` +
       `<div class="km-f"><span>Gruppen (mehrere möglich)</span><div class="km-types">${km.groups.map((g) => `<button type="button" class="km-type${kmIn(o, g.id) ? ' on' : ''}" data-pg="${g.id}" style="--c:${g.color}">${kmEsc(g.name)}</button>`).join('')}<button type="button" class="chip" data-pgnew="1">＋ Neue Gruppe</button></div></div>` +
-      `<label class="km-f"><span>Notizen (Eigenschaften, Zitate, Entwicklung)</span><textarea id="km-desc" rows="4">${kmEsc(o.desc || '')}</textarea></label>` +
+      `<div class="km-f km-sbbox"><span>Steckbrief</span>${kmSbSummary(o)}<button type="button" class="btn primary small" data-x="sb">📋 Steckbrief öffnen</button></div>` +
+      `<label class="km-f"><span>Notizen</span><textarea id="km-desc" rows="3">${kmEsc(o.desc || '')}</textarea></label>` +
       kmRefsHtml(o) +
       `<div class="km-f"><span>Beziehungen (${rel.length})</span><div class="km-rels">${rel.map((l) => { const other = kmPerson(l.a === o.id ? l.b : l.a); return `<button type="button" class="km-rel" data-rel="${l.id}" style="--c:${l.color || kmType(l.type).color}">${kmEsc(l.label || kmType(l.type).name)} · ${kmEsc(other ? other.name : '?')}</button>`; }).join('') || '<span class="muted small-text">Am ⊕ neben der Person ziehen</span>'}</div></div>` +
       '<div class="km-actions"><span><button type="button" class="btn small" data-x="copy">Kopieren</button> <button type="button" class="btn small" data-x="dup">Duplizieren</button></span><button type="button" class="btn small danger-text" data-x="del">Löschen</button></div>';
@@ -1295,6 +1417,7 @@ function kmPanelClick(e) {
   if (d.x === 'copy') return kmCopy();
   if (d.x === 'dup' || d.x === 'mdup') return kmDuplicateSel();
   if (d.x === 'ref') return kmRefStart(kmSel.t, o.id);
+  if (d.x === 'sb') return kmSbOpen(o);
   if (d.ref != null) return kmJump(o.refs[Number(d.ref)]);
   if (d.refx != null) return set(() => { o.refs.splice(Number(d.refx), 1); if (!o.refs.length) delete o.refs; });
   // Mehrfachauswahl
@@ -1511,6 +1634,7 @@ function kmBarState() {
   kmEl('#km-focus').classList.toggle('active', kmFocus);
   kmEl('#km-legend-btn').classList.toggle('active', kmLegend);
   kmEl('#km-diff').classList.toggle('active', kmDiff);
+  kmEl('#km-grid').classList.toggle('active', kmGrid);
   kmEl('#km-selmode').classList.toggle('active', kmSelMode);
   kmEl('#km-paste').disabled = !store.get('kmClip', null);
   kmEl('#km-draw').classList.toggle('active', kmDraw);
@@ -1537,6 +1661,7 @@ function kmBuild() {
     '<div class="tool-group">' +
     `<button class="tool" id="km-layout" aria-label="Automatisch anordnen">${ico('<circle cx="12" cy="5" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="M11 7l-5 9M13 7l5 9M7 18h10"/>')}</button>` +
     `<button class="tool" id="km-focus" aria-label="Fokus: nur Beziehungen der ausgewählten Person">${ico('<circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8" stroke-dasharray="3 3"/>')}</button>` +
+    `<button class="tool" id="km-grid" aria-label="Am Raster ausrichten">${ico('<path d="M4 4v16M10 4v16M16 4v16M4 4h16M4 10h16M4 16h16" stroke-width="1.4"/><circle cx="16" cy="16" r="2.5" fill="currentColor"/>')}</button>` +
     `<button class="tool" id="km-diff" aria-label="Änderungen zum vorigen Akt markieren">${ico('<path d="M5 12h5M7.5 9.5v5"/><path d="M14 12h5"/><rect x="2.5" y="5" width="19" height="14" rx="3"/>')}</button>` +
     `<button class="tool" id="km-legend-btn" aria-label="Legende ein/aus">${ico('<path d="M4 7h4M4 12h4M4 17h4M11 7h9M11 12h9M11 17h9"/>')}</button></div>` +
     '<div class="tool-group zoom-group"><button class="tool" id="km-zout" aria-label="Verkleinern">−</button><button class="tool zoom-label" id="km-zoom" aria-label="Alles zeigen">100%</button><button class="tool" id="km-zin" aria-label="Vergrößern">+</button>' +
@@ -1591,6 +1716,19 @@ function kmBuild() {
   on('#km-empty-tpl', kmTemplateDialog);
   on('#km-layout', () => { if (km.persons.length < 2) return toast('Erst ein paar Personen anlegen'); kmLayout(); toast('Angeordnet – Rückgängig geht'); });
   on('#km-focus', () => { kmFocus = !kmFocus; kmBarState(); kmRender(); if (kmFocus && (!kmSel || kmSel.t !== 'p')) toast('Fokus: eine Person antippen'); });
+  on('#km-grid', () => {
+    kmGrid = !kmGrid;
+    store.set('kmGrid', kmGrid);
+    kmBarState();
+    if (kmGrid) {
+      // gleich alles ausrichten (ein Rückgängig-Schritt)
+      kmChange(() => {
+        km.persons.forEach((p) => { p.x = kmGridV(p.x); p.y = kmGridV(p.y); });
+        km.frames.forEach((F) => { const dx = kmGridV(F.x) - F.x, dy = kmGridV(F.y) - F.y; F.x += dx; F.y += dy; F.w = kmGridV(F.w); F.h = kmGridV(F.h); });
+      });
+      toast('Raster an – Personen und Kästen rasten beim Verschieben ein');
+    } else { kmRender(); toast('Raster aus'); }
+  });
   on('#km-diff', () => { kmDiff = !kmDiff; store.set('kmDiff', kmDiff); kmBarState(); kmRender(); toast(kmDiff ? 'Änderungen zum vorigen Akt: grün = neu, orange = geändert, grau = weg' : 'Änderungen ausgeblendet'); });
   on('#km-legend-btn', () => { kmLegend = !kmLegend; store.set('kmLegend', kmLegend); kmBarState(); kmRender(); });
   on('#km-zout', () => kmZoomBy(1 / 1.25));
