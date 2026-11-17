@@ -158,6 +158,18 @@ sudo systemctl start orbit
 
 Verlässt der Ersteller die Klasse, übernimmt das am längsten dabei gewesene Mitglied.
 
+### Geteilte Diagramme (Personenkonstellation, Vergleich)
+
+Ab App-Version 9.3 kann man Diagramme über den Server teilen – unabhängig von Klassen. Sie liegen in derselben Datei unter `"docs"`.
+
+| | Link „Nur lesen“ | Link „Mitbearbeiten“ | wer freigegeben hat |
+|---|---|---|---|
+| Ansehen, durchblättern, exportieren | ✓ | ✓ | ✓ |
+| Ändern (kommt bei allen an) | – | ✓ | ✓ |
+| Link erneuern (alter wird ungültig), Freigabe beenden | – | – | ✓ |
+
+Die Links enthalten einen langen geheimen Schlüssel; auf dem Server stehen nur Prüfsummen davon. Höchstens 200 Freigaben pro Gerät, je Diagramm bis 2 MB.
+
 ## Datenschutz
 
 - Gespeichert werden nur Vornamen bzw. Spitznamen, Hausaufgaben und Prüfungstermine. Keine Noten, keine Passwörter, kein Untis.

@@ -107,6 +107,7 @@ function kmOpen(n) {
 // ---- Änderungen, Rückgängig ----
 const kmSnap = () => JSON.stringify(Object.fromEntries(KM_DATA.map((k) => [k, km[k]])));
 function kmChange(fn) {
+  if ((typeof shRO === 'function' && shRO())) return toast('Nur zum Lesen freigegeben');
   kmUndo.push(kmSnap());
   if (kmUndo.length > 80) kmUndo.shift();
   kmRedo = [];
@@ -555,6 +556,12 @@ function kmDown(e) {
   const dbl = kmLastTap && now - kmLastTap.t < 380 && Math.hypot(e.clientX - kmLastTap.x, e.clientY - kmLastTap.y) < 24;
   kmLastTap = { t: now, x: e.clientX, y: e.clientY };
   const base = { id: e.pointerId, sx: e.clientX, sy: e.clientY, wx, wy, moved: false, pen: e.pointerType === 'pen' };
+  // nur lesen: ansehen, auswählen, blättern, verschieben der Ansicht – aber nichts ändern
+  if ((typeof shRO === 'function' && shRO()) && !(hit && ['tab', 'sstep', 'fan', 'col', 'l'].includes(hit.t))) {
+    if (hit && (hit.t === 'p' || hit.t === 'f' || hit.t === 'g')) kmSelect({ t: hit.t, id: hit.id });
+    kmAct = { ...base, type: 'pan', view: { ...kmView }, tap: !hit };
+    return;
+  }
   // Stift-Modus: Stift/Maus (und Finger, wenn „Finger zeichnet“ an ist) schreiben bzw. radieren
   if (kmDraw && (e.pointerType !== 'touch' || fingerDraw)) {
     kmLastTap = null;
@@ -839,7 +846,7 @@ function kmAddLink(a, b, noUndo) {
   if (kmLinkMode) kmSetLinkMode(false);
 }
 function kmDelete() {
-  if (!kmSel) return;
+  if (!kmSel || (typeof shRO === 'function' && shRO())) return;
   const s = kmSel;
   // Kasten in einem zusammengelegten Stapel: erst ausfächern, sonst blieben Inhalte unsichtbar zurück
   if ((s.t === 'f' || s.t === 'fall') && kmStackOf(s.id) && !kmStackOf(s.id).open) kmFan(kmStackOf(s.id));
@@ -1490,8 +1497,10 @@ function kmSbRender() {
     `<label class="km-f"><span>Notizen</span><textarea data-top="desc" rows="3">${kmEsc(p.desc || '')}</textarea></label>` +
     `<label class="km-f"><span>Belegstelle (Buch)</span><input data-top="cite" value="${kmEsc(p.cite || '')}" maxlength="80" autocomplete="off"></label>` +
     '<div class="dlg-actions"><button type="button" class="btn" data-x="sbcopy">Als Text kopieren</button><span class="spacer"></span><button type="button" class="btn primary" data-x="sbclose">Fertig</button></div>';
+  if ((typeof shRO === 'function' && shRO())) shLock(dlg);
 }
 function kmSbInput(e) {
+  if ((typeof shRO === 'function' && shRO())) return;
   const p = kmPerson(kmSbP), t = e.target, d = t.dataset;
   if (!p) return;
   const key = (d.top || d.k || '') + (d.q != null ? 'q' + d.q + d.qf : '') + (d.c != null ? 'c' + d.c + d.cf : '');
@@ -1629,12 +1638,14 @@ function kmPanel(focusName) {
       '<div class="km-actions"><span></span><button type="button" class="btn small danger-text" data-x="del">Gruppe auflösen</button></div>';
   }
   box.innerHTML = h;
+  if ((typeof shRO === 'function' && shRO())) shLock(box);
   if (focusName) { const n = box.querySelector('#km-name'); if (n) { n.focus(); n.select(); } }
 }
 
 // Eingaben im Seitenfeld: Text sofort übernehmen, ein Rückgängig-Schritt pro Feld
 let kmTyping = null;
 function kmField(e) {
+  if ((typeof shRO === 'function' && shRO())) return;
   const o = kmSelObj();
   if (!o || kmSel.t === 'm') return;
   const id = e.target.id;

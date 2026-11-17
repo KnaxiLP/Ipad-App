@@ -28,7 +28,9 @@ DATA = os.environ.get('ORBIT_DATA', os.path.join(HERE, 'orbit-data.json'))
 ORIGINS = [o.strip().rstrip('/') for o in os.environ.get('ORBIT_ORIGINS', 'https://knaxilp.github.io').split(',') if o.strip()]
 BACKUPS = os.path.join(os.path.dirname(os.path.abspath(DATA)), 'backups')
 
-LIMITS = {'classes': 300, 'members': 80, 'items': 3000, 'body': 64 * 1024}
+LIMITS = {'classes': 300, 'members': 80, 'items': 3000, 'body': 64 * 1024,
+          'docs': 3000, 'docs_per_owner': 200, 'doc_body': 2 * 1024 * 1024}
+DOC_KINDS = ('kmap', 'cmp')                # geteilte Notiz-Arten: Personenkonstellation, Vergleich
 CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'      # ohne 0/O, 1/I
 KINDS = ('homework', 'exams')
 DAY = re.compile(r'^\d{4}-\d{2}-\d{2}$')
@@ -71,6 +73,7 @@ def save(db):
 
 
 db = load()
+db.setdefault('docs', {})
 
 
 # ---------- Prüfen der Eingaben ----------
@@ -169,12 +172,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_PUT(self): self.handle_api('PUT')
     def do_DELETE(self): self.handle_api('DELETE')
 
-    def body(self):
+    def body(self, limit=None):
         try:
             n = int(self.headers.get('Content-Length') or 0)
         except ValueError:
             raise ApiError(400, 'Content-Length ungültig')
-        if n > LIMITS['body']:
+        if n > (limit or LIMITS['body']):
             raise ApiError(413, 'Zu groß')
         if not n:
             return {}
@@ -253,6 +256,10 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 m['name'] = name
             return 200, public_class(c, mid), True
+
+        # Geteilte Diagramme: /api/docs …
+        if p and p[0] == 'docs':
+            return self.docs(method, p[1:], query)
 
         if len(p) < 2 or p[0] != 'classes':
             raise ApiError(404, 'Nicht gefunden')
@@ -340,6 +347,86 @@ class Handler(BaseHTTPRequestHandler):
                     it['updated'] = now_ms()
                     purge(c)
                     return 200, it, True
+        raise ApiError(404, 'Nicht gefunden')
+
+    # ---------- Geteilte Diagramme (Konstellation, Vergleich) ----------
+    # Jedes Dokument hat zwei geheime Link-Schlüssel: einer nur zum Lesen, einer zum Mitbearbeiten.
+    # Gespeichert werden nur Prüfsummen der Schlüssel. Der Ersteller (Gerätekennung) darf alles.
+    def doc_role(self, d, query):
+        mid, token = self.headers.get('X-Orbit-Member', ''), self.headers.get('X-Orbit-Token', '')
+        if mid and mid == d['owner'] and secrets.compare_digest(d['ownerToken'], sha(token)):
+            return 'owner'
+        t = (query.get('t') or [''])[0]
+        if t and secrets.compare_digest(d['edit'], sha(t)):
+            return 'edit'
+        if t and secrets.compare_digest(d['read'], sha(t)):
+            return 'read'
+        raise ApiError(403, 'Link ungültig oder Freigabe beendet')
+
+    def docs(self, method, p, query):
+        docs = db['docs']
+        # POST /api/docs – Diagramm freigeben (gibt beide Link-Schlüssel zurück)
+        if p == [] and method == 'POST':
+            b = self.body(LIMITS['doc_body'])
+            mid, token, name = member_in(b)
+            if b.get('kind') not in DOC_KINDS or not isinstance(b.get('data'), dict):
+                raise ApiError(400, 'Diagramm fehlt')
+            if len(docs) >= LIMITS['docs'] or sum(1 for d in docs.values() if d['owner'] == mid) >= LIMITS['docs_per_owner']:
+                raise ApiError(507, 'Zu viele Freigaben')
+            did, read, edit = secrets.token_urlsafe(9), secrets.token_urlsafe(18), secrets.token_urlsafe(18)
+            docs[did] = {'id': did, 'kind': b['kind'], 'title': text(b.get('title'), 80, False), 'data': b['data'],
+                         'owner': mid, 'ownerToken': sha(token), 'ownerName': name, 'read': sha(read), 'edit': sha(edit),
+                         'ver': 1, 'created': now_ms(), 'updated': now_ms(), 'by': name}
+            return 201, {'id': did, 'read': read, 'edit': edit, 'ver': 1}, True
+        if len(p) < 1:
+            raise ApiError(404, 'Nicht gefunden')
+        d = docs.get(p[0])
+        if not d:
+            raise ApiError(404, 'Freigabe gibt es nicht (mehr)')
+        role = self.doc_role(d, query)
+        rest = p[1:]
+        # GET /api/docs/:id?t=…[&since=ver] – lesen (mit since: nur wenn neuer)
+        if rest == [] and method == 'GET':
+            try:
+                since = int((query.get('since') or ['0'])[0] or 0)
+            except ValueError:
+                since = 0
+            out = {'id': d['id'], 'kind': d['kind'], 'title': d['title'], 'ver': d['ver'], 'role': role,
+                   'ownerName': d['ownerName'], 'updated': d['updated'], 'by': d.get('by', '')}
+            if d['ver'] > since:
+                out['data'] = d['data']
+            return 200, out, False
+        # PUT /api/docs/:id?t=… – speichern (nur mit dem Stand, auf dem man gearbeitet hat)
+        if rest == [] and method == 'PUT':
+            if role == 'read':
+                raise ApiError(403, 'Nur zum Lesen freigegeben')
+            b = self.body(LIMITS['doc_body'])
+            if not isinstance(b.get('data'), dict):
+                raise ApiError(400, 'Diagramm fehlt')
+            if b.get('ver') != d['ver']:
+                return 409, {'error': 'Inzwischen geändert', 'ver': d['ver'], 'data': d['data'], 'title': d['title'], 'by': d.get('by', '')}, False
+            d['data'] = b['data']
+            if isinstance(b.get('title'), str):
+                d['title'] = text(b['title'], 80, False)
+            d['ver'] += 1
+            d['updated'] = now_ms()
+            d['by'] = text(b.get('name'), 40, False)
+            return 200, {'ver': d['ver']}, True
+        # Nur der Ersteller: Links erneuern (alte werden ungültig) oder Freigabe beenden
+        if role != 'owner':
+            raise ApiError(403, 'Nur wer freigegeben hat')
+        if rest == ['links'] and method == 'POST':
+            which = self.body().get('which')
+            out = {}
+            for k in ('read', 'edit'):
+                if which in (k, 'both'):
+                    t = secrets.token_urlsafe(18)
+                    d[k] = sha(t)
+                    out[k] = t
+            return 200, out, True
+        if rest == [] and method == 'DELETE':
+            del docs[d['id']]
+            return 200, {'ok': True}, True
         raise ApiError(404, 'Nicht gefunden')
 
 

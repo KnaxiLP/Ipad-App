@@ -1240,3 +1240,24 @@ body.cmp-mode .sn-pdf-row, body.cmp-mode #note-export-pdf, body.cmp-mode #note-c
 .cm-vcol.mid h3 { color: var(--muted); }
 .cm-vcol ul { margin: 0; padding-left: 16px; font-size: 14px; line-height: 1.45; display: flex; flex-direction: column; gap: 6px; }
 .cm-vcol:first-of-type, .cm-venn .cm-vcol:nth-of-type(3) { }
+
+/* ---------- Teilen (teilen.js) ---------- */
+.sh-badge { border: 0; border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.sh-badge[hidden] { display: none; }
+.sh-badge.read { background: color-mix(in srgb, #d97706 16%, transparent); color: #d97706; }
+.sh-badge.edit { background: color-mix(in srgb, #16a34a 16%, transparent); color: #16a34a; }
+.sh-badge.gone { background: color-mix(in srgb, #dc2626 16%, transparent); color: #dc2626; }
+#sh-dlg { width: min(560px, 94vw); display: none; flex-direction: column; gap: 12px; }
+#sh-dlg[open] { display: flex; }
+#sh-dlg h3 { margin: 0; }
+#sh-dlg p { margin: 0; }
+.sh-roles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sh-roles > div, .sh-link > div { display: flex; flex-direction: column; gap: 2px; }
+.sh-roles > div { border: 1px solid var(--border); border-radius: 12px; padding: 10px; }
+.sh-link { display: flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 12px; padding: 10px; }
+.sh-link > div { flex: 1; min-width: 0; }
+/* nur lesen: Bearbeiten-Werkzeuge ausblenden */
+body.sh-readonly :is(#km-undo, #km-redo, #km-add, #km-add-ev, #km-linkmode, #km-selmode, #km-group-add, #km-frame-add, #km-draw, #km-paste, #km-tpl, #km-layout, #km-grid, #cm-undo, #cm-redo, #km-empty-tpl),
+body.sh-readonly :is(.cm-add, .cm-rowbtns, .cm-colbtns) { display: none !important; }
+body.sh-readonly .cm-mark:not(.on) { display: none; }
+body.sh-readonly .km-knob, body.sh-readonly #km-panel .chip:disabled, body.sh-readonly #km-panel .km-actions { display: none; }

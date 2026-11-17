@@ -89,6 +89,7 @@ function cmOpen(n) {
 // ---- Änderungen ----
 const cmSnap = () => JSON.stringify(cm);
 function cmChange(fn) {
+  if ((typeof shRO === 'function' && shRO())) return toast('Nur zum Lesen freigegeben');
   cmUndo.push(cmSnap());
   if (cmUndo.length > 80) cmUndo.shift();
   cmRedo = [];
@@ -146,6 +147,7 @@ function cmRender() {
       cmExtrasHtml();
   }
   box.querySelectorAll('textarea').forEach(cmAutoGrow);
+  if ((typeof shRO === 'function' && shRO())) shLock(box);
 }
 function cmExtrasHtml() {
   return `<div class="cm-extra"><label class="km-f"><span>Gemeinsamkeiten (eine pro Zeile)</span><textarea data-field="common" rows="3" placeholder="Was haben alle gemeinsam?">${kmEsc(cm.common || '')}</textarea></label>` +
@@ -154,6 +156,7 @@ function cmExtrasHtml() {
 
 // ---- Eingaben ----
 function cmInput(e) {
+  if ((typeof shRO === 'function' && shRO())) return;
   const t = e.target, d = t.dataset;
   const key = d.cell || d.row || d.col || d.field;
   if (!key || !cm) return;
