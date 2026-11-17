@@ -1269,3 +1269,4 @@ body.sh-readonly .km-knob, body.sh-readonly #km-panel .chip:disabled, body.sh-re
 .new-kind.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .new-kind.primary span { color: rgba(255, 255, 255, .8); }
 body.kmap-mode #note-rotate-page, body.cmp-mode #note-rotate-page { display: none !important; }
+.km-bar .tool[hidden] { display: none; }

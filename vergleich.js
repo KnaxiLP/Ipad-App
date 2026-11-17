@@ -257,6 +257,47 @@ function cmImageFile() {
   return dataUrlToFile(cv.toDataURL('image/png'), `${(note.title || 'Vergleich').replace(/[\\/:*?"<>|]/g, '_')}.png`);
 }
 
+// ---- Tabelle → freies Schaubild (eigene Notiz, danach beliebig umbauen) ----
+// Jede Spalte wird eine farbige Gruppe mit Überschrift; jede Zelle ein Kasten (Kriterium + Text).
+// Bei zwei Spalten kommen die Gemeinsamkeiten in die Mitte – wie ein Venn-Diagramm zum Umbauen.
+async function cmToFree() {
+  const persons = [], groups = [], links = [];
+  const P = (props) => { const p = { id: kmId('p'), shape: 'rect', ...props }; persons.push(p); return p; };
+  const two = cm.cols.length === 2, common = (cm.common || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  const slot = (i) => (two && common.length && i === 1 ? 2 : i) * 400;
+  cm.cols.forEach((c, i) => {
+    const g = { id: kmId('g'), name: c.name, color: c.color };
+    groups.push(g);
+    const head = P({ name: c.name, color: c.color, big: true, shape: 'pill', x: slot(i), y: 0, groups: [g.id] });
+    let y = 80, prev = head;
+    cm.rows.forEach((r) => {
+      const t = (r.cells[c.id] || '').trim();
+      if (!t) return;
+      const m = (r.marks || {})[c.id];
+      const p = P({ name: (m ? m + ' ' : '') + (r.name || 'Kriterium'), role: t, color: c.color, x: slot(i), y: 0, groups: [g.id] });
+      const b = kmBox(p);
+      p.y = Math.round(y + b.h / 2);
+      y += b.h + 24;
+      links.push({ id: kmId('l'), a: prev.id, b: p.id, type: 'part', label: '', dir: 'none', w: 1 });
+      prev = p;
+    });
+  });
+  if (two && common.length) {
+    const g = { id: kmId('g'), name: 'Gemeinsam', color: '#6b7280' };
+    groups.push(g);
+    let y = 80;
+    common.forEach((l) => { const p = P({ name: l.length > 34 ? 'Gemeinsam' : l, role: l.length > 34 ? l : '', color: '#6b7280', x: 400, y: 0, groups: [g.id] }); const b = kmBox(p); p.y = Math.round(y + b.h / 2); y += b.h + 24; });
+  }
+  if ((cm.result || '').trim()) {
+    const maxY = Math.max(...persons.map((p) => p.y + kmBox(p).h / 2));
+    P({ name: 'Fazit', role: cm.result.trim(), color: '#334155', big: true, x: (Math.max(...persons.map((p) => p.x)) / 2), y: maxY + 120 });
+  }
+  const data = { persons, links, groups, frames: [], ink: [], stacks: [], view: null, flavor: 'free' };
+  await flushNoteSave();
+  await kmCreate(note.folder, 'free', data, (note.title || 'Vergleich') + ' – Schaubild');
+  toast('Schaubild angelegt – alles frei verschieben, verbinden, ergänzen. Die Tabelle bleibt erhalten.');
+}
+
 // ---- Oberfläche ----
 function cmBuild() {
   if (cmEl('#cm-wrap')) return;
@@ -268,6 +309,7 @@ function cmBuild() {
     '<div class="tool-group"><span class="segmented small-seg"><button type="button" data-view="table">Tabelle</button><button type="button" data-view="venn">Venn</button></span></div>' +
     `<div class="tool-group"><button class="tool km-txt" id="cm-quiz" aria-label="Abfragen: Einträge verdecken">🙈 Abfragen</button></div>` +
     `<div class="tool-group"><button class="tool" id="cm-copy" aria-label="Als Text kopieren">${ico('<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 00-2-2H6a2 2 0 00-2 2v11a2 2 0 002 2h2"/>')}</button>` +
+    `<button class="tool km-txt" id="cm-tofree" aria-label="Als Schaubild frei bearbeiten">🧩 Frei gestalten</button>` +
     `<button class="tool" id="cm-tonote" aria-label="Als Bild in eine Notiz einfügen">${ico('<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h5"/><path d="M15 15h5M17.5 12.5v5"/>')}</button>` +
     `<button class="tool" id="cm-export" aria-label="Als Bild teilen">${ico('<path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5v10h14V11h-1"/>')}</button></div></div>` +
     '<div class="cm-body" id="cm-body"></div>';
@@ -281,6 +323,7 @@ function cmBuild() {
   cmEl('#cm-copy').addEventListener('click', () => navigator.clipboard.writeText(cmText()).then(() => toast('Als Text kopiert'), () => toast('Kopieren nicht erlaubt')));
   cmEl('#cm-export').addEventListener('click', () => shareFiles([cmImageFile()], note.title || 'Vergleich'));
   cmEl('#cm-tonote').addEventListener('click', () => kmToNote(cmImageFile()));
+  cmEl('#cm-tofree').addEventListener('click', cmToFree);
   document.addEventListener('keydown', (e) => {
     if (!cm || !document.body.classList.contains('cmp-mode') || document.body.dataset.view !== 'notes') return;
     const k = e.key.toLowerCase();

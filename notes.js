@@ -2272,7 +2272,7 @@ async function createNote(folder) {
 }
 
 function noteName(n) {
-  return n.title || (n.kind === 'kmap' ? 'Unbenannte Konstellation' : n.kind === 'cmp' ? 'Unbenannter Vergleich' : 'Unbenannte Notiz');
+  return n.title || (n.kind === 'kmap' ? (n.kmap && n.kmap.flavor === 'free' ? 'Unbenanntes Schaubild' : 'Unbenannte Konstellation') : n.kind === 'cmp' ? 'Unbenannter Vergleich' : 'Unbenannte Notiz');
 }
 
 async function showNotesList() {
@@ -2349,7 +2349,7 @@ function renderNotesList() {
     meta.className = 'muted small-text';
     const date = new Date(n.updated).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' });
     const fname = folderName(n.folder);
-    meta.textContent = (n.kind === 'kmap' ? `👥 Konstellation · ${(n.kmap && n.kmap.persons.length) || 0} Personen · ${date}`
+    meta.textContent = (n.kind === 'kmap' ? (n.kmap && n.kmap.flavor === 'free' ? `🧩 Schaubild · ${n.kmap.persons.length} Kästen · ${date}` : `👥 Konstellation · ${(n.kmap && n.kmap.persons.length) || 0} Personen · ${date}`)
       : n.kind === 'cmp' ? `⚖️ Vergleich · ${(n.cmp && n.cmp.rows.length) || 0} Kriterien · ${date}` : `${n.pages.length} S. · ${date}`) + (fname && folderFilter === 'all' ? ` · ${fname}` : '');
     text.append(title, meta);
     const move = document.createElement('button');

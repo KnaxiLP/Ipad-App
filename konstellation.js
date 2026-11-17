@@ -34,7 +34,20 @@ const kmNorm = (n) => String(n || '').trim().toLowerCase();
 const KM_DASH = { solid: '', dashed: '9 6', dotted: '1.5 6' };
 const KM_FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif';
 const KM_NEW = '#16a34a', KM_CHG = '#d97706', KM_GONE = '#9ca3af';   // Markierungen: neu, geändert, weggefallen
-const kmType = (id) => KM_TYPES.find((t) => t.id === id) || KM_TYPES[KM_TYPES.length - 1];
+// Freies Schaubild (km.flavor === 'free'): allgemeine Pfeilarten statt Beziehungen zwischen Figuren
+const KM_TYPES_FREE = [
+  { id: 'arrow', name: 'Pfeil', color: '#334155', dash: 'solid', labels: ['führt zu', 'daraus folgt', 'bedeutet', 'z. B.'] },
+  { id: 'cause', name: 'Ursache → Wirkung', color: '#d97706', dash: 'solid', labels: ['verursacht', 'bewirkt', 'führt zu', 'weil'] },
+  { id: 'pos', name: 'fördert (+)', color: '#16a34a', dash: 'solid', labels: ['fördert', 'verstärkt', 'erhöht', 'unterstützt'] },
+  { id: 'neg', name: 'hemmt (−)', color: '#dc2626', dash: 'dashed', labels: ['hemmt', 'verringert', 'schadet', 'verhindert'] },
+  { id: 'flow', name: 'Strom (Geld/Güter)', color: '#0891b2', dash: 'solid', labels: ['Geld', 'Güter', 'Arbeit', 'Lohn', 'Steuern', 'Konsumausgaben'] },
+  { id: 'part', name: 'gehört zu', color: '#2563eb', dash: 'dotted', labels: ['ist Teil von', 'gehört zu', 'Beispiel für', 'Merkmal von'] },
+  { id: 'contrast', name: 'Gegensatz', color: '#7c3aed', dash: 'dashed', labels: ['vs.', 'Gegensatz', 'im Unterschied zu'] }
+];
+const kmType = (id) => KM_TYPES.find((t) => t.id === id) || KM_TYPES_FREE.find((t) => t.id === id) || KM_TYPES[KM_TYPES.length - 1];
+const kmFree = () => !!(km && km.flavor === 'free');
+const kmTypes = () => (kmFree() ? KM_TYPES_FREE : KM_TYPES);
+const kmCurType = () => (kmFree() ? store.get('kmLastTypeFree', 'arrow') : kmLastType);
 const kmId = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const kmEsc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 // Farbe mit Weiß mischen (helle Kartenfarbe)
@@ -78,15 +91,17 @@ const KM_DATA = ['persons', 'links', 'groups', 'frames', 'ink', 'stacks'];
 const kmMoveInk = (st, dx, dy, extra) => ({ ...st, ...extra, pts: st.pts.map((v, j) => (j % 3 === 0 ? v + dx : j % 3 === 1 ? v + dy : v)) });
 
 // ---- Notiz anlegen / öffnen ----
-async function kmCreate(folder) {
+async function kmCreate(folder, flavor, data, title) {
   const n = newNote();
   n.kind = 'kmap';
-  n.kmap = kmBlank();
+  n.kmap = data || kmBlank();
+  if (flavor) n.kmap.flavor = flavor;
+  if (title) n.title = title;
   if (folder) n.folder = folder;
   await noteDb.put(n).catch(() => {});
   showView('notes');
   await openNote(n);
-  toast('Neue Personenkonstellation – doppeltippe auf die Fläche oder wähle eine Vorlage');
+  if (!data) toast(flavor === 'free' ? 'Neues Schaubild – doppeltippe für einen Kasten oder wähle eine Vorlage' : 'Neue Personenkonstellation – doppeltippe auf die Fläche oder wähle eine Vorlage');
 }
 
 function kmOpen(n) {
@@ -209,10 +224,15 @@ function kmMeasure(text, font) {
 function kmBox(p) {
   const big = !!p.big, fs = big ? 17 : 15;
   const nameW = kmMeasure(kmLabel(p), `${big ? 700 : 600} ${fs}px ${KM_FONT}`);
-  const roleW = p.role ? kmMeasure(p.role, `12px ${KM_FONT}`) : 0;
-  let w = Math.max(78, Math.max(nameW, roleW) + 28), h = (p.role ? 44 : 32) + (big ? 8 : 0);
-  if (p.shape === 'ellipse') { w = w * 1.25 + 8; h += 14; }
-  return { x: p.x - w / 2, y: p.y - h / 2, w, h, fs, big };
+  // Text unter der Überschrift: umbrechen (höchstens etwa 240 breit, 10 Zeilen)
+  const lines = p.role ? kmWrap(p.role, Math.min(240, Math.max(150, nameW)), `12px ${KM_FONT}`, 10) : [];
+  const roleW = lines.length ? Math.max(...lines.map((l) => kmMeasure(l, `12px ${KM_FONT}`))) : 0;
+  let w = Math.max(78, Math.max(nameW, roleW) + 28), h = 32 + (lines.length ? 4 + lines.length * 15 : 0) + (big ? 8 : 0);
+  let pad = 0;
+  if (p.shape === 'ellipse') { w = w * 1.25 + 8; h += 14; pad = 7; }
+  const top = p.y - h / 2;
+  const nameY = lines.length ? top + pad + 21 + (big ? 3 : 0) : p.y + fs * 0.36;
+  return { x: p.x - w / 2, y: top, w, h, fs, big, lines, nameY, roleY: nameY + 17 };
 }
 // Randpunkt der Karte in Richtung (dx, dy) ab der Mitte
 function kmEdge(p, b, dx, dy) {
@@ -428,8 +448,8 @@ function kmRender() {
     h += `<g data-p="${p.id}" class="km-person"${dim(nb && !nb.has(p.id))}>` +
       (sel ? `${kmPersonPath(p, { x: b.x - 5, y: b.y - 5, w: b.w + 10, h: b.h + 10 })} fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="5 4"/>` : '') +
       `${kmPersonPath(p, b)} fill="${kmTint(c, kmIsFig(p) ? 0.86 : 0.93)}" stroke="${c}" stroke-width="${b.big ? 3.2 : 1.8}"${kmIsFig(p) ? '' : ' stroke-dasharray="6 4"'}/>` +
-      `<text x="${p.x}" y="${p.role ? b.y + b.h / 2 - 3 : p.y + b.fs * 0.36}" text-anchor="middle" font-size="${b.fs}" font-weight="${b.big ? 700 : 600}" fill="#1c1c1e">${kmEsc(kmLabel(p))}</text>` +
-      (p.role ? `<text x="${p.x}" y="${b.y + b.h / 2 + 14}" text-anchor="middle" font-size="12" fill="#55555c">${kmEsc(p.role)}</text>` : '') +
+      `<text x="${p.x}" y="${b.nameY}" text-anchor="middle" font-size="${b.fs}" font-weight="${b.big ? 700 : 600}" fill="#1c1c1e">${kmEsc(kmLabel(p))}</text>` +
+      b.lines.map((l, i) => `<text x="${p.x}" y="${b.roleY + i * 15}" text-anchor="middle" font-size="12" fill="#55555c">${kmEsc(l)}</text>`).join('') +
       (p.desc || (p.refs && p.refs.length) || p.cite || kmSbFilled(p).length ? `<circle cx="${b.x + b.w - 2}" cy="${b.y + 2}" r="4.5" fill="${c}"/>` : '') +
       (isNew ? kmPill(b.x - 8, b.y - 16, 'neu', KM_NEW, '#fff', '', 11).svg : chg ? kmPill(b.x - 8, b.y - 16, 'geändert', KM_CHG, '#fff', '', 11).svg : '') + '</g>';
   }
@@ -461,8 +481,8 @@ function kmRender() {
   if (kmAct && kmAct.type === 'link' && kmAct.to) {
     const A = kmPerson(kmAct.from), T = kmAct.target && kmPerson(kmAct.target);
     const [tx, ty] = T ? [T.x, T.y] : kmAct.to;
-    h += `<path d="M${A.x} ${A.y} L${tx} ${ty}" stroke="${kmType(kmLastType).color}" stroke-width="3" stroke-dasharray="8 6" fill="none"/>`;
-    if (T) { const b = sc.boxes.get(T.id); h += `${kmPersonPath(T, { x: b.x - 6, y: b.y - 6, w: b.w + 12, h: b.h + 12 })} fill="none" stroke="${kmType(kmLastType).color}" stroke-width="3"/>`; }
+    h += `<path d="M${A.x} ${A.y} L${tx} ${ty}" stroke="${kmType(kmCurType()).color}" stroke-width="3" stroke-dasharray="8 6" fill="none"/>`;
+    if (T) { const b = sc.boxes.get(T.id); h += `${kmPersonPath(T, { x: b.x - 6, y: b.y - 6, w: b.w + 12, h: b.h + 12 })} fill="none" stroke="${kmType(kmCurType()).color}" stroke-width="3"/>`; }
   }
   // Auswahlrahmen
   if (kmAct && kmAct.type === 'band' && kmAct.to) {
@@ -480,6 +500,7 @@ function kmRender() {
     st.style.backgroundPosition = `${kmView.x - g / 2}px ${kmView.y - g / 2}px`;
   }
   kmEl('#km-empty').hidden = km.persons.length > 0 || km.frames.length > 0;
+  kmEl('#km-empty-title').textContent = kmFree() ? 'Schaubild' : 'Personenkonstellation';
   kmEl('#km-zoom').textContent = Math.round(kmView.z * 100) + '%';
   kmRenderLegend(sc);
 }
@@ -822,7 +843,7 @@ function kmNewPerson(x, y, props) {
   let n = 0;
   while (kmPersonAt(x, y) && n++ < 12) { x += 34; y += 26; }
   const used = new Set(km.persons.map((p) => p.color));
-  const p = { id: kmId('p'), x: kmGridV(x), y: kmGridV(y), name: 'Person ' + (km.persons.length + 1), role: '', color: KM_COLORS.find((c) => !used.has(c)) || KM_COLORS[km.persons.length % 8], shape: 'rect', ...props };
+  const p = { id: kmId('p'), x: kmGridV(x), y: kmGridV(y), name: (kmFree() ? 'Kasten ' : 'Person ') + (km.persons.length + 1), role: '', color: KM_COLORS.find((c) => !used.has(c)) || KM_COLORS[km.persons.length % 8], shape: 'rect', ...props };
   kmRetag(p);
   km.persons.push(p);
   return p.id;
@@ -839,7 +860,7 @@ function kmAddPerson(x, y, props) {
 function kmAddLink(a, b, noUndo) {
   const exists = km.links.find((l) => (l.a === a && l.b === b) || (l.a === b && l.b === a));
   if (exists && !confirm('Zwischen den beiden gibt es schon eine Beziehung. Noch eine hinzufügen?')) { kmSelect({ t: 'l', id: exists.id }); return; }
-  const l = { id: kmId('l'), a, b, type: kmLastType, label: '', dir: 'ab', w: 2 };
+  const ty = kmCurType(), l = { id: kmId('l'), a, b, type: ty, label: '', dir: ty === 'contrast' ? 'both' : 'ab', w: 2 };
   const add = () => km.links.push(l);
   if (noUndo) { add(); kmSaved(); } else kmChange(add);
   kmSelect({ t: 'l', id: l.id });
@@ -1070,6 +1091,35 @@ const KM_TEMPLATES = [
   { id: 'family', name: 'Familienstammbaum', desc: 'drei Generationen mit Beziehungen' },
   { id: 'camps', name: 'Zwei Lager', desc: 'zwei Gruppen im Konflikt, mit Vermittler' }
 ];
+const KM_TEMPLATES_FREE = [
+  { id: 'kreislauf', name: 'Einfacher Wirtschaftskreislauf', desc: 'Haushalte und Unternehmen – Güter- und Geldströme', build: (P, L) => {
+    const h = P('Private Haushalte', 0, 0, { big: true, color: '#2563eb', role: 'bieten Arbeit an, kaufen Güter' }), u = P('Unternehmen', 560, 0, { big: true, color: '#d97706', role: 'stellen Güter her' });
+    L(h, u, 'flow', 'Arbeit (Produktionsfaktoren)', 'ab', '#2563eb'); L(u, h, 'flow', 'Güter und Dienstleistungen', 'ab', '#2563eb');
+    L(u, h, 'flow', 'Einkommen (Lohn, Gehalt)', 'ab', '#16a34a'); L(h, u, 'flow', 'Konsumausgaben', 'ab', '#16a34a');
+  } },
+  { id: 'kreislauf4', name: 'Erweiterter Wirtschaftskreislauf', desc: 'mit Staat und Banken (nur Geldströme)', build: (P, L) => {
+    const h = P('Private Haushalte', 0, 220, { big: true, color: '#2563eb' }), u = P('Unternehmen', 640, 220, { big: true, color: '#d97706' });
+    const st = P('Staat', 320, 0, { big: true, color: '#7c3aed' }), b = P('Banken', 320, 440, { big: true, color: '#0891b2' });
+    L(u, h, 'flow', 'Einkommen'); L(h, u, 'flow', 'Konsumausgaben');
+    L(h, st, 'flow', 'Steuern, Sozialabgaben'); L(st, h, 'flow', 'Transferzahlungen (z. B. Kindergeld)');
+    L(u, st, 'flow', 'Steuern'); L(st, u, 'flow', 'Subventionen, Staatsaufträge');
+    L(h, b, 'flow', 'Sparen'); L(b, u, 'flow', 'Kredite für Investitionen');
+  } },
+  { id: 'mindmap', name: 'Mindmap', desc: 'Thema in der Mitte, sechs Äste', build: (P, L) => {
+    const c = P('Thema', 0, 0, { big: true, shape: 'ellipse', color: '#334155' });
+    for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2 - Math.PI / 2, x = P(`Unterpunkt ${i + 1}`, Math.cos(a) * 330, Math.sin(a) * 220, { color: KM_COLORS[i] }); L(c, x, 'part', '', 'none'); }
+  } },
+  { id: 'ursache', name: 'Ursache → Wirkung', desc: 'Kette aus Ursache und Folgen', build: (P, L) => {
+    const ids = ['Ursache', 'Folge 1', 'Folge 2', 'Folge 3'].map((n, i) => P(n, i * 260, 0, { color: i ? '#d97706' : '#dc2626', big: !i }));
+    ids.slice(1).forEach((id, i) => L(ids[i], id, 'cause', 'führt zu'));
+  } },
+  { id: 'gegen', name: 'Gegenüberstellung', desc: 'zwei Seiten mit Merkmalen, frei anordnen', build: (P, L, G) => {
+    const a = [P('Seite A', 0, 0, { big: true, color: '#2563eb', shape: 'pill' })], b = [P('Seite B', 520, 0, { big: true, color: '#dc2626', shape: 'pill' })];
+    for (let i = 1; i <= 3; i++) { a.push(P(`Merkmal ${i}`, 0, i * 110, { color: '#2563eb', role: 'Text …' })); b.push(P(`Merkmal ${i}`, 520, i * 110, { color: '#dc2626', role: 'Text …' })); L(a[i], b[i], 'contrast', 'vs.', 'both'); }
+    G('Seite A', '#2563eb', a); G('Seite B', '#dc2626', b);
+  } },
+  { id: 'before', name: 'Vorher / Nachher', desc: 'zwei Kästen zum Vergleichen', frames: ['Vorher', 'Nachher'] }
+];
 function kmApplyTemplate(t) {
   const sc = kmScene(), b = kmBounds(sc), r = kmStage().getBoundingClientRect();
   const ox = b ? b.x + b.w + 120 : (r.width / 2 - kmView.x) / kmView.z - 320, oy = b ? b.y : (r.height / 2 - kmView.y) / kmView.z - 220;
@@ -1080,7 +1130,9 @@ function kmApplyTemplate(t) {
       return;
     }
     const P = (name, x, y, props) => kmNewPerson(ox + x, oy + y, { name, ...props });
-    const L = (a, bb, type, label, dir = 'ab') => km.links.push({ id: kmId('l'), a, b: bb, type, label, dir, w: 2 });
+    const L = (a, bb, type, label, dir = 'ab', color) => km.links.push({ id: kmId('l'), a, b: bb, type, label, dir, w: 2, ...(color ? { color } : {}) });
+    const G = (name, color, ids) => { const g = { id: kmId('g'), name, color }; km.groups.push(g); ids.forEach((id) => kmJoin(kmPerson(id), g.id)); };
+    if (t.build) return t.build(P, L, G);
     if (t.id === 'family') {
       const g = { id: kmId('g'), name: 'Familie', color: '#2563eb' }; km.groups.push(g);
       const gv = P('Großvater', 0, 0), gm = P('Großmutter', 260, 0), v = P('Vater', 0, 190), m = P('Mutter', 260, 190), k1 = P('Kind 1', -40, 380), k2 = P('Kind 2', 300, 380);
@@ -1096,16 +1148,16 @@ function kmApplyTemplate(t) {
     }
   });
   kmFit();
-  toast(t.frames ? 'Kästen angelegt – Personen hineinziehen, dann „als nächsten Akt kopieren“' : 'Vorlage eingefügt – Namen antippen und ändern');
+  toast(t.frames ? 'Kästen angelegt – Inhalte hineinziehen' : 'Vorlage eingefügt – antippen und ändern');
 }
 function kmTemplateDialog() {
   let dlg = kmEl('#km-tpl-dlg');
   if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'km-tpl-dlg'; document.body.append(dlg); }
   dlg.innerHTML = '<h3>Vorlage einfügen</h3><div class="menu-list">' +
-    KM_TEMPLATES.map((t) => `<button type="button" class="menu-item km-tpl" data-tpl="${t.id}"><b>${kmEsc(t.name)}</b><span class="muted small-text">${kmEsc(t.desc)}</span></button>`).join('') +
+    (kmFree() ? KM_TEMPLATES_FREE : KM_TEMPLATES).map((t) => `<button type="button" class="menu-item km-tpl" data-tpl="${t.id}"><b>${kmEsc(t.name)}</b><span class="muted small-text">${kmEsc(t.desc)}</span></button>`).join('') +
     '</div><p class="muted small-text">Wird neben das Vorhandene gelegt – nichts geht verloren.</p><div class="dlg-actions"><button type="button" class="btn" data-close>Abbrechen</button></div>';
   dlg.querySelector('[data-close]').addEventListener('click', () => dlg.close());
-  dlg.querySelectorAll('[data-tpl]').forEach((b) => b.addEventListener('click', () => { dlg.close(); kmApplyTemplate(KM_TEMPLATES.find((t) => t.id === b.dataset.tpl)); }));
+  dlg.querySelectorAll('[data-tpl]').forEach((b) => b.addEventListener('click', () => { dlg.close(); kmApplyTemplate((kmFree() ? KM_TEMPLATES_FREE : KM_TEMPLATES).find((t) => t.id === b.dataset.tpl)); }));
   dlg.showModal();
 }
 
@@ -1578,16 +1630,18 @@ function kmPanel(focusName) {
       '<div class="km-actions"><span></span><button type="button" class="btn small danger-text" data-x="del">Alle löschen</button></div>';
   } else if (kmSel.t === 'p') {
     const rel = km.links.filter((l) => l.a === o.id || l.b === o.id);
-    h = head(KM_KINDS[kmKind(o)][0]) +
-      `<div class="km-f"><span>Art</span>${seg('kind', kmKind(o), [['figure', 'Figur'], ['event', 'Handlung'], ['place', 'Ort'], ['thing', 'Gegenstand']])}</div>` +
-      `<label class="km-f"><span>${kmIsFig(o) ? 'Name' : 'Bezeichnung'}</span><input id="km-name" value="${kmEsc(o.name)}" maxlength="40" autocomplete="off"></label>` +
-      `<label class="km-f"><span>Rolle / kurz</span><input id="km-role" value="${kmEsc(o.role)}" maxlength="50" placeholder="z. B. Hauptfigur, Vater, 17 J." autocomplete="off"></label>` +
+    const free = kmFree();
+    h = head(free ? 'Kasten' : KM_KINDS[kmKind(o)][0]) +
+      (free ? '' : `<div class="km-f"><span>Art</span>${seg('kind', kmKind(o), [['figure', 'Figur'], ['event', 'Handlung'], ['place', 'Ort'], ['thing', 'Gegenstand']])}</div>`) +
+      `<label class="km-f"><span>${free ? 'Überschrift' : kmIsFig(o) ? 'Name' : 'Bezeichnung'}</span><input id="km-name" value="${kmEsc(o.name)}" maxlength="60" autocomplete="off"></label>` +
+      (free ? `<label class="km-f"><span>Text (mehrere Zeilen)</span><textarea id="km-role" rows="4" maxlength="400" placeholder="Stichpunkte, Erklärung …">${kmEsc(o.role || '')}</textarea></label>`
+        : `<label class="km-f"><span>Rolle / kurz</span><input id="km-role" value="${kmEsc(o.role)}" maxlength="120" placeholder="z. B. Hauptfigur, Vater, 17 J." autocomplete="off"></label>`) +
       `<div class="km-f"><span>Farbe</span><div class="km-sws">${sw(o.color, 'data-pc')}</div></div>` +
       `<div class="km-f"><span>Form</span>${seg('shape', o.shape || 'rect', [['rect', 'Karte'], ['pill', 'Pille'], ['ellipse', 'Oval']])}</div>` +
-      `<label class="km-f km-row"><span>Hauptfigur (groß)</span><label class="switch"><input type="checkbox" id="km-big"${o.big ? ' checked' : ''}><span></span></label></label>` +
+      `<label class="km-f km-row"><span>${free ? 'Hervorheben (groß)' : 'Hauptfigur (groß)'}</span><label class="switch"><input type="checkbox" id="km-big"${o.big ? ' checked' : ''}><span></span></label></label>` +
       `<label class="km-f"><span>Symbol</span><input id="km-emoji" value="${kmEsc(o.emoji || '')}" maxlength="4" placeholder="z. B. 👑 🗡️ ❤️" autocomplete="off"></label>` +
       `<div class="km-f"><span>Gruppen (mehrere möglich)</span><div class="km-types">${km.groups.map((g) => `<button type="button" class="km-type${kmIn(o, g.id) ? ' on' : ''}" data-pg="${g.id}" style="--c:${g.color}">${kmEsc(g.name)}</button>`).join('')}<button type="button" class="chip" data-pgnew="1">＋ Neue Gruppe</button></div></div>` +
-      (kmIsFig(o) ? `<div class="km-f km-sbbox"><span>Steckbrief</span>${kmSbSummary(o)}<button type="button" class="btn primary small" data-x="sb">📋 Steckbrief öffnen</button></div>` : '') +
+      (kmIsFig(o) && !free ? `<div class="km-f km-sbbox"><span>Steckbrief</span>${kmSbSummary(o)}<button type="button" class="btn primary small" data-x="sb">📋 Steckbrief öffnen</button></div>` : '') +
       `<label class="km-f"><span>Notizen</span><textarea id="km-desc" rows="3">${kmEsc(o.desc || '')}</textarea></label>` +
       kmRefsHtml(o) +
       `<div class="km-f"><span>Beziehungen (${rel.length})</span><div class="km-rels">${rel.map((l) => { const other = kmPerson(l.a === o.id ? l.b : l.a); return `<button type="button" class="km-rel" data-rel="${l.id}" style="--c:${l.color || kmType(l.type).color}">${kmEsc(l.label || kmType(l.type).name)} · ${kmEsc(other ? other.name : '?')}</button>`; }).join('') || '<span class="muted small-text">Am ⊕ neben der Person ziehen</span>'}</div></div>` +
@@ -1596,7 +1650,7 @@ function kmPanel(focusName) {
     const A = kmPerson(o.a), B = kmPerson(o.b), ty = kmType(o.type);
     h = head('Beziehung') +
       `<div class="km-between"><b>${kmEsc(A ? A.name : '?')}</b><button type="button" class="btn small" data-x="swap" title="Richtung tauschen">⇄</button><b>${kmEsc(B ? B.name : '?')}</b></div>` +
-      `<div class="km-f"><span>Art</span><div class="km-types">${KM_TYPES.map((t) => `<button type="button" class="km-type${t.id === ty.id ? ' on' : ''}" data-type="${t.id}" style="--c:${t.color}">${t.name}</button>`).join('')}</div></div>` +
+      `<div class="km-f"><span>Art</span><div class="km-types">${kmTypes().map((t) => `<button type="button" class="km-type${t.id === ty.id ? ' on' : ''}" data-type="${t.id}" style="--c:${t.color}">${t.name}</button>`).join('')}</div></div>` +
       `<label class="km-f"><span>Bezeichnung</span><input id="km-label" value="${kmEsc(o.label)}" maxlength="40" placeholder="z. B. ${kmEsc(ty.labels[0])}" autocomplete="off"></label>` +
       `<div class="km-chips">${ty.labels.map((t) => `<button type="button" class="chip" data-lab="${kmEsc(t)}">${kmEsc(t)}</button>`).join('')}</div>` +
       `<div class="km-f"><span>Richtung</span>${seg('dir', o.dir || 'ab', [['ab', '→'], ['ba', '←'], ['both', '↔'], ['none', '—']])}</div>` +
@@ -1688,7 +1742,7 @@ function kmPanelClick(e) {
   if (d.lc != null) return set(() => { if (d.lc) o.color = d.lc; else delete o.color; });
   if (d.shape) return set(() => { o.shape = d.shape; });
   if (d.kind) return set(() => { if (d.kind === 'figure') delete o.kind; else { o.kind = d.kind; if (d.kind === 'event' && (o.shape || 'rect') === 'rect') o.shape = 'pill'; } });
-  if (d.type) { kmLastType = d.type; store.set('kmLastType', d.type); return set(() => { o.type = d.type; delete o.dash; }); }
+  if (d.type) { if (kmFree()) store.set('kmLastTypeFree', d.type); else { kmLastType = d.type; store.set('kmLastType', d.type); } return set(() => { o.type = d.type; delete o.dash; }); }
   if (d.lab != null) return set(() => { o.label = d.lab; });
   if (d.dir) return set(() => { o.dir = d.dir; });
   if (d.dash) return set(() => { o.dash = d.dash; });
@@ -1801,8 +1855,9 @@ function kmDrawScene(ctx, sc) {
     ctx.fillStyle = kmTint(c, kmIsFig(p) ? 0.86 : 0.93); ctx.fill(); ctx.strokeStyle = c; ctx.lineWidth = b.big ? 3.2 : 1.8;
     ctx.setLineDash(kmIsFig(p) ? [] : [6, 4]); ctx.stroke(); ctx.setLineDash([]);
     ctx.textAlign = 'center'; ctx.fillStyle = '#1c1c1e'; ctx.font = `${b.big ? 700 : 600} ${b.fs}px ${KM_FONT}`;
-    ctx.fillText(kmLabel(p), p.x, p.role ? b.y + b.h / 2 - 3 : p.y + b.fs * 0.36);
-    if (p.role) { ctx.fillStyle = '#55555c'; ctx.font = `12px ${KM_FONT}`; ctx.fillText(p.role, p.x, b.y + b.h / 2 + 14); }
+    ctx.fillText(kmLabel(p), p.x, b.nameY);
+    ctx.fillStyle = '#55555c'; ctx.font = `12px ${KM_FONT}`;
+    b.lines.forEach((l, i) => ctx.fillText(l, p.x, b.roleY + i * 15));
     if (sc.diff.newP.has(p.id)) kmPillCanvas(ctx, b.x - 8, b.y - 16, 'neu', KM_NEW, '#fff', 11);
     else if (sc.diff.chgP.has(p.id)) kmPillCanvas(ctx, b.x - 8, b.y - 16, 'geändert', KM_CHG, '#fff', 11);
   }
@@ -1895,6 +1950,8 @@ async function kmToNote(img) {
 function kmBarState() {
   const bar = kmEl('#km-bar');
   if (!bar) return;
+  kmEl('#km-add').textContent = kmFree() ? '＋ Kasten' : '＋ Person';
+  kmEl('#km-add-ev').hidden = kmFree();
   kmEl('#km-undo').disabled = !kmUndo.length;
   kmEl('#km-redo').disabled = !kmRedo.length;
   kmEl('#km-linkmode').classList.toggle('active', kmLinkMode);
@@ -1939,7 +1996,7 @@ function kmBuild() {
     `<div class="tool-group km-inkbar" id="km-inkbar" hidden>${PEN_COLORS.map((c, i) => `<button class="tool swatch" data-ink="${i}" style="--c:${c}" aria-label="Stiftfarbe"></button>`).join('')}` +
     `<button class="tool" id="km-erase" aria-label="Radierer (Striche)">${ico('<path d="M4 15l9-9a2 2 0 012.8 0l3.2 3.2a2 2 0 010 2.8L13 18H7z"/><path d="M9 11l6 6"/><path d="M7 21h13"/>')}</button></div></div>` +
     '<div class="km-main"><div class="km-stage" id="km-stage"><svg id="km-svg" xmlns="http://www.w3.org/2000/svg"></svg>' +
-    '<div class="km-empty card" id="km-empty"><b>Personenkonstellation</b><p class="muted small-text">Doppeltippen auf die Fläche oder <b>＋ Person</b> = neue Person.<br>Person antippen und am <b>⊕</b> zu einer anderen ziehen = Beziehung.<br>Mit dem Stift einen Rahmen ziehen = mehrere auswählen.</p><button type="button" class="btn small" id="km-empty-tpl">Mit einer Vorlage starten</button></div>' +
+    '<div class="km-empty card" id="km-empty"><b id="km-empty-title">Personenkonstellation</b><p class="muted small-text">Doppeltippen auf die Fläche oder <b>＋ Person</b> = neue Person.<br>Person antippen und am <b>⊕</b> zu einer anderen ziehen = Beziehung.<br>Mit dem Stift einen Rahmen ziehen = mehrere auswählen.</p><button type="button" class="btn small" id="km-empty-tpl">Mit einer Vorlage starten</button></div>' +
     '<div class="km-legend" id="km-legend" hidden></div></div>' +
     '<aside class="km-panel" id="km-panel" hidden></aside></div>';
   kmEl('#view-notes').append(wrap);
@@ -2037,7 +2094,7 @@ window.addEventListener('noteopen', (e) => {
   const n = e.detail;
   const on = n && n.kind === 'kmap';
   document.body.classList.toggle('kmap-mode', on);
-  $('#note-title').placeholder = on ? 'Unbenannte Konstellation' : 'Unbenannte Notiz';
+  $('#note-title').placeholder = on ? (n.kmap && n.kmap.flavor === 'free' ? 'Unbenanntes Schaubild' : 'Unbenannte Konstellation') : 'Unbenannte Notiz';
   if (on) { kmOpen(n); const b = kmEl('#km-backpill'); if (b) b.hidden = true; }
   else { km = null; kmSel = null; }
 });
@@ -2057,5 +2114,7 @@ $('#notes-dialog-kmap').addEventListener('click', () => {
   kmCreate(folderFilter !== 'all' ? folderFilter : undefined);
 });
 $('#note-new-kmap').addEventListener('click', () => { $('#more-dialog').close(); kmCreate(note && note.folder); });
+$('#notes-dialog-free').addEventListener('click', () => { $('#notes-dialog').close(); kmCreate(folderFilter !== 'all' ? folderFilter : undefined, 'free'); });
+$('#note-new-free').addEventListener('click', () => { $('#more-dialog').close(); kmCreate(note && note.folder, 'free'); });
 // Notiz war beim Start schon offen (Skripte laufen nacheinander)
 if (typeof note !== 'undefined' && note && note.kind === 'kmap' && !km) window.dispatchEvent(new CustomEvent('noteopen', { detail: note }));
