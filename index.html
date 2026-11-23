@@ -31,6 +31,7 @@
       <button class="nav-item" data-view="notes"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/></svg></span><span>Notizen</span></button>
       <button class="nav-item" data-view="braces"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4c-2 0-3 1-3 3v2c0 1.5-1 2.5-2 3 1 .5 2 1.5 2 3v2c0 2 1 3 3 3"/><path d="M16 4c2 0 3 1 3 3v2c0 1.5 1 2.5 2 3-1 .5-2 1.5-2 3v2c0 2-1 3-3 3"/></svg></span><span>Klammern</span></button>
       <button class="nav-item" data-view="python"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8l-5 4 5 4M16 8l5 4-5 4M13.5 5l-3 14"/></svg></span><span>Python</span></button>
+      <button class="nav-item" data-view="video"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="14" height="14" rx="2"/><path d="M17 10l4-2.5v9L17 14"/></svg></span><span>Video</span></button>
       <button class="nav-item" data-view="counter"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4L7 20M17 4l-2 16M4 9h16M3 15h16"/></svg></span><span>Zähler</span></button>
       <button class="nav-item" data-view="settings"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1M18.7 18.7l-2.1-2.1M7.4 7.4L5.3 5.3"/></svg></span><span>Einstellungen</span></button>
       <button class="nav-item" data-view="info"><span class="nav-icon"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg></span><span>Info</span></button>
@@ -286,6 +287,39 @@
       </section>
 
       <!-- Zähler -->
+      <section class="view" id="view-video">
+        <header class="view-header"><h2>Video</h2><span class="muted small-text vp-name" id="vp-name"></span></header>
+        <input type="file" id="vp-file" accept="video/webm,.webm,video/*,audio/*,.mkv,.ogv,.ogg" hidden>
+        <div class="card vp-empty" id="vp-empty">
+          <p><b>WebM-Videos ansehen</b></p>
+          <p class="muted">Die Dateien-App am iPad zeigt .webm nicht an – hier geht es. Auch MP4, MOV und Audio.</p>
+          <button type="button" class="btn primary" id="vp-open">Video öffnen …</button>
+          <p class="muted small-text">Am Surface: Datei einfach hierher ziehen.</p>
+        </div>
+        <div class="vp-player" id="vp-player" hidden>
+          <div class="vp-stage" id="vp-stage"></div>
+          <p class="muted vp-status" id="vp-status" hidden></p>
+          <div class="vp-seek"><span id="vp-cur">0:00</span><input type="range" id="vp-bar" min="0" max="1000" value="0" aria-label="Position"><span id="vp-dur">–:––</span></div>
+          <div class="vp-controls">
+            <button type="button" class="btn small" id="vp-start" aria-label="Zum Anfang">⏮</button>
+            <button type="button" class="btn small" id="vp-back" aria-label="10 Sekunden zurück">−10 s</button>
+            <button type="button" class="btn primary vp-play" id="vp-play" aria-label="Abspielen">▶</button>
+            <button type="button" class="btn small" id="vp-fwd" aria-label="10 Sekunden vor">+10 s</button>
+            <button type="button" class="btn small" id="vp-speed" aria-label="Tempo">1×</button>
+            <button type="button" class="btn small" id="vp-loop" aria-label="Wiederholen">🔁</button>
+            <button type="button" class="btn small" id="vp-mute" aria-label="Ton an/aus">🔊</button>
+            <button type="button" class="btn small" id="vp-full" aria-label="Vollbild">⛶</button>
+          </div>
+          <div class="vp-controls">
+            <button type="button" class="btn small" id="vp-snap">📷 Standbild in Notiz</button>
+            <button type="button" class="btn small" id="vp-snapsave">Standbild teilen</button>
+            <button type="button" class="btn small" id="vp-open2">Anderes Video …</button>
+            <button type="button" class="btn small link" id="vp-close">Schließen</button>
+          </div>
+          <p class="muted small-text" id="vp-info"></p>
+        </div>
+      </section>
+
       <section class="view" id="view-counter">
         <header class="view-header"><h2>Zähler</h2></header>
         <div class="card counter-card">
@@ -314,7 +348,7 @@
       <section class="view" id="view-info">
         <header class="view-header"><h2>Info</h2></header>
         <div class="list-group">
-          <div class="row"><span>Version</span><span class="muted">9.8</span></div>
+          <div class="row"><span>Version</span><span class="muted">9.9</span></div>
           <div class="row"><span>Als App gestartet</span><span class="muted" id="info-standalone">–</span></div>
           <div class="row"><span>Offline-Modus</span><span class="muted" id="info-sw">–</span></div>
           <div class="row"><span>Bildschirm</span><span class="muted" id="info-screen">–</span></div>
@@ -571,6 +605,7 @@
   <script src="exams.js"></script>
   <script src="orbit.js"></script>
   <script src="invite.js"></script>
+  <script src="videoplayer.js"></script>
   <script src="teilen.js"></script>
 </body>
 </html>

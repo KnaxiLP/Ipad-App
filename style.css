@@ -1271,3 +1271,22 @@ body.sh-readonly .km-knob, body.sh-readonly #km-panel .chip:disabled, body.sh-re
 body.kmap-mode #note-rotate-page, body.cmp-mode #note-rotate-page { display: none !important; }
 .km-bar .tool[hidden] { display: none; }
 .km-stage .km-label { cursor: grab; }
+
+/* ---------- Video (videoplayer.js) ---------- */
+.vp-name { margin-left: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-empty { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 28px 20px; }
+.vp-empty p { margin: 0; }
+#view-video.drop .vp-empty, #view-video.drop .vp-stage { outline: 3px dashed var(--accent); outline-offset: 4px; }
+.vp-player { display: flex; flex-direction: column; gap: 10px; }
+.vp-player[hidden] { display: none; }
+.vp-stage { background: #000; border-radius: 14px; overflow: hidden; display: grid; place-items: center; min-height: 200px; max-height: 70vh; }
+.vp-stage:fullscreen { max-height: none; border-radius: 0; }
+.vp-video { width: 100%; max-height: 70vh; display: block; object-fit: contain; }
+.vp-stage:fullscreen .vp-video { max-height: 100vh; height: 100%; }
+.vp-ogv canvas { width: 100% !important; height: auto !important; max-height: 70vh; object-fit: contain; }
+.vp-status { margin: 0; text-align: center; }
+.vp-seek { display: flex; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; font-size: 14px; }
+.vp-seek input { flex: 1; accent-color: var(--accent); }
+.vp-controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.vp-controls .btn.active { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.vp-play { min-width: 64px; font-size: 18px; }

@@ -1,13 +1,16 @@
 // Service Worker: speichert alle App-Dateien, damit die App auch offline startet.
 // Strategie: sofort aus dem Speicher laden und im Hintergrund aktualisieren.
 // Neue Versionen erscheinen dadurch spätestens beim zweiten Öffnen.
-const CACHE = 'test-app-v78';
+const CACHE = 'test-app-v79';
 // Python (Pyodide) separat speichern – ändert sich nie, bleibt über App-Updates erhalten
 const PY_CACHE = 'pyodide-v0.26.4';
 const PY_HOST = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/';
 // PDF.js (für den PDF-Import) ebenfalls dauerhaft speichern
 const PDF_CACHE = 'pdfjs-3.11.174';
 const PDF_HOST = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/';
+// ogv.js (WebM-Decoder, falls das Gerät WebM nicht selbst abspielt) ebenfalls dauerhaft speichern
+const OGV_CACHE = 'ogv-1.8.9';
+const OGV_HOST = 'https://cdn.jsdelivr.net/npm/ogv@1.8.9/';
 const FILES = [
   './',
   'index.html',
@@ -29,6 +32,7 @@ const FILES = [
   'orbit.js',
   'invite.js',
   'teilen.js',
+  'videoplayer.js',
   'manifest.webmanifest',
   'icons/icon-180.png',
   'icons/icon-192.png',
@@ -44,7 +48,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE && k !== PY_CACHE && k !== PDF_CACHE).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => k !== CACHE && k !== PY_CACHE && k !== PDF_CACHE && k !== OGV_CACHE).map((k) => caches.delete(k)))
     )
   );
   self.clients.claim();
@@ -54,7 +58,7 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
 
   // Pyodide-Dateien: einmal laden, danach immer aus dem Speicher (auch offline)
-  const cdnCache = req.url.startsWith(PY_HOST) ? PY_CACHE : req.url.startsWith(PDF_HOST) ? PDF_CACHE : null;
+  const cdnCache = req.url.startsWith(PY_HOST) ? PY_CACHE : req.url.startsWith(PDF_HOST) ? PDF_CACHE : req.url.startsWith(OGV_HOST) ? OGV_CACHE : null;
   if (req.method === 'GET' && cdnCache) {
     event.respondWith(
       caches.open(cdnCache).then(async (cache) => {
