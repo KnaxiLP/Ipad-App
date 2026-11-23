@@ -250,6 +250,29 @@ function kmCurve(A, B, bA, bB, off) {
   return { a, b, c: [cx, cy], lx: 0.25 * a[0] + 0.5 * cx + 0.25 * b[0], ly: 0.25 * a[1] + 0.5 * cy + 0.25 * b[1] };
 }
 const kmLinkText = (l) => l.label || kmType(l.type).name;
+// Punkt auf dem Bogen (quadratische Kurve) bei t ∈ [0, 1]
+const kmQ = (k, t) => [(1 - t) * (1 - t) * k.a[0] + 2 * (1 - t) * t * k.c[0] + t * t * k.b[0], (1 - t) * (1 - t) * k.a[1] + 2 * (1 - t) * t * k.c[1] + t * t * k.b[1]];
+// Beschriftungen so auf ihre Linie legen, dass sie sich nicht überdecken: jede probiert Stellen entlang
+// der eigenen Linie (Mitte zuerst) und nimmt die mit der geringsten Überdeckung mit Beschriftungen und Karten.
+// Von Hand verschobene (l.lt) bleiben, wo sie sind.
+function kmPlaceLabels(links, boxes) {
+  const placed = [], cards = [...boxes.values()];
+  const area = (r, o) => Math.max(0, Math.min(r.x + r.w, o.x + o.w) - Math.max(r.x, o.x)) * Math.max(0, Math.min(r.y + r.h, o.y + o.h) - Math.max(r.y, o.y));
+  const ts = [0.5, 0.42, 0.58, 0.34, 0.66, 0.27, 0.73, 0.2, 0.8];
+  const order = links.filter((k) => k.label).sort((p, q) => (q.l.lt != null) - (p.l.lt != null));   // feste zuerst
+  for (const k of order) {
+    const w = kmMeasure(k.label.text, `600 12px ${KM_FONT}`) + 14, h = 22;
+    let best = null;
+    for (const t of k.l.lt != null ? [k.l.lt] : ts) {
+      const [x, y] = kmQ(k, t), r = { x: x - w / 2 - 3, y: y - h / 2 - 2, w: w + 6, h: h + 4 };
+      const score = placed.reduce((sum, o) => sum + area(r, o), 0) + cards.reduce((sum, o) => sum + area(r, o) * 0.6, 0) + Math.abs(t - 0.5) * 40;
+      if (!best || score < best.score) best = { x, y, r, score };
+      if (score === 0) break;
+    }
+    k.label.x = best.x; k.label.y = best.y;
+    placed.push(best.r);
+  }
+}
 
 // Vergleich mit dem vorigen Akt (Kasten mit „from“): neu, geändert, weggefallen
 function kmDiffs(vis) {
@@ -336,6 +359,7 @@ function kmScene() {
     const x0 = Math.min(...fs.map((F) => F.x)), x1 = Math.max(...fs.map((F) => F.x + F.w)), y0 = Math.min(...fs.map((F) => F.y));
     return { s, x: x0, y: y0 - 44, w: x1 - x0, fs };
   });
+  kmPlaceLabels(links, boxes);
   return { boxes, persons, groups, links, ghosts, diff, frames, stacks, ink: km.ink.filter(vis.inkOk) };
 }
 // Begrenzung eines Strichs
@@ -458,7 +482,7 @@ function kmRender() {
     const off = nb && !((k.l.a === kmSel.id || k.l.b === kmSel.id));
     const col = k.mark === 'new' ? KM_NEW : k.mark === 'chg' ? KM_CHG : k.color;
     const w = kmMeasure(k.label.text, `600 12px ${KM_FONT}`) + 14;
-    h += `<g data-l="${k.l.id}"${dim(off)}><rect x="${k.label.x - w / 2}" y="${k.label.y - 11}" width="${w}" height="22" rx="11" fill="#fff" stroke="${col}" stroke-width="${k.mark ? 2 : 1.2}"/>` +
+    h += `<g data-l="${k.l.id}" data-lt="1" class="km-label"${dim(off)}><rect x="${k.label.x - w / 2}" y="${k.label.y - 11}" width="${w}" height="22" rx="11" fill="#fff" stroke="${col}" stroke-width="${k.mark ? 2 : 1.2}"/>` +
       `<text x="${k.label.x}" y="${k.label.y + 4}" text-anchor="middle" font-size="12" font-weight="600" fill="${k.color}">${kmEsc(k.label.text)}</text></g>`;
   }
   // weggefallene Personen: Hinweis unten im Kasten
@@ -532,7 +556,7 @@ function kmHit(e) {
   const d = g.dataset;
   if (d.knob) return { t: 'knob', id: d.knob };
   if (d.p) return { t: 'p', id: d.p };
-  if (d.l) return { t: 'l', id: d.l };
+  if (d.l) return { t: 'l', id: d.l, lab: !!d.lt };
   if (d.ft) return { t: 'f', id: d.ft };
   if (d.fr) return { t: 'fr', id: d.fr };
   if (d.tab) return { t: 'tab', id: d.tab };
@@ -642,7 +666,8 @@ function kmDown(e) {
     kmAct = { ...base, type: 'resize', frame: F.id, start: [F.w, F.h], before: kmSnap() };
   } else if (hit && hit.t === 'l') {
     kmSelect({ t: 'l', id: hit.id });
-    kmAct = { ...base, type: 'pan', view: { ...kmView } };
+    // Beschriftung anfassen = entlang der Linie verschieben; Linie anfassen = Fläche verschieben
+    kmAct = hit.lab && !(typeof shRO === 'function' && shRO()) ? { ...base, type: 'labdrag', link: hit.id, before: kmSnap() } : { ...base, type: 'pan', view: { ...kmView } };
   } else {
     if (dbl) { kmLastTap = null; kmAddPerson(wx, wy); return; }
     // Stift/Maus (oder Auswahl-Modus): Rahmen aufziehen · Finger: verschieben
@@ -704,6 +729,13 @@ function kmMove(e) {
       it[2] = moved;
     });
     kmRenderSoon();
+  } else if (A.type === 'labdrag') {
+    const k = kmScene().links.find((x) => x.l.id === A.link), [wx, wy] = kmWorld(e);
+    if (!k) return;
+    let bt = 0.5, bd = Infinity;
+    for (let t = 0.08; t <= 0.921; t += 0.02) { const [x, y] = kmQ(k, t), d = Math.hypot(x - wx, y - wy); if (d < bd) { bd = d; bt = t; } }
+    k.l.lt = Math.round(bt * 100) / 100;
+    kmRenderSoon();
   } else if (A.type === 'link') {
     const [wx, wy] = kmWorld(e);
     A.to = [wx, wy];
@@ -725,6 +757,8 @@ function kmUp(e) {
   } else if (A.type === 'band') {
     if (!A.moved || !A.to) { kmSelect(null); kmLinkMode && kmSetLinkMode(false); return; }
     kmBandSelect(A);
+  } else if (A.type === 'labdrag') {
+    if (A.moved) { kmUndo.push(A.before); kmRedo = []; kmSaved(); kmPanel(); }
   } else if (A.type === 'move' || A.type === 'resize') {
     if (A.moved) {
       if (A.retag) A.ids.forEach((id) => { const p = kmPerson(id); if (p) kmRetag(p); });
@@ -1666,6 +1700,7 @@ function kmPanel(focusName) {
       `<div class="km-f"><span>Bogen</span>${seg('bend', String(Math.sign(o.bend || 0)), [['-1', '◜'], ['0', 'gerade'], ['1', '◝']])}</div>` +
       `<label class="km-f"><span>Notizen (Entwicklung, Deutung …)</span><textarea id="km-ldesc" rows="3">${kmEsc(o.desc || '')}</textarea></label>` +
       kmRefsHtml(o) +
+      (o.lt != null ? '<button type="button" class="btn small" data-x="lauto">Beschriftung wieder automatisch platzieren</button>' : '<p class="muted small-text">Tipp: Die Beschriftung lässt sich entlang der Linie verschieben – einfach anfassen und ziehen.</p>') +
       '<div class="km-actions"><span></span><button type="button" class="btn small danger-text" data-x="del">Beziehung löschen</button></div>';
   } else if (kmSel.t === 'f') {
     const c = kmFrameContent(o), s = kmStackOf(o.id), src = o.from && kmFrame(o.from);
@@ -1742,6 +1777,7 @@ function kmPanelClick(e) {
     return;
   }
   if (d.x === 'swap') return set(() => { [o.a, o.b] = [o.b, o.a]; });
+  if (d.x === 'lauto') return set(() => { delete o.lt; });
   if (d.rel) return kmSelect({ t: 'l', id: d.rel });
   if (d.pc) return set(() => { o.color = d.pc; });
   if (d.gc) return set(() => { o.color = d.gc; });
