@@ -560,7 +560,13 @@ function kmDown(e) {
   // Handballen: Finger zählen nicht, solange der Stift schreibt
   if (e.pointerType === 'touch' && kmAct && kmAct.pen) return;
   e.preventDefault();
-  kmStage().setPointerCapture(e.pointerId);
+  // erster Finger einer neuen Berührung: hängengebliebene Finger (Loslassen ging verloren) vergessen
+  if (e.pointerType === 'touch' && e.isPrimary) {
+    for (const [id, q] of kmPtrs) if (q.type === 'touch') kmPtrs.delete(id);
+    kmPinch = null;
+    if (kmAct && !kmAct.pen && !kmPtrs.has(kmAct.id)) kmAct = null;
+  }
+  try { kmStage().setPointerCapture(e.pointerId); } catch {}
   kmPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
   if (kmPtrs.size === 2 && [...kmPtrs.values()].every((p) => p.type === 'touch')) {
     // zwei Finger: zoomen & verschieben – angefangene Geste verwerfen

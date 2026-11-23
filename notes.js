@@ -1806,6 +1806,11 @@ function onDown(e) {
   }
 
   if (e.pointerType === 'touch') {
+    // Erster Finger einer neuen Berührung (isPrimary): Dann liegt sicher kein anderer Finger mehr auf.
+    // Übrig gebliebene Einträge sind „Geisterfinger“, deren Loslassen verloren ging (iOS hat die
+    // Berührung abgebrochen, das Blatt wurde neu aufgebaut …) – sonst zählt jeder echte Finger als
+    // zweiter, und Scrollen bzw. Schreiben geht nicht mehr.
+    if (e.isPrimary) clearGhostTouches();
     if (penNear() || isPalm(e)) return;   // Handballen
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     stopInertia();
@@ -1960,6 +1965,17 @@ function onMove(e) {
     drawActiveStroke();
   }
 }
+
+function clearGhostTouches() {
+  if (touches.size) { touches.clear(); pan = null; if (pinch) endZoomPreview(); pinch = null; }
+  if (active && active.pointerType === 'touch') finishActive(true);
+}
+// App im Hintergrund / Fenster verlassen: Berührungen gelten als beendet
+window.addEventListener('blur', () => { if (touches.size) { touches.clear(); pan = null; pinch = null; } });
+document.addEventListener('visibilitychange', () => { if (document.hidden && touches.size) { touches.clear(); pan = null; pinch = null; } });
+// Liegt laut Browser kein Finger mehr auf, kann auch die App keinen mehr kennen
+document.addEventListener('touchend', (e) => { if (!e.touches.length && touches.size) { touches.clear(); pan = null; if (pinch) endZoomPreview(); pinch = null; } }, true);
+document.addEventListener('touchcancel', (e) => { if (!e.touches.length && touches.size) { touches.clear(); pan = null; if (pinch) endZoomPreview(); pinch = null; } }, true);
 
 function onUp(e) {
   if (e.pointerType === 'pen') lastPenTime = performance.now();
