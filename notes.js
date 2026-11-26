@@ -960,8 +960,36 @@ function erasePart(page, cx, cy, r) {
 let HOLD_MS = store.get('holdMs', 450);
 { const old = { 400: 300, 550: 450, 800: 700 }[HOLD_MS]; if (old) { HOLD_MS = old; store.set('holdMs', old); } }   // frühere Stufen
 let shapeRecog = store.get('shapeRecog', true);
-// Wie weit der Stift beim Halten zittern darf (≈ 6 Bildschirmpunkte, unabhängig vom Zoom)
-const holdTol = () => 8 / (active && active.stroke && active.stroke.z || 1);
+// Wie weit der Stift beim Halten zittern/wandern darf: ≈ 10 Bildschirmpunkte, unabhängig vom Zoom
+const holdTol = () => 10 * PAGE_W / ((active && active.rect && active.rect.width) || PAGE_W);
+
+// Seit wann steht der Stift (innerhalb holdTol um die aktuelle Position) still?
+// Schaut rückwärts über die zuletzt gezeichneten Punkte – langsames Wegdriften und Zittern
+// starten die Wartezeit nicht jedes Mal neu.
+function holdStillSince() {
+  const s = active.stroke, ts = active.ts;
+  if (!s || !ts || !ts.length) return Infinity;
+  const p = s.pts, k = p.length / 3, hx = p[p.length - 3], hy = p[p.length - 2], tol = holdTol();
+  let since = ts[ts.length - 1];
+  for (let i = ts.length - 1, j = k - 1; i >= 0 && j >= 0; i--, j--) {
+    if (Math.hypot(p[j * 3] - hx, p[j * 3 + 1] - hy) > tol) break;
+    since = ts[i];
+  }
+  return since;
+}
+function holdCheck() {
+  if (active) active.holdTimer = 0;
+  if (!active || !active.stroke || active.shaped || !shapeRecog || active.tool === 'eraser') return;
+  const since = holdStillSince();
+  if (performance.now() - since >= HOLD_MS) {
+    const p = active.stroke.pts;
+    active.hold = [p[p.length - 3], p[p.length - 2]];
+    recognizeShape();
+    if (active && !active.shaped) active.holdFail = true;   // keine Form erkannt – nicht ständig neu versuchen
+    return;
+  }
+  active.holdTimer = setTimeout(holdCheck, 60);
+}
 
 function rdp(points, eps) {
   // Ramer-Douglas-Peucker: vereinfacht eine Linie auf ihre wichtigsten Eckpunkte
@@ -1014,7 +1042,7 @@ function fitShape(P) {
     d += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]);
     if (d > len * 0.06 && d < len * 0.94) inner.push(P[i]);
   }
-  if (chord > 0.75 * len && maxDistToPoly(inner, [a, b]) < Math.max(4, chord * 0.07)) {
+  if (chord > 0.75 * len && maxDistToPoly(inner, [a, b]) < Math.max(6, chord * 0.08)) {
     const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
     const snap = Math.round(ang / (Math.PI / 2)) * (Math.PI / 2);
     if (Math.abs(ang - snap) < (5 * Math.PI) / 180) {
@@ -1087,8 +1115,13 @@ function recognizeShape() {
   for (let i = 0; i < p.length; i += 3) { P.push([p[i], p[i + 1]]); pr += p[i + 2]; }
   // Das Zittern beim Stillhalten gehört nicht zur Form: Punkte rund um die Halteposition weglassen
   const [hx, hy] = active.hold;
-  while (P.length > 2 && Math.hypot(P[P.length - 2][0] - hx, P[P.length - 2][1] - hy) <= holdTol()) P.pop();
-  const shape = fitShape(P);
+  const tol = holdTol() * 1.5;
+  while (P.length > 2 && Math.hypot(P[P.length - 2][0] - hx, P[P.length - 2][1] - hy) <= tol) P.pop();
+  // Endpunkt ist die Halteposition; Zitter-Punkte (sehr kurze Hin-und-her-Schritte) zusammenfassen
+  P[P.length - 1] = [hx, hy];
+  const Q = [P[0]];
+  for (let i = 1; i < P.length; i++) if (i === P.length - 1 || Math.hypot(P[i][0] - Q[Q.length - 1][0], P[i][1] - Q[Q.length - 1][1]) >= tol / 3) Q.push(P[i]);
+  const shape = fitShape(Q.length >= 5 ? Q : P);
   if (!shape) return;
   pr = Math.round((pr / P.length) * 100) / 100;
   s.shape = true;
@@ -1952,13 +1985,10 @@ function onMove(e) {
       // Druck leicht glätten, sonst wird die Linie "perlig" (dick-dünn-dick)
       active.pressure = active.pressure * 0.65 + p * 0.35;
       pts.push(Math.round(x * 100) / 100, Math.round(y * 100) / 100, Math.round(active.pressure * 100) / 100);
-      // Stift bleibt kurz still → Form erkennen
-      if (!active.hold || Math.hypot(x - active.hold[0], y - active.hold[1]) > holdTol()) {
-        active.hold = [x, y];
-        active.holdAt = performance.now();
-        clearTimeout(active.holdTimer);
-        active.holdTimer = setTimeout(recognizeShape, HOLD_MS);
-      }
+      // Zeitpunkt je Punkt merken: Stift bleibt eine Weile still → Form erkennen
+      (active.ts || (active.ts = [])).push(performance.now());
+      if (active.holdFail && Math.hypot(x - active.hold[0], y - active.hold[1]) > holdTol() * 2) active.holdFail = false;
+      if (!active.holdTimer && !active.holdFail) active.holdTimer = setTimeout(holdCheck, 60);
     }
   }
   if (active.tool !== 'eraser') {
@@ -2013,9 +2043,11 @@ function onUp(e) {
 // (pointercancel, „langes Drücken“) – oft bevor die Haltezeit um ist. Wurde schon eine Weile
 // stillgehalten, gilt das als Halten: Form jetzt erkennen statt den Strich nur zu beenden.
 function holdBeforeCancel() {
-  if (!active || active.shaped || !active.holdAt || active.tool === 'eraser') return;
-  if (performance.now() - active.holdAt < Math.min(250, HOLD_MS * 0.5)) return;
+  if (!active || !active.stroke || active.shaped || active.holdFail || active.tool === 'eraser' || !shapeRecog) return;
+  if (performance.now() - holdStillSince() < Math.min(250, HOLD_MS * 0.5)) return;
   clearTimeout(active.holdTimer);
+  const p = active.stroke.pts;
+  active.hold = [p[p.length - 3], p[p.length - 2]];
   recognizeShape();
 }
 
