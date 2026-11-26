@@ -1026,6 +1026,72 @@ function maxDistToPoly(points, poly) {
   return worst;
 }
 
+// Gehalten, aber keine genaue Form passt: trotzdem etwas Sauberes daraus machen, damit
+// Halten immer eine Wirkung hat – ziemlich gerade → Linie, geschlossen → Vieleck/Ellipse,
+// sonst ein Zug aus wenigen geraden Stücken. Richtige Kurven (Bögen) bleiben wie gezeichnet.
+function fitArc(P, len) {
+  const n = P.length, a = P[0], b = P[n - 1];
+  let m = P[n >> 1];
+  for (let i = 1, d = 0; i < n; i++) { d += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); if (d >= len / 2) { m = P[i]; break; } }
+  const ax = a[0], ay = a[1], bx = m[0], by = m[1], cx2 = b[0], cy2 = b[1];
+  const D = 2 * (ax * (by - cy2) + bx * (cy2 - ay) + cx2 * (ay - by));
+  if (Math.abs(D) < 1e-6) return null;
+  const ux = ((ax * ax + ay * ay) * (by - cy2) + (bx * bx + by * by) * (cy2 - ay) + (cx2 * cx2 + cy2 * cy2) * (ay - by)) / D;
+  const uy = ((ax * ax + ay * ay) * (cx2 - bx) + (bx * bx + by * by) * (ax - cx2) + (cx2 * cx2 + cy2 * cy2) * (bx - ax)) / D;
+  const r = Math.hypot(ax - ux, ay - uy);
+  if (r > 5000 || r < 10) return null;
+  let err = 0;
+  for (const [x, y] of P) err = Math.max(err, Math.abs(Math.hypot(x - ux, y - uy) - r));
+  const chordL = Math.hypot(cx2 - ax, cy2 - ay);
+  if (err > Math.max(6, Math.min(r * 0.12, chordL * 0.06))) return null;
+  // Winkel von Anfang über Mitte bis Ende (Richtung aus dem Mittelpunkt bestimmen)
+  const t0 = Math.atan2(ay - uy, ax - ux), tm = Math.atan2(by - uy, bx - ux), t1 = Math.atan2(cy2 - uy, cx2 - ux);
+  const norm = (t) => ((t % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  let sweep = norm(t1 - t0);
+  if (norm(tm - t0) > sweep) sweep -= 2 * Math.PI;   // andersherum
+  const out = [], k = Math.max(8, Math.ceil(Math.abs(sweep) * r / 6));
+  for (let i = 0; i <= k; i++) { const t = t0 + sweep * i / k; out.push([ux + Math.cos(t) * r, uy + Math.sin(t) * r]); }
+  return { kind: 'open', pts: out };
+}
+
+function roughShape(P) {
+  const n = P.length;
+  if (n < 3) return null;
+  let len = 0;
+  for (let i = 1; i < n; i++) len += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]);
+  if (len < 20) return null;
+  const a = P[0], b = P[n - 1], chord = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of P) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  const diag = Math.hypot(x1 - x0, y1 - y0);
+  if (chord < Math.max(18, len * 0.15)) {
+    let poly = rdp(P, diag * 0.1);
+    if (poly.length > 2 && Math.hypot(poly[0][0] - poly[poly.length - 1][0], poly[0][1] - poly[poly.length - 1][1]) < diag * 0.2) poly = poly.slice(0, -1);
+    if (poly.length >= 3 && poly.length <= 6 && maxDistToPoly(P, poly.concat([poly[0]])) < diag * 0.12) return { kind: 'poly', pts: along(poly.concat([poly[0]])) };
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, rx = (x1 - x0) / 2, ry = (y1 - y0) / 2;
+    if (rx < 5 || ry < 5) return null;
+    const start = Math.atan2(a[1] - cy, a[0] - cx), out = [];
+    for (let i = 0; i <= 72; i++) { const t = start + (i / 72) * Math.PI * 2; out.push([cx + Math.cos(t) * rx, cy + Math.sin(t) * ry]); }
+    return { kind: 'ellipse', pts: out };
+  }
+  if (chord > 0.85 * len && maxDistToPoly(P, [a, b]) < chord * 0.15) {
+    const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    const snap = Math.round(ang / (Math.PI / 2)) * (Math.PI / 2);
+    if (Math.abs(ang - snap) < (5 * Math.PI) / 180) {
+      const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, h = chord / 2;
+      return { kind: 'line', pts: along([[mx - Math.cos(snap) * h, my - Math.sin(snap) * h], [mx + Math.cos(snap) * h, my + Math.sin(snap) * h]]) };
+    }
+    return { kind: 'line', pts: along([a, b]) };
+  }
+  // Bogen: Kreis durch Anfang, Mitte und Ende
+  const arc = fitArc(P, len);
+  if (arc) return arc;
+  // eckiger Zug (Zickzack, Pfeil …): aus wenigen geraden Stücken, wenn er gut passt
+  const poly = rdp(P, Math.max(5, diag * 0.1));
+  if (poly.length >= 3 && poly.length <= 6 && maxDistToPoly(P, poly) < Math.max(6, diag * 0.1)) return { kind: 'open', pts: along(poly) };
+  return null;
+}
+
 function fitShape(P) {
   const n = P.length;
   if (n < 5) return null;
@@ -1110,9 +1176,10 @@ function fitShape(P) {
 
 function recognizeShape() {
   if (!active || !active.stroke || active.shaped || !shapeRecog) return;
-  const s = active.stroke, p = s.pts, P = [];
+  const s = active.stroke, p = s.pts, P = [], p0 = active.p0 || 0;
   let pr = 0;
-  for (let i = 0; i < p.length; i += 3) { P.push([p[i], p[i + 1]]); pr += p[i + 2]; }
+  // nur die Punkte dieses Aufsetzens – ein angehängter älterer Strich gehört nicht zur Form
+  for (let i = p0 * 3; i < p.length; i += 3) { P.push([p[i], p[i + 1]]); pr += p[i + 2]; }
   // Das Zittern beim Stillhalten gehört nicht zur Form: Punkte rund um die Halteposition weglassen
   const [hx, hy] = active.hold;
   const tol = holdTol() * 1.5;
@@ -1121,8 +1188,17 @@ function recognizeShape() {
   P[P.length - 1] = [hx, hy];
   const Q = [P[0]];
   for (let i = 1; i < P.length; i++) if (i === P.length - 1 || Math.hypot(P[i][0] - Q[Q.length - 1][0], P[i][1] - Q[Q.length - 1][1]) >= tol / 3) Q.push(P[i]);
-  const shape = fitShape(Q.length >= 5 ? Q : P);
+  const QQ = Q.length >= 5 ? Q : P;
+  const shape = fitShape(QQ) || roughShape(QQ);
   if (!shape) return;
+  if (p0 > 0) {
+    // Vorderer (älterer) Teil bleibt ein eigener Strich, die Form ist ein neuer
+    const old = { ...s, pts: p.slice(0, p0 * 3) };
+    delete old.shape;
+    note.pages[active.page].strokes.push(old);
+    pageEls[active.page].ink.insertAdjacentHTML('beforeend', strokeSvg(old));
+    active.p0 = 0;
+  }
   pr = Math.round((pr / P.length) * 100) / 100;
   s.shape = true;
   active.shaped = true;
@@ -1908,6 +1984,7 @@ function onDown(e) {
       active.joinBefore = joined.before;
       active.stroke.pts.push(Math.round(x * 10) / 10, Math.round(y * 10) / 10, active.stroke.pts[active.stroke.pts.length - 1]);
       active.pressure = active.stroke.pts[active.stroke.pts.length - 1];
+      active.p0 = active.stroke.pts.length / 3 - 1;   // ab hier gehören die Punkte zu diesem Aufsetzen
     } else {
       active.stroke = { tool: active.strokeTool, color: active.color, size, pts: [x, y, p] };
       // beim Reinzoomen ist ein Buchstabe in Seiten-Einheiten kleiner – Abstände/Glättung passen sich an
@@ -1969,7 +2046,13 @@ function onMove(e) {
   if (active.shaped) {
     // Form ist erkannt – Stift weiterbewegen zieht sie größer oder kleiner
     const [x, y] = toPage(e);
+    // kleines Wackeln (Halten, Abheben) verändert die Form nicht – erst echtes Weiterziehen
+    const h = active.shapeEdit.hold;
+    if (!active.resizing && Math.hypot(x - h[0], y - h[1]) <= holdTol() * 1.5) return;
+    active.resizing = true;
     resizeShape(x, y);
+    (active.rhist || (active.rhist = [])).push([performance.now(), x, y]);
+    if (active.rhist.length > 40) active.rhist.shift();
     return;
   }
 
@@ -2035,6 +2118,7 @@ function onUp(e) {
   if (e.type === 'pointercancel' && active.pointerType !== 'pen') cancelActive();
   else {
     if (e.type !== 'pointerup') holdBeforeCancel();
+    else undoLiftSlip();
     finishActive(e.type !== 'pointerup');   // pointercancel = vom System abgebrochen
   }
 }
@@ -2042,6 +2126,17 @@ function onUp(e) {
 // Das iPad bricht einen still gehaltenen Stift nach etwa einer halben Sekunde selbst ab
 // (pointercancel, „langes Drücken“) – oft bevor die Haltezeit um ist. Wurde schon eine Weile
 // stillgehalten, gilt das als Halten: Form jetzt erkennen statt den Strich nur zu beenden.
+// Beim Abheben rutscht der Stift oft noch ein paar Punkte weg – das soll die fertige Form nicht verziehen
+function undoLiftSlip() {
+  const h = active && active.shaped && active.rhist;
+  if (!h || h.length < 2) return;
+  const now = performance.now(), last = h[h.length - 1];
+  let k = h.length - 1;
+  while (k > 0 && now - h[k][0] < 70) k--;
+  if (k === h.length - 1) return;
+  if (Math.hypot(last[1] - h[k][1], last[2] - h[k][2]) < holdTol() * 1.5) resizeShape(h[k][1], h[k][2]);
+}
+
 function holdBeforeCancel() {
   if (!active || !active.stroke || active.shaped || active.holdFail || active.tool === 'eraser' || !shapeRecog) return;
   if (performance.now() - holdStillSince() < Math.min(250, HOLD_MS * 0.5)) return;
