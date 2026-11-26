@@ -348,7 +348,7 @@
       <section class="view" id="view-info">
         <header class="view-header"><h2>Info</h2></header>
         <div class="list-group">
-          <div class="row"><span>Version</span><span class="muted">9.9</span></div>
+          <div class="row"><span>Version</span><span class="muted">10.0</span></div>
           <div class="row"><span>Als App gestartet</span><span class="muted" id="info-standalone">–</span></div>
           <div class="row"><span>Offline-Modus</span><span class="muted" id="info-sw">–</span></div>
           <div class="row"><span>Bildschirm</span><span class="muted" id="info-screen">–</span></div>
@@ -420,24 +420,47 @@
   </dialog>
 
   <!-- Dialog: Liste aller Notizen -->
-  <dialog id="notes-dialog">
-    <h3>Meine Notizen</h3>
-    <input class="text-input" id="notes-search" type="search" placeholder="Notizen suchen …" enterkeyhint="search">
-    <div class="folder-chips" id="folder-chips"></div>
-    <ul class="list notes-list" id="notes-list"></ul>
-    <div class="folder-tools" id="folder-tools" hidden>
-      <button type="button" class="btn link" id="folder-rename">Ordner umbenennen</button>
-      <button type="button" class="btn link danger-text" id="folder-delete">Ordner löschen</button>
+  <dialog id="notes-dialog" class="library">
+    <header class="lib-head">
+      <div class="lib-titlebar">
+        <button type="button" class="lib-back" id="lib-back" hidden>‹ Alle</button>
+        <h3 id="lib-title" tabindex="-1" autofocus>Meine Notizen</h3>
+        <button type="button" class="lib-icon-btn" id="lib-folder-btn" aria-label="Ordner-Optionen" hidden>⋯</button>
+        <span class="lib-spacer"></span>
+        <button type="button" class="btn primary lib-new" id="lib-new">＋ Neu</button>
+        <button type="button" class="lib-icon-btn" data-close aria-label="Schließen">✕</button>
+      </div>
+      <div class="lib-tools">
+        <input class="text-input" id="notes-search" type="search" placeholder="Suchen …" enterkeyhint="search">
+        <select class="lib-sort" id="lib-sort" aria-label="Sortieren">
+          <option value="updated">Zuletzt bearbeitet</option>
+          <option value="created">Erstellt</option>
+          <option value="name">Name</option>
+        </select>
+      </div>
+    </header>
+    <div class="lib-body" id="lib-body">
+      <section id="lib-folders-sec">
+        <h4 class="lib-h">Ordner</h4>
+        <div class="lib-folders" id="folder-chips"></div>
+      </section>
+      <h4 class="lib-h" id="lib-notes-h">Alle Notizen</h4>
+      <div class="lib-grid" id="notes-list"></div>
     </div>
-    <div class="new-kinds">
-      <button type="button" class="new-kind primary" id="notes-dialog-new"><b>＋ Notiz</b><span>Schreiben, PDF, Bilder</span></button>
-      <button type="button" class="new-kind" id="notes-dialog-kmap"><b>👥 Konstellation</b><span>Figuren, Beziehungen, Akte</span></button>
-      <button type="button" class="new-kind" id="notes-dialog-free"><b>🧩 Schaubild</b><span>frei: Kästen, Pfeile, Gruppen – z. B. Wirtschaftskreislauf</span></button>
-      <button type="button" class="new-kind" id="notes-dialog-cmp"><b>⚖️ Vergleich</b><span>Tabelle, z. B. Wirtschaftsordnungen</span></button>
+    <div class="lib-pop menu-pop" id="lib-new-menu" hidden>
+      <div class="new-kinds">
+        <button type="button" class="new-kind primary" id="notes-dialog-new"><b>＋ Notiz</b><span>Schreiben, PDF, Bilder</span></button>
+        <button type="button" class="new-kind" id="notes-dialog-kmap"><b>👥 Konstellation</b><span>Figuren, Beziehungen, Akte</span></button>
+        <button type="button" class="new-kind" id="notes-dialog-free"><b>🧩 Schaubild</b><span>Kästen, Pfeile, z. B. Wirtschaftskreislauf</span></button>
+        <button type="button" class="new-kind" id="notes-dialog-cmp"><b>⚖️ Vergleich</b><span>Tabelle, Venn, Quiz</span></button>
+        <button type="button" class="new-kind" id="lib-new-folder"><b>📁 Ordner</b><span>Notizen sortieren</span></button>
+      </div>
     </div>
-    <div class="dlg-actions">
-      <button type="button" class="btn" data-close>Schließen</button>
+    <div class="lib-pop menu-pop" id="folder-tools" hidden>
+      <button type="button" class="menu-item" id="folder-rename">Ordner umbenennen</button>
+      <button type="button" class="menu-item danger-text" id="folder-delete">Ordner löschen</button>
     </div>
+    <div class="lib-pop menu-pop" id="lib-note-menu" hidden></div>
   </dialog>
 
   <!-- Side-Note-Panel (neben der Seite bzw. unten) -->

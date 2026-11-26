@@ -2297,8 +2297,8 @@ async function showNotesList() {
   // Aktuelle Notiz mit ihrem neuesten Stand anzeigen
   all = all.filter((n) => n.id !== note.id);
   if (!isEmpty(note)) all.push(note);
-  all.sort((a, b) => b.updated - a.updated);
   notesCache = all;
+  libSortCache();
   if (folderFilter !== 'all' && !folders.some((f) => f.id === folderFilter)) folderFilter = 'all';
   renderNotesList();
   if (!$('#notes-dialog').open) $('#notes-dialog').showModal();
@@ -2313,73 +2313,261 @@ const saveFolders = () => store.set('noteFolders', folders);
 const folderName = (id) => (folders.find((f) => f.id === id) || {}).name;
 const FOLDER_ICON = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>';
 
-function renderNotesList() {
-  // Ordner-Leiste
-  const chips = $('#folder-chips');
-  chips.innerHTML = '';
-  const chip = (id, label, count) => {
+// ---------- Bibliothek (Übersicht im Vollbild, wie ein Notizbuch-Regal) ----------
+let libSort = store.get('notesSort', 'updated');
+const libThumbs = new Map();   // id → { u: updated, url }
+let libObs = null;
+const libDate = (t) => {
+  const d = new Date(t), now = new Date();
+  const days = Math.floor((new Date(now.toDateString()) - new Date(d.toDateString())) / 864e5);
+  if (days === 0) return 'Heute, ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  if (days === 1) return 'Gestern';
+  return d.toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' });
+};
+function libMeta(n) {
+  if (n.kind === 'kmap') return n.kmap && n.kmap.flavor === 'free' ? `${(n.kmap && n.kmap.persons.length) || 0} Kästen` : `${(n.kmap && n.kmap.persons.length) || 0} Personen`;
+  if (n.kind === 'cmp') return `${(n.cmp && n.cmp.rows.length) || 0} Kriterien`;
+  return n.pages.length === 1 ? '1 Seite' : `${n.pages.length} Seiten`;
+}
+const libKind = (n) => n.kind === 'kmap' ? (n.kmap && n.kmap.flavor === 'free' ? ['🧩', 'Schaubild'] : ['👥', 'Konstellation']) : n.kind === 'cmp' ? ['⚖️', 'Vergleich'] : null;
+
+// Vorschau zeichnen: normale Notiz = erste Seite, sonst eine kleine Skizze des Inhalts
+function libDrawThumb(n, cv) {
+  const W = cv.width, H = cv.height, ctx = cv.getContext('2d');
+  const s = W / PAGE_W;
+  if (!n.kind) {
+    const page = n.pages[0] || { strokes: [] };
+    ctx.save();
+    ctx.setTransform(s, 0, 0, s, 0, 0);
+    drawPaper(ctx, n.paper);
+    ctx.restore();
+    const ink = () => { ctx.save(); ctx.setTransform(s, 0, 0, s, 0, 0); page.strokes.forEach((st) => drawStroke(ctx, st)); ctx.restore(); };
+    if (page.bg && page.bg.data) {
+      return new Promise((res) => {
+        const u = URL.createObjectURL(new Blob([page.bg.data], { type: 'image/jpeg' }));
+        const img = new Image();
+        img.onload = img.onerror = () => {
+          ctx.save(); ctx.setTransform(s, 0, 0, s, 0, 0);
+          if (img.naturalWidth) ctx.drawImage(img, page.bg.x, page.bg.y, page.bg.width, page.bg.height);
+          ctx.restore();
+          URL.revokeObjectURL(u);
+          ink(); res();
+        };
+        img.src = u;
+      });
+    }
+    ink();
+    return;
+  }
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+  if (n.kind === 'kmap' && n.kmap && n.kmap.persons.length) {
+    const ps = n.kmap.persons.filter((p) => isFinite(p.x) && isFinite(p.y));
+    if (!ps.length) return;
+    const xs = ps.map((p) => p.x), ys = ps.map((p) => p.y);
+    const x0 = Math.min(...xs) - 80, x1 = Math.max(...xs) + 80, y0 = Math.min(...ys) - 50, y1 = Math.max(...ys) + 50;
+    const k = Math.min((W - 24) / (x1 - x0), (H - 24) / (y1 - y0), 0.8);
+    const ox = (W - (x1 - x0) * k) / 2 - x0 * k, oy = (H - (y1 - y0) * k) / 2 - y0 * k;
+    const pos = new Map(ps.map((p) => [p.id, [p.x * k + ox, p.y * k + oy]]));
+    ctx.lineWidth = Math.max(1, 2 * k * 2);
+    (n.kmap.links || []).forEach((l) => {
+      const a = pos.get(l.a), b = pos.get(l.b);
+      if (!a || !b) return;
+      ctx.strokeStyle = l.color || '#94a3b8';
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    });
+    const bw = Math.max(14, 130 * k), bh = Math.max(8, 52 * k);
+    ps.forEach((p) => {
+      const [x, y] = pos.get(p.id);
+      ctx.fillStyle = p.color || '#2563eb';
+      ctx.beginPath();
+      if (p.shape === 'circle' || p.shape === 'ellipse') ctx.ellipse(x, y, bw / 2, bh / 2, 0, 0, Math.PI * 2);
+      else if (ctx.roundRect) ctx.roundRect(x - bw / 2, y - bh / 2, bw, bh, Math.min(6, bh / 3));
+      else ctx.rect(x - bw / 2, y - bh / 2, bw, bh);
+      ctx.fill();
+    });
+  } else if (n.kind === 'cmp' && n.cmp) {
+    const cols = n.cmp.cols || [], rows = n.cmp.rows || [];
+    const pad = W * 0.08, cw = (W - pad * 2) / (cols.length + 1), rh = Math.min(H * 0.09, (H - pad * 2) / (rows.length + 1));
+    cols.forEach((c, i) => { ctx.fillStyle = c.color || '#2563eb'; ctx.fillRect(pad + cw * (i + 1) + 2, pad, cw - 4, rh - 4); });
+    ctx.fillStyle = '#e5e7eb';
+    for (let r = 0; r < rows.length && pad + rh * (r + 2) < H - pad; r++) {
+      const y = pad + rh * (r + 1);
+      ctx.fillStyle = '#cbd5e1'; ctx.fillRect(pad, y + rh * 0.3, cw * 0.8, rh * 0.25);
+      cols.forEach((c, i) => {
+        const filled = rows[r].cells && rows[r].cells[c.id];
+        ctx.fillStyle = filled ? '#94a3b8' : '#eef2f7';
+        ctx.fillRect(pad + cw * (i + 1) + 6, y + rh * 0.3, (cw - 12) * (filled ? 0.85 : 0.5), rh * 0.25);
+      });
+      ctx.fillStyle = '#e5e7eb'; ctx.fillRect(pad, y + rh - 1, W - pad * 2, 1);
+    }
+  }
+}
+
+async function libThumb(n, img) {
+  const hit = libThumbs.get(n.id);
+  if (hit && hit.u === n.updated) { img.src = hit.url; return; }
+  const cv = document.createElement('canvas');
+  cv.width = 300; cv.height = Math.round(300 * PAGE_H / PAGE_W);
+  try { await libDrawThumb(n, cv); } catch {}
+  const url = cv.toDataURL('image/jpeg', 0.82);
+  libThumbs.set(n.id, { u: n.updated, url });
+  img.src = url;
+}
+
+// kleines Menü (⋯, ＋ Neu, Ordner) unter einem Knopf öffnen
+function libPop(menu, anchor) {
+  document.querySelectorAll('#notes-dialog .lib-pop').forEach((m) => { if (m !== menu) m.hidden = true; });
+  if (!menu.hidden) { menu.hidden = true; return; }
+  menu.hidden = false;
+  const dlg = $('#notes-dialog').getBoundingClientRect();
+  const r = anchor.getBoundingClientRect(), mw = menu.offsetWidth, mh = menu.offsetHeight;
+  let x = Math.min(r.right - mw, dlg.width - mw - 8);
+  x = Math.max(8, x);
+  let y = r.bottom + 6;
+  if (y + mh > dlg.height - 8) y = Math.max(8, r.top - mh - 6);
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+}
+const libPopClose = () => document.querySelectorAll('#notes-dialog .lib-pop').forEach((m) => { m.hidden = true; });
+
+function libNoteMenu(n, anchor) {
+  const m = $('#lib-note-menu');
+  m.innerHTML = '';
+  const item = (label, fn, cls) => {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'chip' + (folderFilter === id ? ' active' : '');
-    b.textContent = count == null ? label : `${label} ${count}`;
-    b.addEventListener('click', () => {
-      folderFilter = id;
-      store.set('notesFolder', id);
-      renderNotesList();
-    });
-    chips.append(b);
+    b.className = 'menu-item' + (cls ? ' ' + cls : '');
+    b.textContent = label;
+    b.addEventListener('click', (e) => { e.stopPropagation(); libPopClose(); fn(); });
+    m.append(b);
   };
-  chip('all', 'Alle', notesCache.length);
-  folders.forEach((f) => chip(f.id, f.name, notesCache.filter((n) => n.folder === f.id).length));
-  const add = document.createElement('button');
-  add.type = 'button';
-  add.className = 'chip add';
-  add.textContent = '＋ Ordner';
-  add.addEventListener('click', () => {
-    const f = newFolder();
-    if (f) { folderFilter = f.id; store.set('notesFolder', f.id); renderNotesList(); }
-  });
-  chips.append(add);
-  $('#folder-tools').hidden = folderFilter === 'all';
+  item('Öffnen', () => libOpen(n));
+  item('Umbenennen', () => libRename(n));
+  item('In Ordner verschieben …', () => pickFolder(n));
+  item('Duplizieren', () => libDuplicate(n));
+  item('Löschen', () => libDelete(n), 'danger-text');
+  libPop(m, anchor);
+}
 
-  // Notizen (gefiltert nach Ordner und Suche)
+function libOpen(n) {
+  $('#notes-dialog').close();
+  if (n.id !== note.id) openNote(n);
+}
+async function libRename(n) {
+  const t = prompt('Neuer Name:', n.title || '');
+  if (t == null) return;
+  n.title = t.trim().slice(0, 80);
+  if (n.id === note.id) { note.title = n.title; $('#note-title').value = n.title; saveNote(); }
+  else { n.updated = Date.now(); await noteDb.put(n).catch(() => {}); }
+  renderNotesList();
+}
+async function libDuplicate(n) {
+  if (n.id === note.id) saveNote();
+  let c;
+  try { c = structuredClone(n); } catch { return toast('Kopieren hat nicht geklappt'); }
+  c.id = Date.now().toString(36);
+  c.title = noteName(n) + ' (Kopie)';
+  c.created = c.updated = Date.now();
+  delete c.shared;
+  await noteDb.put(c).catch(() => {});
+  notesCache.unshift(c);
+  libSortCache();
+  renderNotesList();
+  toast('Kopie angelegt');
+}
+async function libDelete(n) {
+  if (!confirm(`„${noteName(n)}“ wirklich löschen?`)) return;
+  notesCache = notesCache.filter((x) => x.id !== n.id);
+  libThumbs.delete(n.id);
+  if (n.id === note.id) {
+    cancelSave();
+    await noteDb.del(n.id).catch(() => {});
+    note = null;
+    if (notesCache.length) await openNote(notesCache[0]);
+    else await createNote();
+  } else {
+    await noteDb.del(n.id).catch(() => {});
+  }
+  renderNotesList();
+  toast('Notiz gelöscht');
+}
+
+function libSortCache() {
+  const by = { updated: (a, b) => b.updated - a.updated, created: (a, b) => (b.created || 0) - (a.created || 0), name: (a, b) => noteName(a).localeCompare(noteName(b), 'de') };
+  notesCache.sort(by[libSort] || by.updated);
+}
+
+function renderNotesList() {
+  libPopClose();
+  const inFolder = folderFilter !== 'all';
+  const fname = inFolder ? folderName(folderFilter) : '';
+  $('#lib-title').textContent = inFolder ? fname : 'Meine Notizen';
+  $('#lib-back').hidden = !inFolder;
+  $('#lib-folder-btn').hidden = !inFolder;
+  $('#lib-sort').value = libSort;
   const q = $('#notes-search').value.trim().toLowerCase();
-  const shown = notesCache.filter((n) => (folderFilter === 'all' || n.folder === folderFilter) && (!q || noteName(n).toLowerCase().includes(q)));
-  const list = $('#notes-list');
-  list.innerHTML = '';
+
+  // Ordner als Kacheln (nur auf der obersten Ebene und ohne Suche)
+  const fgrid = $('#folder-chips');
+  fgrid.innerHTML = '';
+  const showFolders = !inFolder && !q;
+  $('#lib-folders-sec').hidden = !showFolders;
+  if (showFolders) {
+    folders.forEach((f) => {
+      const cnt = notesCache.filter((n) => n.folder === f.id).length;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'lib-folder';
+      b.innerHTML = '<span class="lib-folder-ico">' + FOLDER_ICON + '</span><b></b><span class="muted"></span>';
+      b.querySelector('b').textContent = f.name;
+      b.querySelector('.muted').textContent = cnt === 1 ? '1 Notiz' : `${cnt} Notizen`;
+      b.addEventListener('click', () => { folderFilter = f.id; store.set('notesFolder', f.id); $('#lib-body').scrollTop = 0; renderNotesList(); });
+      fgrid.append(b);
+    });
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'lib-folder add';
+    add.innerHTML = '<span class="lib-folder-ico">＋</span><b>Neuer Ordner</b>';
+    add.addEventListener('click', () => { if (newFolder()) renderNotesList(); });
+    fgrid.append(add);
+  }
+
+  // Notizen als Kacheln mit Vorschau
+  const shown = notesCache.filter((n) => (!inFolder || n.folder === folderFilter) && (!q || noteName(n).toLowerCase().includes(q)));
+  $('#lib-notes-h').textContent = q ? `${shown.length} Treffer` : inFolder ? (shown.length === 1 ? '1 Notiz' : `${shown.length} Notizen`) : 'Alle Notizen';
+  const grid = $('#notes-list');
+  grid.innerHTML = '';
+  if (libObs) libObs.disconnect();
+  libObs = 'IntersectionObserver' in window ? new IntersectionObserver((es) => es.forEach((e) => {
+    if (!e.isIntersecting) return;
+    libObs.unobserve(e.target);
+    const n = notesCache.find((x) => x.id === e.target.dataset.id);
+    if (n) libThumb(n, e.target.querySelector('img'));
+  }), { root: $('#lib-body'), rootMargin: '300px' }) : null;
   if (!shown.length) {
-    const li = document.createElement('li');
-    li.className = 'muted';
-    li.textContent = q ? 'Nichts gefunden' : folderFilter === 'all' ? 'Noch keine Notizen' : 'Dieser Ordner ist leer';
-    list.append(li);
+    const p = document.createElement('p');
+    p.className = 'lib-empty muted';
+    p.textContent = q ? 'Nichts gefunden' : inFolder ? 'Dieser Ordner ist leer – tippe auf „＋ Neu“.' : 'Noch keine Notizen – tippe auf „＋ Neu“.';
+    grid.append(p);
   }
   shown.forEach((n) => {
-    const li = document.createElement('li');
-    li.className = 'note-item' + (n.id === note.id ? ' current' : '');
-    const text = document.createElement('div');
-    text.className = 'note-item-text';
-    const title = document.createElement('span');
-    title.className = 'todo-text';
-    title.textContent = noteName(n);
-    const meta = document.createElement('span');
-    meta.className = 'muted small-text';
-    const date = new Date(n.updated).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' });
-    const fname = folderName(n.folder);
-    meta.textContent = (n.kind === 'kmap' ? (n.kmap && n.kmap.flavor === 'free' ? `🧩 Schaubild · ${n.kmap.persons.length} Kästen · ${date}` : `👥 Konstellation · ${(n.kmap && n.kmap.persons.length) || 0} Personen · ${date}`)
-      : n.kind === 'cmp' ? `⚖️ Vergleich · ${(n.cmp && n.cmp.rows.length) || 0} Kriterien · ${date}` : `${n.pages.length} S. · ${date}`) + (fname && folderFilter === 'all' ? ` · ${fname}` : '');
-    text.append(title, meta);
-    const move = document.createElement('button');
-    move.type = 'button';
-    move.className = 'tool note-folder-btn';
-    move.setAttribute('aria-label', 'In Ordner verschieben');
-    move.innerHTML = FOLDER_ICON;
-    move.addEventListener('click', (e) => { e.stopPropagation(); pickFolder(n); });
-    li.append(text, move);
-    li.addEventListener('click', () => {
-      $('#notes-dialog').close();
-      if (n.id !== note.id) openNote(n);
-    });
-    list.append(li);
+    const card = document.createElement('div');
+    card.className = 'lib-note' + (n.id === note.id ? ' current' : '') + (n.kind ? ' kind' : '');
+    card.dataset.id = n.id;
+    card.tabIndex = 0;
+    const kind = libKind(n);
+    card.innerHTML = '<div class="lib-cover"><img alt=""></div><div class="lib-cap"><div class="lib-cap-text"><b></b><span class="muted"></span></div><button type="button" class="lib-more" aria-label="Optionen">⋯</button></div>';
+    if (kind) { const t = document.createElement('span'); t.className = 'lib-badge'; t.textContent = kind[0] + ' ' + kind[1]; card.querySelector('.lib-cover').append(t); }
+    if (n.shared) { const t = document.createElement('span'); t.className = 'lib-badge shared'; t.textContent = n.shared.role === 'read' ? '👁 geteilt' : '🔗 geteilt'; card.querySelector('.lib-cover').append(t); }
+    card.querySelector('b').textContent = noteName(n);
+    const f = !inFolder && folderName(n.folder);
+    card.querySelector('.muted').textContent = libDate(n.updated) + ' · ' + libMeta(n) + (f ? ' · ' + f : '');
+    card.querySelector('.lib-more').addEventListener('click', (e) => { e.stopPropagation(); libNoteMenu(n, e.currentTarget); });
+    card.addEventListener('click', () => libOpen(n));
+    card.addEventListener('keydown', (e) => { if (e.key === 'Enter') libOpen(n); });
+    grid.append(card);
+    if (libObs) libObs.observe(card); else libThumb(n, card.querySelector('img'));
   });
 }
 
@@ -2433,6 +2621,14 @@ function pickFolder(n) {
 }
 
 $('#notes-search').addEventListener('input', renderNotesList);
+$('#lib-back').addEventListener('click', () => { folderFilter = 'all'; store.set('notesFolder', 'all'); renderNotesList(); });
+$('#lib-sort').addEventListener('change', (e) => { libSort = e.target.value; store.set('notesSort', libSort); libSortCache(); renderNotesList(); });
+$('#lib-new').addEventListener('click', (e) => { e.stopPropagation(); libPop($('#lib-new-menu'), e.currentTarget); });
+$('#lib-folder-btn').addEventListener('click', (e) => { e.stopPropagation(); libPop($('#folder-tools'), e.currentTarget); });
+$('#lib-new-folder').addEventListener('click', () => { libPopClose(); const f = newFolder(); if (f) { folderFilter = f.id; store.set('notesFolder', f.id); renderNotesList(); } });
+$('#notes-dialog').addEventListener('click', (e) => { if (!e.target.closest('.lib-pop')) libPopClose(); });
+$('#notes-dialog').addEventListener('close', libPopClose);
+$('#lib-body').addEventListener('scroll', libPopClose, { passive: true });
 $('#folder-rename').addEventListener('click', () => {
   const f = folders.find((x) => x.id === folderFilter);
   if (!f) return;
