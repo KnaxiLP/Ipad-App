@@ -52,6 +52,17 @@ if (!['pen', 'ball', 'marker', 'eraser', 'text'].includes(tool)) tool = 'pen';
 Object.defineProperty(window, 'noteTool', { get: () => tool });
 let size = store.get('noteSize', 2);
 const colorSel = store.get('noteColors', { pen: 0, marker: 0 });
+// Eigene Farben: die 5 Farbfelder lassen sich ändern (Farbfeld-Panel, stifte.js)
+{
+  const pp = store.get('penPalette', null), mp = store.get('markerPalette', null);
+  if (Array.isArray(pp) && pp.length === PEN_COLORS.length) PEN_COLORS.splice(0, pp.length, ...pp);
+  if (Array.isArray(mp) && mp.length === MARKER_COLORS.length) MARKER_COLORS.splice(0, mp.length, ...mp);
+}
+// Drei Stärke-Plätze in der Leiste, jeder frei einstellbar
+let sizeSlots = store.get('sizeSlots', [1, 2, 4]);
+let sizeSel = Math.max(0, sizeSlots.indexOf(size));
+if (sizeSlots[sizeSel] !== size) sizeSlots[sizeSel] = size;
+const textFs = (sz) => TEXT_SIZES[sz] || Math.max(10, Math.min(90, Math.round(18 * Math.sqrt(sz))));
 let fingerDraw = store.get('fingerDraw', true);
 let undoStack = [];
 let redoStack = [];
@@ -879,7 +890,7 @@ function strokeHit(s, x, y, r) {
 
 function eraseAt(x, y) {
   const page = note.pages[active.page];
-  const r = ERASER_RADIUS * size;
+  const r = ERASER_RADIUS * Math.max(0.6, Math.min(size, 6));
   // Zwischenpunkte prüfen, damit schnelle Bewegungen nichts überspringen
   const steps = Math.max(1, Math.ceil(Math.hypot(x - active.lx, y - active.ly) / r));
   let changed = false;
@@ -1459,7 +1470,7 @@ function openEditor(i, k, x, y) {
     page.strokes = page.strokes.filter((_, j) => j !== k);   // während der Bearbeitung ausblenden
     drawPage(i);
   } else {
-    const fs = TEXT_SIZES[size] || 24;
+    const fs = textFs(size);
     let w = Math.min(600, PAGE_W - x - 30);
     if (w < 150) { x = PAGE_W - 180; w = 150; }
     t = { tool: 'text', x, y: Math.max(0, y - fs * 0.8), w, size: fs, color: PEN_COLORS[colorSel.pen], text: '' };
@@ -2311,12 +2322,21 @@ function renderColors() {
     b.style.setProperty('--c', c);
     b.setAttribute('aria-label', 'Farbe ' + (i + 1));
     b.addEventListener('click', () => {
+      // nochmal auf die aktive Farbe tippen = Farbe ändern
+      if (colorSel[key] === i && typeof ppToggle === 'function') return ppToggle(b);
       colorSel[key] = i;
       store.set('noteColors', colorSel);
       renderColors();
     });
     g.append(b);
   });
+  const more = document.createElement('button');
+  more.className = 'tool pp-open';
+  more.setAttribute('aria-label', 'Farben und Stärke frei wählen');
+  more.title = 'Farben und Stärke frei wählen';
+  more.addEventListener('click', () => typeof ppToggle === 'function' && ppToggle(more));
+  g.append(more);
+  if (typeof ppSync === 'function') ppSync();
 }
 
 document.querySelectorAll('[data-tool]').forEach((b) =>
@@ -2332,17 +2352,38 @@ document.querySelectorAll('[data-tool]').forEach((b) =>
   })
 );
 
-function renderSize() {
-  document.querySelectorAll('[data-size]').forEach((b) => b.classList.toggle('active', Number(b.dataset.size) === size));
-  if (typeof penFavs !== 'undefined') renderFavs();
+const sizeDot = (sz) => Math.min(18, Math.max(3, 1.5 + 2.6 * Math.pow(sz, 0.75)));
+function setSize(v, keepSlot) {
+  size = Math.round(v * 100) / 100;
+  store.set('noteSize', size);
+  if (!keepSlot) {
+    const k = sizeSlots.indexOf(size);
+    if (k >= 0) sizeSel = k;
+    else { sizeSlots[sizeSel] = size; store.set('sizeSlots', sizeSlots); }
+  }
+  renderSize();
 }
-document.querySelectorAll('[data-size]').forEach((b) =>
-  b.addEventListener('click', () => {
-    size = Number(b.dataset.size);
-    store.set('noteSize', size);
-    renderSize();
-  })
-);
+function renderSize() {
+  const g = $('#size-group');
+  g.innerHTML = '';
+  sizeSlots.forEach((v, k) => {
+    const b = document.createElement('button');
+    b.className = 'tool size' + (k === sizeSel && v === size ? ' active' : '');
+    b.dataset.size = v;
+    b.setAttribute('aria-label', 'Stärke ' + String(v).replace('.', ','));
+    const d = sizeDot(v);
+    b.innerHTML = `<i style="width:${d}px;height:${d}px"></i>`;
+    b.addEventListener('click', () => {
+      // nochmal auf die aktive Stärke tippen = Stärke frei einstellen
+      if (k === sizeSel && v === size && typeof ppToggle === 'function') return ppToggle(b);
+      sizeSel = k;
+      setSize(v, true);
+    });
+    g.append(b);
+  });
+  if (typeof penFavs !== 'undefined') renderFavs();
+  if (typeof ppSync === 'function') ppSync();
+}
 
 function setFingerDraw(on, auto) {
   fingerDraw = on;
@@ -4224,7 +4265,7 @@ $('#math-ok').addEventListener('click', () => {
     else return;
   } else {
     if (!src) return;
-    const sz = Math.round((TEXT_SIZES[size] || 24) * 1.15);
+    const sz = Math.round(textFs(size) * 1.15);
     const m = mathBox(parseMath(src), sz);
     pg.strokes.push({ tool: 'math', x: clamp(x, 0, PAGE_W - m.w), y: clamp(y - m.a, 0, PAGE_H - m.a - m.d), size: sz, color: PEN_COLORS[colorSel.pen], src });
   }
@@ -4851,7 +4892,7 @@ $('#snp-text').addEventListener('blur', () => { clearTimeout(snTextTimer); if (s
     return [(e.clientX - r.left) * k, (e.clientY - r.top) * k, Math.round((e.pressure || 0.5) * 100) / 100];
   };
   const eraseAtInk = (x, y) => {
-    const n = snNote(), r = ERASER_RADIUS * size;
+    const n = snNote(), r = ERASER_RADIUS * Math.max(0.6, Math.min(size, 6));
     const keep = (n.ink || []).filter((s) => !strokeHit(s, x, y, r));
     if (keep.length !== (n.ink || []).length) { snUpdate((m) => ({ ...m, ink: keep })); snRenderInk(); }
   };
@@ -5317,8 +5358,8 @@ $('#po-add').addEventListener('click', () => {
 const FAV_MAX = 4;
 let penFavs = store.get('penFavs', []);
 
-function favColor(f) { return (f.tool === 'marker' ? MARKER_COLORS : PEN_COLORS)[f.c] || '#1c1c1e'; }
-function favActive(f) { return tool === f.tool && colorSel[f.tool === 'marker' ? 'marker' : 'pen'] === f.c && size === f.size; }
+function favColor(f) { return f.color || (f.tool === 'marker' ? MARKER_COLORS : PEN_COLORS)[f.c] || '#1c1c1e'; }
+function favActive(f) { const k = f.tool === 'marker' ? 'marker' : 'pen'; return tool === f.tool && (k === 'marker' ? MARKER_COLORS : PEN_COLORS)[colorSel[k]] === favColor(f) && size === f.size; }
 
 function renderFavs() {
   const g = $('#fav-group');
@@ -5329,7 +5370,7 @@ function renderFavs() {
     b.className = 'tool fav' + (favActive(f) ? ' active' : '');
     b.style.setProperty('--c', favColor(f));
     const icon = document.querySelector(`#toolbar [data-tool="${f.tool}"] svg`);
-    b.innerHTML = (icon ? icon.outerHTML : '') + `<i style="width:${2 + f.size * 2}px;height:${2 + f.size * 2}px"></i>`;
+    b.innerHTML = (icon ? icon.outerHTML : '') + `<i style="width:${sizeDot(f.size)}px;height:${sizeDot(f.size)}px"></i>`;
     b.title = 'Favorit – lange drücken zum Entfernen';
     let timer = 0, long = false;
     b.addEventListener('pointerdown', () => { long = false; timer = setTimeout(() => { long = true; removeFav(j); }, 650); });
@@ -5349,8 +5390,9 @@ function renderFavs() {
     add.textContent = '☆';
     add.addEventListener('click', () => {
       if (!['pen', 'ball', 'marker'].includes(tool)) return toast('Erst Füller, Kugelschreiber oder Textmarker wählen');
-      const f = { tool, c: colorSel[tool === 'marker' ? 'marker' : 'pen'], size };
-      if (penFavs.some((x) => x.tool === f.tool && x.c === f.c && x.size === f.size)) return toast('Diesen Stift gibt es schon als Favorit');
+      const k = tool === 'marker' ? 'marker' : 'pen';
+      const f = { tool, color: (k === 'marker' ? MARKER_COLORS : PEN_COLORS)[colorSel[k]], size };
+      if (penFavs.some((x) => x.tool === f.tool && favColor(x) === f.color && x.size === f.size)) return toast('Diesen Stift gibt es schon als Favorit');
       penFavs = penFavs.concat(f);
       store.set('penFavs', penFavs);
       renderFavs();
@@ -5363,11 +5405,12 @@ function renderFavs() {
 function applyFav(f) {
   const btn = document.querySelector(`#toolbar [data-tool="${f.tool}"]`);
   if (btn) btn.click();
-  colorSel[f.tool === 'marker' ? 'marker' : 'pen'] = f.c;
+  const k = f.tool === 'marker' ? 'marker' : 'pen', pal = k === 'marker' ? MARKER_COLORS : PEN_COLORS, c = favColor(f);
+  let i = pal.indexOf(c);
+  if (i < 0) { i = colorSel[k]; pal[i] = c; store.set(k === 'marker' ? 'markerPalette' : 'penPalette', pal.slice()); }
+  colorSel[k] = i;
   store.set('noteColors', colorSel);
-  size = f.size;
-  store.set('noteSize', size);
-  renderSize();
+  setSize(f.size);
   renderColors();
 }
 
